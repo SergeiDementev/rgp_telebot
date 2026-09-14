@@ -84,21 +84,22 @@ class CombatSession:
     id: int
     character_id: int
     enemy_type: str                # "mouse" | "wolf" | "boar"
-    enemy_hp_current: float
-    character_hp_snapshot: float   # HP персонажа на момент начала/текущего состояния боя
-    current_turn: str              # "player" | "enemy"
-    status: str                    # "awaiting_confirmation" | "active" | "finished"
+    enemy_hp_current: float        # enemy_hp_max НЕ хранится — статичен, читается из content/enemies.json
+    character_hp_snapshot: float   # живой HP персонажа во время боя (обновляется на каждом ударе)
+    current_turn: str | None       # "player" | "enemy"; None до /combat/{id}/start (инициатива ещё не брошена)
+    status: str                    # "awaiting_initiative" | "awaiting_confirmation" | "active" | "finished"
     result: str | None             # "victory" | "defeat" | "player_fled" | "enemy_fled"
     circumstance_outcome: str | None   # "buff" | "debuff" | None
     circumstance_roller: str | None    # "player" | "enemy" — кто кинул обстоятельство
     strength_modifier_player: float = 1.0
     strength_modifier_enemy: float = 1.0
-    flee_opportunity_used: bool = False
+    player_flee_right_used: bool = False
+    enemy_flee_right_used: bool = False
     turn_log: JSON                  # накопительный лог событий (для отображения в боте)
     created_at, updated_at: datetime
 ```
 
-`flee_opportunity_used` живёт в `CombatSession`, не в `Character` — право на побег сгорает только в рамках одного боя, не переносится между боями.
+Право на побег (§6 combat_mechanics.md) разведено на `player_flee_right_used`/`enemy_flee_right_used`, не общий флаг — право принадлежит стороне, а не сессии целиком, иначе побег одной стороны мог бы случайно сжечь право другой. Оба поля живут в `CombatSession`, не в `Character` — сгорают только в рамках одного боя, не переносятся между боями.
 
 ---
 
@@ -109,8 +110,10 @@ POST /character                      — создать персонажа (nick
 GET  /character/{telegram_user_id}   — текущее состояние (HP пересчитывается на лету при чтении)
 POST /character/{id}/allocate_point  — потратить одно очко прокачки: {"stat": "strength"}
 
-POST /encounter/search               — бросок d10 (60/30/10), создание CombatSession,
-                                        сразу же бросок инициативы + обстоятельства
+POST /encounter/search               — бросок d10 (60/30/10), создание CombatSession
+                                        (status="awaiting_initiative")
+POST /combat/{id}/start              — бросок инициативы + обстоятельства одним вызовом
+                                        (status -> "awaiting_confirmation")
 
 POST /combat/{id}/confirm            — { "decision": "fight" | "flee" } — после обстоятельства
 POST /combat/{id}/turn               — выполнить один ход игрока (+ автоматически ход бота,
@@ -118,6 +121,8 @@ POST /combat/{id}/turn               — выполнить один ход иг
 POST /combat/{id}/flee_decision      — { "decision": "flee" | "continue" } — по HP-порогу
 GET  /combat/{id}                    — текущее состояние сессии (восстановление после сбоя бота)
 ```
+
+`/encounter/search` и `/combat/{id}/start` — два отдельных запроса, а не один: в `gameplay_loop_mvp.md` §9 это два отдельных нажатия кнопки ("Искать противника", затем отдельно "Определить инициативу"), а принцип "один HTTP-запрос = один шаг" (§1) требует по запросу на каждое нажатие.
 
 Ни один эндпоинт не принимает от клиента сырых результатов бросков или урона — только идентификаторы и явные решения игрока (fight/flee/continue, какой стат прокачать).
 

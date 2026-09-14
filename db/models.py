@@ -52,9 +52,9 @@ class CombatSession(Base):
     enemy_hp_current = Column(Float, nullable=False)
     character_hp_snapshot = Column(Float, nullable=False)
 
-    current_turn = Column(String, nullable=False)  # "player" | "enemy"
-    status = Column(String, nullable=False, default="awaiting_confirmation")
-    # "awaiting_confirmation" | "active" | "finished"
+    current_turn = Column(String, nullable=True)  # "player" | "enemy"; None до /start (инициатива ещё не брошена)
+    status = Column(String, nullable=False, default="awaiting_initiative")
+    # "awaiting_initiative" | "awaiting_confirmation" | "active" | "finished"
     result = Column(String, nullable=True)
     # "victory" | "defeat" | "player_fled" | "enemy_fled"
 
