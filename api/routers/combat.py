@@ -245,7 +245,8 @@ def confirm_combat(
         db.commit()
         db.refresh(session)
         return CombatTurnResponse(
-            combat_session_id=session.id, status=session.status, result=None, text="⚔️ Ты вступаешь в бой!"
+            combat_session_id=session.id, status=session.status, result=None,
+            current_turn=session.current_turn, text="⚔️ Ты вступаешь в бой!",
         )
 
     # §9 шаг 3б / §7: отказ -> безответный удар противника без защиты.
@@ -269,7 +270,7 @@ def confirm_combat(
     db.refresh(session)
     return CombatTurnResponse(
         combat_session_id=session.id, status=session.status, result=session.result,
-        text=f"{flee_text}\n\n{finish_text}",
+        current_turn=session.current_turn, text=f"{flee_text}\n\n{finish_text}",
     )
 
 
@@ -288,7 +289,8 @@ def take_turn(
     gate = _check_flee_gate(session, character, db)
     if gate is not None and not gate["proceed"]:
         return CombatTurnResponse(
-            combat_session_id=session.id, status=session.status, result=session.result, text=gate["text"]
+            combat_session_id=session.id, status=session.status, result=session.result,
+            current_turn=session.current_turn, text=gate["text"],
         )
 
     turn_text = _resolve_attacker_turn(session, character, db)
@@ -296,7 +298,8 @@ def take_turn(
         turn_text = f"{gate['text']}\n\n{turn_text}"
 
     return CombatTurnResponse(
-        combat_session_id=session.id, status=session.status, result=session.result, text=turn_text
+        combat_session_id=session.id, status=session.status, result=session.result,
+        current_turn=session.current_turn, text=turn_text,
     )
 
 
@@ -336,7 +339,7 @@ def flee_decision(
         db.refresh(session)
         return CombatTurnResponse(
             combat_session_id=session.id, status=session.status, result=session.result,
-            text=f"{flee_text}\n\n{finish_text}",
+            current_turn=session.current_turn, text=f"{flee_text}\n\n{finish_text}",
         )
 
     # "continue" — право сгорает, ход доигрывается в этом же ответе (§6).
@@ -349,7 +352,8 @@ def flee_decision(
 
     turn_text = _resolve_attacker_turn(session, character, db)
     return CombatTurnResponse(
-        combat_session_id=session.id, status=session.status, result=session.result, text=turn_text
+        combat_session_id=session.id, status=session.status, result=session.result,
+        current_turn=session.current_turn, text=turn_text,
     )
 
 

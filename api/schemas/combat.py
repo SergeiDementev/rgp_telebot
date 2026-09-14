@@ -33,6 +33,7 @@ class CombatTurnResponse(BaseModel):
     combat_session_id: int
     status: str
     result: Optional[str] = None
+    current_turn: Optional[str] = None
     text: str
 
 
