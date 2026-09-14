@@ -18,7 +18,10 @@ from db.session import Base
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    # Naive UTC, намеренно: SQLite не хранит таймзону и при чтении всегда
+    # возвращает naive-datetime — если писать aware, сравнение naive/aware
+    # (например, в core.progression.get_current_hp) упадёт после db.refresh().
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Character(Base):
