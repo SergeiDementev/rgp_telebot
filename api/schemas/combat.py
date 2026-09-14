@@ -1,8 +1,6 @@
-"""Pydantic-схемы запросов/ответов для роутеров encounter и combat.
+"""Pydantic-схемы запросов/ответов для роутеров encounter и combat."""
 
-Пополняется по мере реализации шагов боя — сейчас только поиск противника
-и запуск инициативы/обстоятельства (см. api/routers/encounter.py).
-"""
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -21,3 +19,29 @@ class CombatStartResponse(BaseModel):
     player_strength_modifier: float
     enemy_strength_modifier: float
     text: str
+
+
+class ConfirmRequest(BaseModel):
+    decision: Literal["fight", "flee"]
+
+
+class FleeDecisionRequest(BaseModel):
+    decision: Literal["flee", "continue"]
+
+
+class CombatTurnResponse(BaseModel):
+    combat_session_id: int
+    status: str
+    result: Optional[str] = None
+    text: str
+
+
+class CombatSessionOut(BaseModel):
+    combat_session_id: int
+    enemy_type: str
+    status: str
+    result: Optional[str] = None
+    current_turn: Optional[str] = None
+    player_hp_current: float
+    enemy_hp_current: float
+    enemy_hp_max: float
