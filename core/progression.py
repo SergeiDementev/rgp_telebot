@@ -30,7 +30,7 @@ def get_current_hp(
     regen_per_second: float = REGEN_PER_SECOND_DEFAULT,
 ) -> float:
     """§8: ленивый пересчёт HP по прошедшему времени, без фонового процесса."""
-    elapsed_seconds = (now - last_update_at).total_seconds()
+    elapsed_seconds = max((now - last_update_at).total_seconds(), 0)
     regenerated = elapsed_seconds * regen_per_second
     return min(hp_current + regenerated, hp_max)
 
@@ -80,3 +80,10 @@ def calculate_victory_reward(enemy_type: str, rewards: Optional[dict] = None) ->
     """§7: награда победными очками по типу моба (черновые значения)."""
     rewards = rewards if rewards is not None else VICTORY_REWARD_DEFAULTS
     return rewards[enemy_type]
+
+
+def calculate_battle_reward(outcome: str, enemy_type: str, rewards: Optional[dict] = None) -> int:
+    """§7: награда только при victory — defeat/player_fled/enemy_fled её не дают."""
+    if outcome != "victory":
+        return 0
+    return calculate_victory_reward(enemy_type, rewards)
