@@ -16,6 +16,12 @@ LEVEL_THRESHOLD_STEP_DEFAULT = 10
 
 VICTORY_REWARD_DEFAULTS = {"mouse": 1, "wolf": 5, "boar": 15}
 
+STAT_NAMES = {"strength", "agility", "luck", "vitality"}
+
+
+class NoStatPointsAvailableError(Exception):
+    """Нет доступных очков прокачки для распределения (§5)."""
+
 
 def calculate_hp_max(vitality: float) -> float:
     """§3: HP_max = 20 + Здоровье × 10."""
@@ -87,3 +93,18 @@ def calculate_battle_reward(outcome: str, enemy_type: str, rewards: Optional[dic
     if outcome != "victory":
         return 0
     return calculate_victory_reward(enemy_type, rewards)
+
+
+def allocate_stat_point(unspent_stat_points: int, current_stat_value: int, stat: str) -> tuple[int, int]:
+    """§2/§5: списать 1 очко прокачки, увеличить выбранный стат на 1.
+
+    Возвращает (новое unspent_stat_points, новое значение стата). Одна и та же
+    функция используется и при распределении стартового пула на создании
+    персонажа, и при обычном левел-апе — механика идентична (§5). Отмены или
+    перераспределения уже потраченных очков нет — списание необратимо.
+    """
+    if stat not in STAT_NAMES:
+        raise ValueError(f"unknown stat: {stat!r}")
+    if unspent_stat_points <= 0:
+        raise NoStatPointsAvailableError("no unspent stat points available")
+    return unspent_stat_points - 1, current_stat_value + 1

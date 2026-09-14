@@ -172,3 +172,72 @@ def test_calculate_battle_reward_victory_matches_victory_reward(enemy_type, expe
 def test_calculate_battle_reward_no_reward_for_non_victory_outcomes(outcome, enemy_type):
     # §7: "Наказания за поражение или побег нет" — но и награды тоже нет.
     assert pr.calculate_battle_reward(outcome, enemy_type) == 0
+
+
+# ---------------------------------------------------------------------------
+# 5. Распределение очков прокачки — allocate_stat_point
+# ---------------------------------------------------------------------------
+
+
+def test_allocate_stat_point_decrements_points_and_increments_stat():
+    new_points, new_value = pr.allocate_stat_point(
+        unspent_stat_points=5, current_stat_value=3, stat="strength"
+    )
+    assert new_points == 4
+    assert new_value == 4
+
+
+@pytest.mark.parametrize("stat", sorted(pr.STAT_NAMES))
+def test_allocate_stat_point_works_for_every_known_stat(stat):
+    new_points, new_value = pr.allocate_stat_point(
+        unspent_stat_points=1, current_stat_value=0, stat=stat
+    )
+    assert (new_points, new_value) == (0, 1)
+
+
+def test_allocate_stat_point_raises_when_no_points_available():
+    with pytest.raises(pr.NoStatPointsAvailableError):
+        pr.allocate_stat_point(unspent_stat_points=0, current_stat_value=3, stat="strength")
+
+
+def test_allocate_stat_point_rejects_unknown_stat_name():
+    with pytest.raises(ValueError):
+        pr.allocate_stat_point(unspent_stat_points=5, current_stat_value=3, stat="intelligence")
+
+
+def test_allocate_stat_point_has_no_undo_mechanism():
+    # Нет отдельной функции отмены — списание необратимо (§5). Единственный
+    # способ "вернуть" очко — не вызывать allocate_stat_point вообще; после
+    # вызова прежнее состояние нигде не сохраняется и не восстанавливается.
+    points, value = 3, 10
+    points, value = pr.allocate_stat_point(points, value, "agility")
+    points, value = pr.allocate_stat_point(points, value, "agility")
+    assert (points, value) == (1, 12)
+    assert not hasattr(pr, "undo_stat_point")
+    assert not hasattr(pr, "deallocate_stat_point")
+
+
+def test_allocate_stat_point_carries_over_unspent_points_from_creation_to_level_up():
+    # §2/§5: при создании персонажа необязательно тратить весь стартовый пул —
+    # остаток просто переносится в unspent_stat_points и используется той же
+    # функцией на обычном левел-апе, без отдельного шага "переноса".
+    creation_pool = 5
+    strength = 3
+
+    # Игрок тратит только 3 из 5 очков при создании персонажа.
+    creation_pool, strength = pr.allocate_stat_point(creation_pool, strength, "strength")
+    creation_pool, strength = pr.allocate_stat_point(creation_pool, strength, "strength")
+    creation_pool, strength = pr.allocate_stat_point(creation_pool, strength, "strength")
+    assert creation_pool == 2  # оставшиеся 2 очка никуда не делись
+
+    # Персонаж выходит в бой, получает уровень (+1 очко) — вызывающий код
+    # просто прибавляет его к тому же unspent_stat_points, не обнуляя остаток.
+    unspent_after_level_up = creation_pool + 1
+    assert unspent_after_level_up == 3
+
+    # Тот же allocate_stat_point тратит очки из объединённого пула на левел-апе.
+    unspent_after_level_up, strength = pr.allocate_stat_point(
+        unspent_after_level_up, strength, "strength"
+    )
+    assert unspent_after_level_up == 2
+    assert strength == 7  # старт 3 + 3 (создание) + 1 (левел-ап) = 4 потраченных очка
