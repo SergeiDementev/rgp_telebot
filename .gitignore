@@ -1,0 +1,42 @@
+# Секреты и конфигурация с чувствительными данными
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials.json
+secrets.json
+config.local.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# База данных (локальная SQLite для разработки)
+*.db
+*.sqlite
+*.sqlite3
+
+# Логи
+*.log
+
+# Тесты и покрытие
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / редакторы
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
