@@ -28,6 +28,9 @@ env/
 # Логи
 *.log
 
+# Сырые результаты scripts/simulate_combat.py — регенерируемый вывод
+data/
+
 # Тесты и покрытие
 .pytest_cache/
 .coverage
