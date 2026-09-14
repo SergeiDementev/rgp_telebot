@@ -1,6 +1,6 @@
 # Telegram RPG — контекст проекта
 
-Текстовая пошаговая RPG в Telegram-боте. Этапы 1-3 (`core/`, калибровка, `db/`+`api/`) готовы и протестированы; этап 4 (`bot/`) — следующий шаг, ещё не начат. Здесь — сжатая выжимка из `docs/` плюс карта уже написанного кода, чтобы не перечитывать всё заново. При реальных вопросах по деталям и формулам всегда сверяйся с первоисточником в `docs/`, этот файл — только карта и краткое содержание.
+Текстовая пошаговая RPG в Telegram-боте. Все четыре этапа (`core/`, калибровка, `db/`+`api/`, `bot/`) готовы и покрыты юнит-тестами; не хватает только сквозного прогона живьём в Telegram (бот пока не запускался против настоящего Telegram API, только через моки в тестах). Здесь — сжатая выжимка из `docs/` плюс карта уже написанного кода, чтобы не перечитывать всё заново. При реальных вопросах по деталям и формулам всегда сверяйся с первоисточником в `docs/`, этот файл — только карта и краткое содержание.
 
 ## Правила работы
 
@@ -81,8 +81,8 @@
 
 ## Архитектура бэкенда (`backend_plan.md`)
 
-- **Стек:** Python + FastAPI, SQLite + SQLAlchemy (миграция на Postgres — смена строки подключения), бот на aiogram (ещё не начат), HTTP-клиент бота — httpx.
-- **Структура:** `core/` (combat_mechanics.py, progression.py — чистая логика, без circumstance.py: он часть combat_mechanics.py) → `api/` (main.py, routers: character/encounter/combat, schemas/, rendering.py, dependencies.py, enemy_content.py) → `db/` (models.py, session.py, без alembic-миграций — `create_all()` при старте) → `content/enemies.json` (откалиброванные статы мобов) → `scripts/simulate_combat.py` (калибровка, режимы single/progression) → `tests/` (зеркалит структуру: core/, api/, scripts/) → `bot/` (пока не создан).
+- **Стек:** Python + FastAPI, SQLite + SQLAlchemy (миграция на Postgres — смена строки подключения), бот на aiogram, HTTP-клиент бота — httpx (+ python-dotenv для `.env`).
+- **Структура:** `core/` (combat_mechanics.py, progression.py — чистая логика, без circumstance.py: он часть combat_mechanics.py) → `api/` (main.py, routers: character/encounter/combat, schemas/, rendering.py, dependencies.py, enemy_content.py) → `db/` (models.py, session.py, без alembic-миграций — `create_all()` при старте) → `content/enemies.json` (откалиброванные статы мобов) → `scripts/simulate_combat.py` (калибровка, режимы single/progression) → `bot/` (client.py, handlers/{start,character,combat}.py, main.py) → `tests/` (зеркалит структуру: core/, api/, scripts/, bot/).
 - **Модели БД:** `Character` (статы, `victory_points`, `unspent_stat_points`, `hp_current`+`last_hp_update_at` для регенерации), `CombatSession` (стороны, `status`: `awaiting_initiative`→`awaiting_confirmation`→`active`→[`awaiting_flee_decision`]→`finished`, `result`, модификаторы Силы от обстоятельства, `player_flee_right_used`/`enemy_flee_right_used` — раздельно по сторонам, не общий флаг, `turn_log` JSON, `character_hp_snapshot` — живой HP во время боя, синхронизируется в `Character.hp_current` только по завершении боя).
 - **Эндпоинты:** `POST /character`, `GET /character/{telegram_user_id}`, `POST /character/{id}/allocate_point`, `POST /encounter/search` (только бросок противника, статус `awaiting_initiative`) и `POST /combat/{id}/start` (инициатива+обстоятельство одним вызовом) — намеренно два отдельных запроса, а не один, как в раннем черновике `backend_plan.md`, потому что в `gameplay_loop_mvp.md` §9 это два разных нажатия кнопки; далее `POST /combat/{id}/confirm` (fight/flee), `POST /combat/{id}/turn` (резолвит ровно один ход — чей угодно, "Атаковать"/"Защищаться" в боте — косметика, оба зовут этот же эндпоинт), `POST /combat/{id}/flee_decision`, `GET /combat/{id}`. Клиент никогда не шлёт сырые броски/урон — только решения. Персонаж для запроса определяется по заголовку `X-Telegram-User-Id` (`get_current_character`), не по id из тела — клиент не может подменить чужого персонажа.
 - **Рендеринг:** `core/combat_mechanics.py` считает факты → `turn_log` в БД хранит факты (не текст) → `api/rendering.py` превращает факты в текст на лету при формировании ответа (отдельная функция на тип события: `render_strike`, `render_compact_strike` для ударов внутри двойного удара, `render_flee_attempt` и т.д.). Позволяет добавить второй фронтенд/локализацию без изменений в `core/`.
@@ -92,17 +92,19 @@
 
 - `core/combat_mechanics.py`, `core/progression.py` — чистые формулы, без побочных эффектов, кубики не бросают (принимают готовые броски аргументами).
 - `api/` — полностью собранное FastAPI-приложение (`api/main.py`), три роутера, рендеринг, зависимости. Проверено end-to-end через `TestClient` (создание персонажа → поиск → бой → награда/HP синхронизированы).
+- `bot/` — `client.py` (асинхронная обёртка над `httpx`, весь `api/` через методы `ApiClient`), три хендлер-роутера, `main.py` (сборка `Dispatcher`, `ApiClient` прокидывается во все хендлеры через extra-kwargs `start_polling`). Протестировано моками `Message`/`CallbackQuery`/`ApiClient` — **живого прогона против настоящего Telegram ещё не было**, нужен `TELEGRAM_BOT_TOKEN` в `.env` (см. `.env.example`) и одновременно запущенный `api/`.
 - `scripts/simulate_combat.py` — консольный симулятор с двумя режимами (`--mode single|progression`), использовался для калибровки этапа 2; поддерживает `--seeds` для сравнения нескольких прогонов (мин/макс/среднее/медиана).
-- 209 pytest-тестов, все проходят (`python -m pytest tests/`). Требует `requirements-dev.txt` (`pip install -r requirements-dev.txt`).
-- Запуск API вручную: `uvicorn api.main:app --reload`, Swagger на `/docs`.
+- 246 pytest-тестов, все проходят (`python -m pytest tests/`). Требует `requirements-dev.txt` (`pip install -r requirements-dev.txt`).
+- Запуск вручную: `uvicorn api.main:app --reload` (Swagger на `/docs`) и отдельно `python -m bot.main` (нужен запущенный `api/` и токен в `.env`).
 - Черновые константы формул уворота/двойного удара/побега (`MAX_FACES`/`K`) пока не откалиброваны и продублированы в двух местах (`scripts/simulate_combat.py` и `api/routers/combat.py`) — при изменении синхронизировать вручную.
+- `CombatTurnResponse` (ответы `/confirm`, `/turn`, `/flee_decision`) несёт `current_turn` — добавили задним числом при реализации бота, чтобы он мог подписать кнопку "Атаковать"/"Защищаться" без лишнего `GET /combat/{id}`.
 
 ## Порядок реализации (чек-лист, обновлять по ходу работы)
 
 - [x] **Этап 1 — `core/`.** Реализация с нуля по `combat_mechanics.md`, `progression.py` (уровни/регенерация/награды), юнит-тесты на граничные случаи.
 - [x] **Этап 2 — калибровка.** `scripts/simulate_combat.py`, подобраны статы мышь/волк/кабан, `STAT_POINTS_PER_LEVEL=2`, порог уровней `×4`.
 - [x] **Этап 3 — `db/` и `api/`.** Модели, роутеры, рендеринг, `api/main.py` — проверено через Swagger/TestClient, без бота.
-- [ ] **Этап 4 — `bot/`.** Telegram-клиент (aiogram) поверх готового и проверенного API — следующий шаг.
+- [x] **Этап 4 — `bot/`.** Telegram-клиент (aiogram) поверх API — код и юнит-тесты готовы. Осталось: реальный прогон в Telegram.
 
 ## Открытые вопросы / черновые параметры
 

@@ -55,17 +55,21 @@ project/
 ├── tests/                     # готово — pytest, зеркалит структуру выше
 │   ├── core/
 │   ├── api/                  # conftest.py — изолированная SQLite на тест, dependency_overrides
-│   └── scripts/
+│   ├── scripts/
+│   └── bot/                   # моки Message/CallbackQuery и ApiClient — без реального Telegram/сети
 │
-├── requirements.txt            # рантайм-зависимости (fastapi/sqlalchemy/pydantic/uvicorn)
-├── requirements-dev.txt        # + pytest/httpx
+├── requirements.txt            # рантайм: fastapi/sqlalchemy/pydantic/uvicorn/aiogram/httpx/python-dotenv
+├── requirements-dev.txt        # + pytest/pytest-asyncio
 │
-└── bot/                       # Telegram-клиент (aiogram) — этап 4, ещё не начат
+├── .env.example                 # шаблон: TELEGRAM_BOT_TOKEN, API_BASE_URL, INTERNAL_API_KEY
+│
+└── bot/                       # Telegram-клиент (aiogram) — готово (этап 4)
+    ├── client.py              # асинхронная обёртка над httpx для вызовов api/
     ├── handlers/
-    │   ├── start.py
-    │   ├── character.py
-    │   └── combat.py
-    └── client.py              # обёртка над httpx для вызовов api/
+    │   ├── start.py           # /start, /rules, создание персонажа
+    │   ├── character.py       # экран статов, прокачка (общий экран для создания и левел-апа)
+    │   └── combat.py          # весь боевой цикл — поиск, инициатива, ходы, завершение
+    └── main.py                 # сборка Dispatcher, регистрация роутеров, polling
 ```
 
 ---
@@ -239,9 +243,10 @@ bot/                       → получает готовый текст, то�
 - Роутеры `character`, `encounter`, `combat` — тонкая оркестрация поверх уже проверенного `core/`.
 - Проверено через Swagger/TestClient, без бота (`tests/api/`).
 
-**Этап 4 — `bot/` (следующий шаг)**
+**Этап 4 — `bot/` (готово, код и юнит-тесты; сквозной прогон живьём в Telegram — ещё нет)**
 - Хендлеры `/start`, создание персонажа, экран статов, поиск противника, ход боя.
 - Только вызовы `api/` через `client.py` и рендер ответов — никакой логики.
+- Потребовалось одно небольшое расширение API задним числом (единственный случай, когда предсказание из абзаца ниже не вполне сбылось): `CombatTurnResponse` не отдавал `current_turn`, а боту он нужен, чтобы подписать кнопку "Атаковать"/"Защищаться" без лишнего запроса — добавили поле в `api/schemas/combat.py` и `api/routers/combat.py`.
 
 Логика этого порядка: к моменту, когда пишется HTTP-слой, все формулы уже проверены на реальных числах (этап 2), поэтому API-контракты не потребуют частых правок задним числом. Бот пишется последним и быстрее всего, потому что весь сложный слой к этому моменту уже готов и протестирован напрямую.
 
@@ -252,6 +257,8 @@ bot/                       → получает готовый текст, то�
 Для MVP — простой статический API-ключ в заголовке (`X-Internal-Api-Key`), известный только боту. Полноценная схема авторизации избыточна, пока бэкенд не выставлен публично отдельно от бота.
 
 Отдельно от ключа — заголовок `X-Telegram-User-Id`: им бот на каждом запросе сообщает, от чьего лица действует. `api/dependencies.get_current_character` ищет персонажа по этому id (а не по значению, присланному в теле запроса) — так клиент не может подменить чужого персонажа, просто указав другой id в JSON.
+
+Значения (`INTERNAL_API_KEY`, `TELEGRAM_BOT_TOKEN`, `API_BASE_URL`) читаются из переменных окружения (см. `.env.example`) — `api/dependencies.py` на стороне сервера, `bot/client.py`/`bot/main.py` на стороне бота. `INTERNAL_API_KEY` должен совпадать в обеих конфигурациях (сервер проверяет ровно то значение, что шлёт бот).
 
 ---
 
