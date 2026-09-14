@@ -42,8 +42,8 @@ PLAYER_STATS = {"hp_max": 50, "strength": 10, "agility": 5, "luck": 2}
 
 ENEMY_PRESETS = {
     "mouse": {"hp_max": 20, "strength": 5, "agility": 2, "luck": 1},
-    "wolf": {"hp_max": 60, "strength": 15, "agility": 8, "luck": 3},
-    "boar": {"hp_max": 120, "strength": 25, "agility": 5, "luck": 2},
+    "wolf": {"hp_max": 50, "strength": 12, "agility": 6, "luck": 2},
+    "boar": {"hp_max": 70, "strength": 11, "agility": 6, "luck": 2},
 }
 
 # Черновые константы формул (§4-6, §8) — тоже предмет калибровки. Единые для

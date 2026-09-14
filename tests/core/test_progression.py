@@ -16,10 +16,10 @@ from core import progression as pr
     "level,expected_threshold",
     [
         (1, 0),
-        (2, 10),
-        (3, 30),
-        (4, 60),
-        (5, 100),
+        (2, 8),
+        (3, 20),
+        (4, 36),
+        (5, 56),
     ],
 )
 def test_calculate_level_threshold_matches_doc_example(level, expected_threshold):
@@ -29,10 +29,10 @@ def test_calculate_level_threshold_matches_doc_example(level, expected_threshold
 @pytest.mark.parametrize(
     "victory_points,expected_level",
     [
-        (9, 1),    # на 1 очко меньше порога уровня 2 — уровень ещё не сменился
-        (10, 2),   # ровно на пороге — уровень уже сменился
-        (29, 2),   # на 1 очко меньше порога уровня 3
-        (30, 3),   # ровно на пороге уровня 3
+        (7, 1),    # на 1 очко меньше порога уровня 2 — уровень ещё не сменился
+        (8, 2),    # ровно на пороге — уровень уже сменился
+        (19, 2),   # на 1 очко меньше порога уровня 3
+        (20, 3),   # ровно на пороге уровня 3
     ],
 )
 def test_calculate_level_for_points_boundary_is_inclusive(victory_points, expected_level):
@@ -40,31 +40,29 @@ def test_calculate_level_for_points_boundary_is_inclusive(victory_points, expect
 
 
 def test_calculate_levels_gained_can_skip_several_levels_at_once():
-    # Награда за кабана (15 очков) может сразу перепрыгнуть с уровня 1 (8 очков)
-    # через порог уровня 2 (10) и уровня 3 (30) — если очков хватает, до уровня 3.
-    assert pr.calculate_levels_gained(old_points=8, new_points=35) == 2
-    assert pr.calculate_level_for_points(8) == 1
-    assert pr.calculate_level_for_points(35) == 3
+    # Крупная награда может сразу перепрыгнуть через несколько порогов подряд:
+    # с уровня 1 (порог 8 ещё не достигнут) сразу до уровня 4 (порог 36).
+    assert pr.calculate_levels_gained(old_points=6, new_points=37) == 3
+    assert pr.calculate_level_for_points(6) == 1
+    assert pr.calculate_level_for_points(37) == 4
 
 
 @pytest.mark.parametrize(
     "old_points,new_points,expected_gained",
     [
-        (5, 9, 0),    # прирост, не достигающий порога
-        (9, 10, 1),   # прирост ровно до порога — засчитывается
-        (10, 10, 0),  # без прироста — новых уровней нет
+        (5, 7, 0),   # прирост, не достигающий порога
+        (7, 8, 1),   # прирост ровно до порога — засчитывается
+        (8, 8, 0),   # без прироста — новых уровней нет
     ],
 )
 def test_calculate_levels_gained_boundaries(old_points, new_points, expected_gained):
     assert pr.calculate_levels_gained(old_points, new_points) == expected_gained
 
 
-def test_points_to_next_level_matches_doc_mockup():
-    # §5, мокап "Нет свободных очков": 6 очков Здоровья уже даёт уровень с
-    # порогом 60 (уровень 4); до уровня 5 (порог 100) остаётся 100-86=14 очков,
-    # как в примере "(до след. уровня: 14 победных очков)".
-    assert pr.calculate_level_for_points(86) == 4
-    assert pr.points_to_next_level(86) == 14
+def test_points_to_next_level_basic():
+    # 25 очков — это уровень 3 (порог 20), до уровня 4 (порог 36) остаётся 11.
+    assert pr.calculate_level_for_points(25) == 3
+    assert pr.points_to_next_level(25) == 11
 
 
 # ---------------------------------------------------------------------------

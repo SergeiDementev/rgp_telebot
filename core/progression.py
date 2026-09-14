@@ -12,7 +12,7 @@ HP_MAX_PER_VITALITY = 10
 
 REGEN_PER_SECOND_DEFAULT = 1
 
-LEVEL_THRESHOLD_STEP_DEFAULT = 10
+LEVEL_THRESHOLD_STEP_DEFAULT = 4
 
 VICTORY_REWARD_DEFAULTS = {"mouse": 1, "wolf": 5, "boar": 15}
 
@@ -54,10 +54,10 @@ def time_to_full_hp(
 
 
 def calculate_level_threshold(level: int, step: int = LEVEL_THRESHOLD_STEP_DEFAULT) -> int:
-    """§5: threshold(N) = 10×(N-1)×N/2 (threshold(1) = 0)."""
+    """§5: threshold(N) = threshold(N-1) + step×N = step×(N-1)×(N+2)/2 (threshold(1) = 0)."""
     if level < 1:
         raise ValueError("level must be >= 1")
-    return step * (level - 1) * level // 2
+    return step * (level - 1) * (level + 2) // 2
 
 
 def calculate_level_for_points(victory_points: int, step: int = LEVEL_THRESHOLD_STEP_DEFAULT) -> int:
