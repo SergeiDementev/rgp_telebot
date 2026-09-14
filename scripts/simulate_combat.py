@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:  # Windows-консоль по умолчанию не в UTF-8 — иначе кириллица ломается.
     sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")  # сюда же уходят ошибки argparse
 except AttributeError:
     pass
 
@@ -63,10 +64,10 @@ OUTCOMES = ("victory", "defeat", "player_fled", "enemy_fled")
 CHARACTER_BASE_STATS = {"strength": 3, "agility": 3, "luck": 1, "vitality": 3}
 CHARACTER_STARTING_POOL = 5
 
-STAT_ALLOCATION_ORDER = ("strength", "agility", "luck", "vitality")
+ROTATION_ORDER = ["strength", "agility", "luck", "vitality"]
 
 CHECKPOINT_INTERVAL = 10
-CHECKPOINT_FIGHTS = 100
+CHECKPOINT_FIGHTS = 400  # поднято со 100 — меньше шума в % на контрольных точках
 
 ENCOUNTER_ORDER = ("mouse", "wolf", "boar")  # §6 gameplay_loop_mvp.md: 60/30/10 на d10
 
@@ -304,27 +305,77 @@ def roll_enemy_encounter(rng) -> str:
     return "boar"
 
 
-def round_robin_allocation_policy(
-    character_stats: dict, unspent_points: int, points_spent_so_far: int
-) -> tuple:
-    """Заглушка политики распределения очков: Сила -> Ловкость -> Удача ->
-    Здоровье -> по кругу. Контракт входа/выхода для любой allocation_policy:
-    (статы, доступные очки, счётчик уже потраченных очков за сессию) ->
-    (новые статы, новые доступные очки [обычно 0], новый счётчик). Тратит все
-    unspent_points за один вызов, используя core.progression.allocate_stat_point
-    (не дублирует его логику). Чтобы добавить другую стратегию — реализовать
-    функцию с той же сигнатурой и зарегистрировать в ALLOCATION_POLICIES.
+PRIORITY_STR_VIT_TARGET_SUM = 8  # "~6-8 очков суммарно" (Сила+Здоровье) — верхняя граница диапазона
+PRIORITY_SINGLE_STAT_TARGET = 7  # "~6-8 очков" для одного стата — середина диапазона
+
+# Порядок вторичной ротации после приоритетной фазы — тоже блинд-ротация по
+# total_points_spent % len(...), тем же принципом, что и ROTATION_ORDER.
+SECONDARY_ORDER_EXCLUDING_AGILITY = ["strength", "luck", "vitality"]
+SECONDARY_ORDER_EXCLUDING_LUCK = ["strength", "agility", "vitality"]
+SKIP_AGILITY_LUCK_ORDER = ["strength", "vitality"]
+
+
+def choose_stat_to_allocate(policy: str, current_stats: dict, total_points_spent: int) -> str:
+    """Решает, какой стат прокачать в рамках симуляции игровой сессии. Это НЕ
+    часть игровой логики — в реальной игре выбор делает игрок через кнопку;
+    функция существует только для автопрогона симулятора. Не изменяет статы и
+    не тратит очки сама — только называет стат, allocate_stat_point (core/) —
+    отдельным вызовом на стороне вызывающего кода.
+
+    policy == "round_robin": слепая ротация по ROTATION_ORDER, определяется
+    через total_points_spent % len(ROTATION_ORDER) — НЕ зависит от текущих
+    значений статов. Это принципиально: стартовые статы персонажа не равны
+    между собой (Удача ниже остальных, см. gameplay_loop_mvp.md §2), и если бы
+    ротация опиралась на "качать стат с наименьшим текущим значением", ранние
+    очки систематически утекали бы в Удачу как в самый маленький стат — это
+    уже не round-robin и исказило бы диагностику калибровки.
+
+    policy == "priority_str_vit": сначала Сила и Здоровье поровну (тот из
+    двух, что сейчас меньше), пока их сумма не достигнет
+    PRIORITY_STR_VIT_TARGET_SUM — это преимущество только в первых очках, не
+    заморозка навсегда: после порога распределение продолжается слепой
+    ротацией по ROTATION_ORDER среди ВСЕХ ЧЕТЫРЁХ статов (включая Силу и
+    Здоровье), просто без приоритета.
+
+    policy == "priority_agility" / "priority_luck": сначала один стат
+    (Ловкость / Удача соответственно) до PRIORITY_SINGLE_STAT_TARGET, затем
+    слепая ротация (как в round_robin) по остальным трём статам.
+
+    policy == "skip_agility_luck": слепая ротация ТОЛЬКО между Силой и
+    Здоровьем, без переключения на Ловкость/Удачу вообще — нижняя граница
+    эффекта для сравнения с priority_str_vit (та в итоге всё равно уходит в
+    Ловкость/Удачу, эта — никогда).
     """
-    stats = dict(character_stats)
-    spent = points_spent_so_far
+    if policy == "round_robin":
+        return ROTATION_ORDER[total_points_spent % len(ROTATION_ORDER)]
+    if policy == "priority_str_vit":
+        if current_stats["strength"] + current_stats["vitality"] < PRIORITY_STR_VIT_TARGET_SUM:
+            return "strength" if current_stats["strength"] <= current_stats["vitality"] else "vitality"
+        return ROTATION_ORDER[total_points_spent % len(ROTATION_ORDER)]
+    if policy == "priority_agility":
+        if current_stats["agility"] < PRIORITY_SINGLE_STAT_TARGET:
+            return "agility"
+        order = SECONDARY_ORDER_EXCLUDING_AGILITY
+        return order[total_points_spent % len(order)]
+    if policy == "priority_luck":
+        if current_stats["luck"] < PRIORITY_SINGLE_STAT_TARGET:
+            return "luck"
+        order = SECONDARY_ORDER_EXCLUDING_LUCK
+        return order[total_points_spent % len(order)]
+    if policy == "skip_agility_luck":
+        return SKIP_AGILITY_LUCK_ORDER[total_points_spent % len(SKIP_AGILITY_LUCK_ORDER)]
+    raise ValueError(f"unknown allocation policy: {policy!r}")
+
+
+def _spend_all_points(policy: str, stats: dict, unspent_points: int, total_points_spent: int) -> tuple:
+    """Тратит весь unspent_points по одному очку через choose_stat_to_allocate
+    + core.progression.allocate_stat_point (её саму не дублирует)."""
+    stats = dict(stats)
     while unspent_points > 0:
-        stat = STAT_ALLOCATION_ORDER[spent % len(STAT_ALLOCATION_ORDER)]
+        stat = choose_stat_to_allocate(policy, stats, total_points_spent)
         unspent_points, stats[stat] = pr.allocate_stat_point(unspent_points, stats[stat], stat)
-        spent += 1
-    return stats, unspent_points, spent
-
-
-ALLOCATION_POLICIES = {"round_robin": round_robin_allocation_policy}
+        total_points_spent += 1
+    return stats, unspent_points, total_points_spent
 
 
 def _run_checkpoint_probe(character_stats: dict, checkpoint_rng) -> dict:
@@ -342,14 +393,20 @@ def _run_checkpoint_probe(character_stats: dict, checkpoint_rng) -> dict:
     return winrates
 
 
-def simulate_progression_session(session_fights: int, allocation_policy, rng, checkpoint_rng) -> tuple:
+def simulate_progression_session(
+    session_fights: int,
+    policy: str,
+    rng,
+    checkpoint_rng,
+    stat_points_per_level: int = pr.STAT_POINTS_PER_LEVEL,
+) -> tuple:
     """Одна сессия: персонаж растёт от старта до session_fights-го боя.
     Возвращает (trajectory — запись по каждому бою, checkpoints — срезы силы
     персонажа каждые CHECKPOINT_INTERVAL боёв)."""
     stats = dict(CHARACTER_BASE_STATS)
     unspent_points = CHARACTER_STARTING_POOL
-    points_spent = 0
-    stats, unspent_points, points_spent = allocation_policy(stats, unspent_points, points_spent)
+    total_points_spent = 0
+    stats, unspent_points, total_points_spent = _spend_all_points(policy, stats, unspent_points, total_points_spent)
     stats["hp_max"] = pr.calculate_hp_max(stats["vitality"])
 
     victory_points = 0
@@ -367,8 +424,10 @@ def simulate_progression_session(session_fights: int, allocation_policy, rng, ch
         levels_gained = pr.calculate_levels_gained(old_points, victory_points)
         if levels_gained > 0:
             level += levels_gained
-            unspent_points += levels_gained
-            stats, unspent_points, points_spent = allocation_policy(stats, unspent_points, points_spent)
+            unspent_points += pr.calculate_stat_points_gained(levels_gained, stat_points_per_level)
+            stats, unspent_points, total_points_spent = _spend_all_points(
+                policy, stats, unspent_points, total_points_spent
+            )
             stats["hp_max"] = pr.calculate_hp_max(stats["vitality"])
 
         trajectory.append(
@@ -392,6 +451,10 @@ def simulate_progression_session(session_fights: int, allocation_policy, rng, ch
                     "winrate_mouse": winrates["mouse"],
                     "winrate_wolf": winrates["wolf"],
                     "winrate_boar": winrates["boar"],
+                    "strength": stats["strength"],
+                    "agility": stats["agility"],
+                    "luck": stats["luck"],
+                    "vitality": stats["vitality"],
                 }
             )
 
@@ -399,14 +462,18 @@ def simulate_progression_session(session_fights: int, allocation_policy, rng, ch
 
 
 def print_progression_table(checkpoints: list) -> None:
-    header = f"{'бой':>5} {'уровень':>7} {'мышь%':>7} {'волк%':>7} {'кабан%':>7}"
+    header = (
+        f"{'бой':>5} {'уровень':>7} {'мышь%':>7} {'волк%':>7} {'кабан%':>7} "
+        f"{'str':>4} {'agi':>4} {'luck':>4} {'vit':>4}"
+    )
     print(f"\n=== Прогрессия по контрольным точкам (каждые {CHECKPOINT_INTERVAL} боёв) ===")
     print(header)
     print("-" * len(header))
     for row in checkpoints:
         print(
             f"{row['fight_index']:>5} {row['level']:>7} "
-            f"{row['winrate_mouse']:>7.1f} {row['winrate_wolf']:>7.1f} {row['winrate_boar']:>7.1f}"
+            f"{row['winrate_mouse']:>7.1f} {row['winrate_wolf']:>7.1f} {row['winrate_boar']:>7.1f} "
+            f"{row['strength']:>4} {row['agility']:>4} {row['luck']:>4} {row['vitality']:>4}"
         )
     if checkpoints:
         last = checkpoints[-1]
@@ -422,6 +489,34 @@ def save_progression_results(trajectory: list, checkpoints: list, timestamp: str
     return out_path
 
 
+def print_seed_comparison(per_seed_final: list, session_fights: int) -> None:
+    """per_seed_final: список {"seed", "checkpoint" (последняя точка или None)}."""
+    header = f"{'seed':>6} {'уровень':>7} {'волк%':>7} {'кабан%':>7}"
+    print(f"\n=== Сравнение по {len(per_seed_final)} seed'ам (бой {session_fights}) ===")
+    print(header)
+    print("-" * len(header))
+
+    wolf_values, boar_values = [], []
+    for entry in per_seed_final:
+        cp = entry["checkpoint"]
+        if cp is None:
+            print(f"{entry['seed']:>6}   (нет контрольных точек — session-fights < {CHECKPOINT_INTERVAL})")
+            continue
+        print(f"{entry['seed']:>6} {cp['level']:>7} {cp['winrate_wolf']:>7.1f} {cp['winrate_boar']:>7.1f}")
+        wolf_values.append(cp["winrate_wolf"])
+        boar_values.append(cp["winrate_boar"])
+
+    if not wolf_values:
+        return
+
+    print(f"\n{'показатель':<20} {'мин':>7} {'макс':>7} {'среднее':>9} {'медиана':>9}")
+    for label, values in (("волк% на посл. бою", wolf_values), ("кабан% на посл. бою", boar_values)):
+        print(
+            f"{label:<20} {min(values):>7.1f} {max(values):>7.1f} "
+            f"{statistics.mean(values):>9.1f} {statistics.median(values):>9.1f}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -435,8 +530,24 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--policy", choices=["always_fight", "flee_when_possible"], default="always_fight")
     parser.add_argument("--session-fights", type=int, default=100)
-    parser.add_argument("--allocation-policy", choices=list(ALLOCATION_POLICIES.keys()), default="round_robin")
-    return parser.parse_args()
+    parser.add_argument(
+        "--allocation-policy",
+        choices=["round_robin", "priority_str_vit", "priority_agility", "priority_luck", "skip_agility_luck"],
+        default="round_robin",
+    )
+    parser.add_argument("--stat-points-per-level", type=int, default=pr.STAT_POINTS_PER_LEVEL)
+    parser.add_argument(
+        "--seeds",
+        type=str,
+        default=None,
+        help='progression-режим: сравнить несколько seed через запятую, напр. "1,7,42,100,2024" (вместо --seed)',
+    )
+    args = parser.parse_args()
+
+    if args.seeds is not None and args.mode == "single":
+        parser.error("--seeds поддерживается только с --mode progression, не с --mode single")
+
+    return args
 
 
 def run_single_mode(args, rng, timestamp) -> None:
@@ -457,7 +568,10 @@ def run_single_mode(args, rng, timestamp) -> None:
 
 
 def run_progression_mode(args, rng, timestamp) -> None:
-    allocation_policy = ALLOCATION_POLICIES[args.allocation_policy]
+    if args.seeds is not None:
+        run_progression_multi_seed(args, timestamp)
+        return
+
     # Отдельный, независимый от основного, RNG для мини-прогонов на контрольных
     # точках — см. docstring _run_checkpoint_probe.
     checkpoint_seed = None if args.seed is None else args.seed + 1_000_000
@@ -465,12 +579,36 @@ def run_progression_mode(args, rng, timestamp) -> None:
 
     print(
         f"\n=== progression | session-fights={args.session_fights} "
-        f"| allocation-policy={args.allocation_policy} | seed={args.seed} ==="
+        f"| allocation-policy={args.allocation_policy} | stat-points-per-level={args.stat_points_per_level} "
+        f"| seed={args.seed} ==="
     )
-    trajectory, checkpoints = simulate_progression_session(args.session_fights, allocation_policy, rng, checkpoint_rng)
+    trajectory, checkpoints = simulate_progression_session(
+        args.session_fights, args.allocation_policy, rng, checkpoint_rng, args.stat_points_per_level
+    )
     print_progression_table(checkpoints)
     out_path = save_progression_results(trajectory, checkpoints, timestamp)
     print(f"\nПолная траектория сохранена: {out_path}")
+
+
+def run_progression_multi_seed(args, timestamp) -> None:
+    seeds = [int(s.strip()) for s in args.seeds.split(",")]
+    print(
+        f"\n=== progression multi-seed | seeds={seeds} | session-fights={args.session_fights} "
+        f"| allocation-policy={args.allocation_policy} | stat-points-per-level={args.stat_points_per_level} ==="
+    )
+
+    per_seed_final = []
+    for seed in seeds:
+        rng = random.Random(seed)
+        checkpoint_rng = random.Random(seed + 1_000_000)
+        trajectory, checkpoints = simulate_progression_session(
+            args.session_fights, args.allocation_policy, rng, checkpoint_rng, args.stat_points_per_level
+        )
+        out_path = save_progression_results(trajectory, checkpoints, f"{timestamp}_seed{seed}")
+        print(f"seed={seed}: траектория сохранена в {out_path}")
+        per_seed_final.append({"seed": seed, "checkpoint": checkpoints[-1] if checkpoints else None})
+
+    print_seed_comparison(per_seed_final, args.session_fights)
 
 
 def main():

@@ -65,6 +65,25 @@ def test_points_to_next_level_basic():
     assert pr.points_to_next_level(25) == 11
 
 
+def test_calculate_stat_points_gained_identity_at_rate_one():
+    # При множителе 1 функция ведёт себя как identity — регрессия к
+    # поведению до появления STAT_POINTS_PER_LEVEL (levels_gained напрямую
+    # использовался как число очков прокачки).
+    for levels_gained in (0, 1, 3, 7):
+        assert pr.calculate_stat_points_gained(levels_gained, stat_points_per_level=1) == levels_gained
+
+
+def test_calculate_stat_points_gained_scales_with_custom_rate():
+    # 3 пройденных уровня при stat_points_per_level=3 -> 9 очков, не 3.
+    assert pr.calculate_stat_points_gained(3, stat_points_per_level=3) == 9
+
+
+def test_stat_points_per_level_default_is_calibrated_value():
+    # Итог калибровки (этап 2, backend_plan.md §8): 2 очка прокачки за уровень.
+    assert pr.STAT_POINTS_PER_LEVEL == 2
+    assert pr.calculate_stat_points_gained(3) == 6  # использует дефолт
+
+
 # ---------------------------------------------------------------------------
 # 2. Регенерация HP — get_current_hp / time_to_full_hp
 # ---------------------------------------------------------------------------

@@ -14,6 +14,8 @@ REGEN_PER_SECOND_DEFAULT = 1
 
 LEVEL_THRESHOLD_STEP_DEFAULT = 4
 
+STAT_POINTS_PER_LEVEL = 2
+
 VICTORY_REWARD_DEFAULTS = {"mouse": 1, "wolf": 5, "boar": 15}
 
 STAT_NAMES = {"strength", "agility", "luck", "vitality"}
@@ -78,8 +80,15 @@ def points_to_next_level(victory_points: int, step: int = LEVEL_THRESHOLD_STEP_D
 def calculate_levels_gained(
     old_points: int, new_points: int, step: int = LEVEL_THRESHOLD_STEP_DEFAULT
 ) -> int:
-    """§5: сколько уровней (= очков прокачки) начислить за прирост очков."""
+    """§5: сколько уровней пройдено за прирост победных очков."""
     return calculate_level_for_points(new_points, step) - calculate_level_for_points(old_points, step)
+
+
+def calculate_stat_points_gained(
+    levels_gained: int, stat_points_per_level: int = STAT_POINTS_PER_LEVEL
+) -> int:
+    """§5: очков прокачки за пройденные уровни = levels_gained × STAT_POINTS_PER_LEVEL."""
+    return levels_gained * stat_points_per_level
 
 
 def calculate_victory_reward(enemy_type: str, rewards: Optional[dict] = None) -> int:

@@ -1,0 +1,20 @@
+{
+  "mouse": {
+    "hp_max": 20,
+    "strength": 5,
+    "agility": 2,
+    "luck": 1
+  },
+  "wolf": {
+    "hp_max": 50,
+    "strength": 12,
+    "agility": 6,
+    "luck": 2
+  },
+  "boar": {
+    "hp_max": 70,
+    "strength": 11,
+    "agility": 6,
+    "luck": 2
+  }
+}
