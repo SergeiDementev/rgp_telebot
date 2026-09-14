@@ -1,0 +1,149 @@
+"""Тесты bot/client.py — сборка запросов и разбор ответов, без реального API."""
+
+import json
+
+import httpx
+import pytest
+
+from bot.client import ApiClient, ApiError
+
+pytestmark = pytest.mark.asyncio
+
+
+def make_client(handler) -> ApiClient:
+    transport = httpx.MockTransport(handler)
+    return ApiClient(transport=transport)
+
+
+def _echo_handler(status_code: int = 200, body: dict | None = None):
+    """Хендлер, который просто запоминает запрос и возвращает заданный ответ."""
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["headers"] = {k.lower(): v for k, v in request.headers.items()}
+        captured["json"] = json.loads(request.content) if request.content else None
+        return httpx.Response(status_code, json=body if body is not None else {})
+
+    return handler, captured
+
+
+async def test_create_character_sends_correct_request_without_telegram_header():
+    handler, captured = _echo_handler(201, {"id": 1, "telegram_user_id": 1, "nickname": "Hero"})
+    client = make_client(handler)
+
+    result = await client.create_character(1, "Hero")
+
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/character"
+    assert captured["json"] == {"telegram_user_id": 1, "nickname": "Hero"}
+    assert captured["headers"]["x-internal-api-key"] == "dev-local-key"
+    assert "x-telegram-user-id" not in captured["headers"]
+    assert result["nickname"] == "Hero"
+
+
+async def test_get_character_uses_path_param():
+    handler, captured = _echo_handler(200, {"id": 1, "telegram_user_id": 42})
+    client = make_client(handler)
+
+    await client.get_character(42)
+
+    assert captured["method"] == "GET"
+    assert captured["path"] == "/character/42"
+
+
+async def test_allocate_point_sends_stat_in_body():
+    handler, captured = _echo_handler(200, {"character": {"strength": 4}})
+    client = make_client(handler)
+
+    result = await client.allocate_point(1, "strength")
+
+    assert captured["path"] == "/character/1/allocate_point"
+    assert captured["json"] == {"stat": "strength"}
+    assert result["character"]["strength"] == 4
+
+
+async def test_search_encounter_sends_telegram_header():
+    handler, captured = _echo_handler(200, {"combat_session_id": 5, "enemy_type": "wolf"})
+    client = make_client(handler)
+
+    result = await client.search_encounter(telegram_user_id=7)
+
+    assert captured["path"] == "/encounter/search"
+    assert captured["headers"]["x-telegram-user-id"] == "7"
+    assert result["enemy_type"] == "wolf"
+
+
+async def test_start_combat_path_and_header():
+    handler, captured = _echo_handler(200, {"status": "awaiting_confirmation"})
+    client = make_client(handler)
+
+    await client.start_combat(telegram_user_id=7, combat_session_id=5)
+
+    assert captured["path"] == "/combat/5/start"
+    assert captured["headers"]["x-telegram-user-id"] == "7"
+
+
+async def test_confirm_combat_sends_decision():
+    handler, captured = _echo_handler(200, {"status": "active"})
+    client = make_client(handler)
+
+    await client.confirm_combat(telegram_user_id=7, combat_session_id=5, decision="fight")
+
+    assert captured["path"] == "/combat/5/confirm"
+    assert captured["json"] == {"decision": "fight"}
+
+
+async def test_take_turn_path_and_header():
+    handler, captured = _echo_handler(200, {"status": "active", "text": "..."})
+    client = make_client(handler)
+
+    await client.take_turn(telegram_user_id=7, combat_session_id=5)
+
+    assert captured["path"] == "/combat/5/turn"
+    assert captured["headers"]["x-telegram-user-id"] == "7"
+
+
+async def test_flee_decision_sends_decision():
+    handler, captured = _echo_handler(200, {"status": "finished"})
+    client = make_client(handler)
+
+    await client.flee_decision(telegram_user_id=7, combat_session_id=5, decision="continue")
+
+    assert captured["path"] == "/combat/5/flee_decision"
+    assert captured["json"] == {"decision": "continue"}
+
+
+async def test_get_combat_session_path_and_header():
+    handler, captured = _echo_handler(200, {"status": "active"})
+    client = make_client(handler)
+
+    await client.get_combat_session(telegram_user_id=7, combat_session_id=5)
+
+    assert captured["path"] == "/combat/5"
+    assert captured["headers"]["x-telegram-user-id"] == "7"
+
+
+async def test_error_response_raises_api_error_with_detail():
+    handler, _ = _echo_handler(404, {"detail": "combat session not found"})
+    client = make_client(handler)
+
+    with pytest.raises(ApiError) as exc_info:
+        await client.get_combat_session(telegram_user_id=7, combat_session_id=999)
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "combat session not found"
+
+
+async def test_error_response_without_json_body_falls_back_to_text():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="internal server error")
+
+    client = make_client(handler)
+
+    with pytest.raises(ApiError) as exc_info:
+        await client.get_character(1)
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "internal server error"
