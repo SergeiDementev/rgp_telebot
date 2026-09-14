@@ -18,7 +18,7 @@
 - **`core/` не знает про HTTP, БД, Telegram.** Только чистые функции. Тестируется и симулируется независимо от всего остального.
 - **Все вычисления — на сервере.** Бот не хранит и не вычисляет игровую логику, только инициирует запросы и отображает готовый результат.
 - **Пошаговая обработка боя.** Один HTTP-запр: один ход. Состояние боя живёт в БД между запросами.
-- **Единая механика PvE/PvP.** `core/combat.py` не различает, кто управляет стороной — разница только в том, кто инициирует запрос на ход.
+- **Единая механика PvE/PvP.** `core/combat_mechanics.py` не различает, кто управляет стороной — разница только в том, кто инициирует запрос на ход.
 
 ---
 
@@ -26,33 +26,41 @@
 
 ```
 project/
-├── core/                    # чистая игровая логика, без внешних зависимостей
-│   ├── combat.py            # готово — combat_core.py, см. combat_mechanics.md
-│   ├── progression.py       # формулы уровней, регенерации HP, наград
-│   └── circumstance.py      # (может быть частью combat.py — на усмотрение реализации)
+├── core/                    # чистая игровая логика, без внешних зависимостей — готово
+│   ├── combat_mechanics.py  # см. combat_mechanics.md (circumstance — часть этого файла, не отдельный модуль)
+│   └── progression.py       # формулы уровней, регенерации HP, наград, очков прокачки
 │
-├── api/                     # FastAPI-приложение
-│   ├── main.py
+├── api/                     # FastAPI-приложение — готово (этап 3)
+│   ├── main.py               # сборка приложения, create_all(), /health
 │   ├── routers/
 │   │   ├── character.py     # создание/просмотр персонажа, прокачка
-│   │   ├── encounter.py     # поиск противника
-│   │   └── combat.py        # ход боя, подтверждение, побег
-│   ├── schemas/              # Pydantic-модели запросов/ответов
+│   │   ├── encounter.py     # поиск противника + инициатива/обстоятельство (/start)
+│   │   └── combat.py        # confirm/turn/flee_decision/get — цикл ходов боя
+│   ├── schemas/              # Pydantic-модели запросов/ответов (character.py, combat.py)
 │   ├── rendering.py           # структурированные факты боя → готовый текст для клиента
-│   └── dependencies.py       # получение текущего персонажа, авторизация бота
+│   ├── dependencies.py       # сессия БД, авторизация бота, получение текущего персонажа
+│   └── enemy_content.py      # загрузка content/enemies.json
 │
-├── db/
-│   ├── models.py             # SQLAlchemy-модели
+├── db/                       # готово
+│   ├── models.py             # SQLAlchemy-модели: Character, CombatSession
 │   ├── session.py            # подключение, фабрика сессий
-│   └── migrations/           # alembic (по мере надобности)
+│   └── migrations/           # alembic — пока не заведены (см. §10)
 │
-├── content/                  # статичные игровые данные
+├── content/                  # статичные игровые данные — готово (этап 2)
 │   └── enemies.json          # статы мышь/волк/кабан
 │
-├── scripts/
+├── scripts/                  # готово
 │   └── simulate_combat.py    # консольный симулятор боёв для калибровки (см. §8, этап 2)
 │
-└── bot/                       # Telegram-клиент (aiogram)
+├── tests/                     # готово — pytest, зеркалит структуру выше
+│   ├── core/
+│   ├── api/                  # conftest.py — изолированная SQLite на тест, dependency_overrides
+│   └── scripts/
+│
+├── requirements.txt            # рантайм-зависимости (fastapi/sqlalchemy/pydantic/uvicorn)
+├── requirements-dev.txt        # + pytest/httpx
+│
+└── bot/                       # Telegram-клиент (aiogram) — этап 4, ещё не начат
     ├── handlers/
     │   ├── start.py
     │   ├── character.py
@@ -130,38 +138,35 @@ GET  /combat/{id}                    — текущее состояние се�
 
 ## 6. Пример потока одного обработчика (оркестрация, без игровой логики внутри)
 
+Черновик этого раздела предполагал единую функцию ядра `core.resolve_turn(...)`,
+возвращающую готовый результат всего хода. По факту такой функции в `core/`
+нет и не появилось: композиция "проверка двойного удара → 1-2 удара → проверка
+конца боя" требует состояния сессии (`current_turn`, флаги права на побег),
+которое `core/` намеренно не знает — доменные формулы (`resolve_strike`,
+`is_double_strike_triggered` и т.д. из `core/combat_mechanics.py`) вызываются
+по отдельности прямо в роутере, а не через одну "мега-функцию хода". Реальная
+реализация — `api/routers/combat.py` (`_resolve_attacker_turn`), сокращённо:
+
 ```python
-@router.post("/combat/{session_id}/turn")
-async def make_turn(session_id: int, db: Session):
-    session = get_combat_session(db, session_id)
-    attacker, defender = get_turn_sides(session)
+@router.post("/combat/{combat_session_id}/turn")
+def take_turn(combat_session_id: int, character=Depends(get_current_character), db=Depends(get_db)):
+    session = _load_owned_session(db, combat_session_id, character)
+    # ... проверки статуса, ворота побега (§6 combat_mechanics.md) ...
 
-    luck_roll = roll_d(10)
-    attack_rolls = [roll_d(10), roll_d(10)]
-    dodge_rolls = [roll_d(10), roll_d(10)]
+    attacker_role = session.current_turn
+    ds_faces = cm.calculate_double_strike_success_faces(attacker_luck, DOUBLE_STRIKE_K)
+    triggered = cm.is_double_strike_triggered(random.randint(1, 10), ds_faces)
 
-    turn_results = resolve_turn(
-        attacker_strength=attacker.strength,
-        defender_agility=defender.agility,
-        luck_roll=luck_roll,
-        attack_rolls=attack_rolls,
-        dodge_rolls=dodge_rolls,
-        attacker_luck=attacker.luck,
-    )
-
-    apply_results_to_session(session, turn_results)
-
-    if session.status == "finished":
-        apply_rewards(db, session)
-    elif is_bot_turn(session):
-        bot_results = resolve_turn(...)   # тот же вызов ядра, для стороны бота
-        apply_results_to_session(session, bot_results)
+    for _ in range(2 if triggered else 1):
+        strike = cm.resolve_strike(attacker_strength, defender_agility, ...)
+        # применить урон к session.enemy_hp_current / session.character_hp_snapshot
+        # если защищающийся пал — session.status = "finished", начислить награду
 
     db.commit()
-    return build_turn_response(session, turn_results)
+    return CombatTurnResponse(...)
 ```
 
-Правило: обработчик = прочитать состояние → вызвать функцию `core/` → сохранить → вернуть JSON. Никакой логики броска/урона/условий внутри роутера.
+Правило то же, что и в черновике: обработчик = прочитать состояние → вызвать функции `core/` → сохранить → вернуть JSON. Никакой логики броска/урона/условий внутри роутера — только их композиция.
 
 ---
 
@@ -169,7 +174,7 @@ async def make_turn(session_id: int, db: Session):
 
 **Принцип:** вся логика боя и весь текст, который её описывает, — на бэкенде. Бот (и любой другой будущий фронтенд) не формирует и не интерпретирует события боя — он получает от API уже готовый текст и просто показывает его. Это разделено на два слоя внутри бэкенда, чтобы не терять переносимость на другой фронтенд/язык/формат позже:
 
-1. **`core/combat.py`** — считает структурированные факты (какие грани выпали, какой урон, сработал ли уворот). Не знает о тексте вообще.
+1. **`core/combat_mechanics.py`** — считает структурированные факты (какие грани выпали, какой урон, сработал ли уворот). Не знает о тексте вообще.
 2. **`api/rendering.py`** — отдельный модуль, превращающий структурированные факты в готовый текст ответа. Единственное место, где "решается", как это выглядит для человека.
 
 **`turn_log` в БД хранит структурированные факты, а не готовый текст** — это исторический источник истины про бой (для отладки, статистики, восстановления состояния), и структурированные данные компактнее и не привязаны к конкретному языку/стилю отображения.
@@ -191,49 +196,50 @@ async def make_turn(session_id: int, db: Session):
 
 Другие типы событий по той же логике — только факты, без текста: `"type": "initiative"`, `"type": "circumstance"`, `"type": "double_strike_check"`, `"type": "flee_attempt"` и т.д., с соответствующими полями бросков и результатов.
 
-Готовый текст **не хранится заранее** — генерируется на лету функциями `api/rendering.py` в момент формирования HTTP-ответа на конкретный запрос:
+Готовый текст **не хранится заранее** — генерируется на лету функциями `api/rendering.py` в момент формирования HTTP-ответа на конкретный запрос. Черновой пример ниже был единой функцией `render_strike_event(event: dict)`; по факту `api/rendering.py` разбит на функцию на каждый тип события с явными параметрами (не один общий `dict`), плюс отдельная компактная форма для ударов внутри двойного удара — например:
 
 ```python
-# api/rendering.py
+# api/rendering.py (сокращённо, реальные сигнатуры)
 
-def render_strike_event(event: dict) -> str:
-    if event["result"] == "miss":
-        return "🎲 Ты промахнулся!"
-    if event["dodged"]:
-        return f"🎲 Бросок атаки: {event['attack_roll']} → {event['attack_percent']}%. Противник уворачивается!"
-    return f"🎲 Бросок атаки: {event['attack_roll']} → {event['attack_percent']}%. 💥 Ты наносишь {event['damage']} урона."
+def render_strike(enemy_type, side_role, attack_roll, attack_percent, dodge_roll, dodged, damage) -> str:
+    if attack_percent is None:
+        return f"🗡️ {attack_label}: {attack_roll} → промах!"
+    ...
+
+def render_compact_strike(enemy_type, side_role, strike_number, attack_roll, attack_percent, dodge_roll, dodged, damage) -> str:
+    ...  # однострочная форма — используется внутри двойного удара
 ```
 
 **Что это даёт:** при появлении второго фронтенда (веб, мобильное приложение) или необходимости локализации — меняется/добавляется только `rendering.py` (или его аналог под нужды нового клиента), а `core/` и структура данных в БД не трогаются вообще.
 
 ```
-core/combat.py       → считает структурированные факты боя
-db (turn_log)         → хранит структурированные факты (источник истины)
-api/rendering.py      → превращает факты в готовый текст ответа
-api/routers/combat.py → отдаёт HTTP-ответ с готовым текстом (вызывает rendering.py)
-bot/                   → получает готовый текст, только показывает — ничего не решает
+core/combat_mechanics.py → считает структурированные факты боя
+db (turn_log)             → хранит структурированные факты (источник истины)
+api/rendering.py          → превращает факты в готовый текст ответа
+api/routers/combat.py     → отдаёт HTTP-ответ с готовым текстом (вызывает rendering.py)
+bot/                       → получает готовый текст, только показывает — ничего не решает
 ```
 
 ---
 
 ## 8. Порядок реализации по модулям
 
-**Этап 1 — `core/`**
-- Перенести/уточнить `combat_core.py`.
+**Этап 1 — `core/` (готово)**
+- Реализовать `core/combat_mechanics.py` с нуля по `combat_mechanics.md`.
 - Добавить `progression.py`: формулы уровней (`threshold(N)`), регенерации HP (`get_current_hp`, `time_to_full_hp`), начисления наград.
 - Юнит-тесты на граничные случаи каждой формулы (минимумы/максимумы граней, промах, крайние значения статов).
 
-**Этап 2 — калибровка без БД и HTTP**
+**Этап 2 — калибровка без БД и HTTP (готово)**
 - `scripts/simulate_combat.py` — консольный прогон N боёв игрок vs мышь/волк/кабан на случайных или заданных статах.
 - Подбор конкретных статов мобов и констант (`K`, пороги, награды) по статистике побед/поражений.
 - Результат этапа — заполненный `content/enemies.json` с финальными (не черновыми) статами.
 
-**Этап 3 — `db/` и `api/`**
-- Модели и миграции.
+**Этап 3 — `db/` и `api/` (готово)**
+- Модели (миграции — без alembic, `create_all()` при старте, см. §10).
 - Роутеры `character`, `encounter`, `combat` — тонкая оркестрация поверх уже проверенного `core/`.
-- Проверка через Swagger/curl, без бота.
+- Проверено через Swagger/TestClient, без бота (`tests/api/`).
 
-**Этап 4 — `bot/`**
+**Этап 4 — `bot/` (следующий шаг)**
 - Хендлеры `/start`, создание персонажа, экран статов, поиск противника, ход боя.
 - Только вызовы `api/` через `client.py` и рендер ответов — никакой логики.
 
@@ -244,6 +250,8 @@ bot/                   → получает готовый текст, толь�
 ## 9. Авторизация бот ↔ API
 
 Для MVP — простой статический API-ключ в заголовке (`X-Internal-Api-Key`), известный только боту. Полноценная схема авторизации избыточна, пока бэкенд не выставлен публично отдельно от бота.
+
+Отдельно от ключа — заголовок `X-Telegram-User-Id`: им бот на каждом запросе сообщает, от чьего лица действует. `api/dependencies.get_current_character` ищет персонажа по этому id (а не по значению, присланному в теле запроса) — так клиент не может подменить чужого персонажа, просто указав другой id в JSON.
 
 ---
 
