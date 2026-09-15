@@ -12,6 +12,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.client import ApiClient, ApiError
+from bot.rules_content import RULES_MENU_TITLE, RULES_SECTIONS
 
 router = Router()
 
@@ -33,10 +34,27 @@ def render_stats_screen(character: dict) -> str:
 def stats_screen_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_stats")],
             [InlineKeyboardButton(text="🔍 Искать противника", callback_data="search_encounter")],
             [InlineKeyboardButton(text="📊 Прокачать статы", callback_data="open_allocation")],
+            [InlineKeyboardButton(text="📜 Правила", callback_data="show_rules")],
         ]
     )
+
+
+def rules_menu_keyboard() -> InlineKeyboardMarkup:
+    """content/rules.md целиком не влезает в лимит сообщения Telegram (4096
+    символов) — показываем меню разделов, а не текст сразу (bot/rules_content.py)."""
+    rows = [
+        [InlineKeyboardButton(text=title, callback_data=f"rules_section:{index}")]
+        for index, (title, _body) in enumerate(RULES_SECTIONS)
+    ]
+    rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_stats")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def rules_section_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ К списку разделов", callback_data="show_rules")]])
 
 
 def render_allocation_screen(character: dict, *, title: str) -> str:
@@ -79,7 +97,26 @@ def allocation_keyboard(character: dict, *, mode: str) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(text="✅ Начать приключение", callback_data="finish_creation")])
     else:
         rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_stats")])
+        # Только на экране прокачки, не при создании — во время creation ещё
+        # нечего обнулять (docs/notes.md, п.12).
+        rows.append([InlineKeyboardButton(text="🗑 Обнулить персонажа", callback_data="reset_request")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data == "show_rules")
+async def show_rules(callback: CallbackQuery) -> None:
+    await callback.message.edit_text(
+        f"📖 <b>{RULES_MENU_TITLE}</b>\n\nВыбери раздел:", reply_markup=rules_menu_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("rules_section:"))
+async def show_rules_section(callback: CallbackQuery) -> None:
+    index = int(callback.data.split(":", 1)[1])
+    title, body = RULES_SECTIONS[index]
+    await callback.message.edit_text(f"<b>{title}</b>\n\n{body}", reply_markup=rules_section_keyboard())
+    await callback.answer()
 
 
 @router.callback_query(F.data == "open_allocation")
@@ -93,6 +130,7 @@ async def open_allocation(callback: CallbackQuery, api: ApiClient) -> None:
 
 
 @router.callback_query(F.data == "back_to_stats")
+@router.callback_query(F.data == "refresh_stats")
 async def back_to_stats(callback: CallbackQuery, api: ApiClient) -> None:
     character = await api.get_character(callback.from_user.id)
     await callback.message.edit_text(render_stats_screen(character), reply_markup=stats_screen_keyboard())

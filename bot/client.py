@@ -67,6 +67,8 @@ class ApiClient:
             except ValueError:
                 detail = response.text
             raise ApiError(response.status_code, detail)
+        if response.status_code == 204:
+            return {}
         return response.json()
 
     # --- character (backend_plan.md §5) ---
@@ -83,6 +85,9 @@ class ApiClient:
         return await self._request(
             "POST", f"/character/{character_id}/allocate_point", json={"stat": stat}
         )
+
+    async def delete_character(self, telegram_user_id: int) -> None:
+        await self._request("DELETE", f"/character/{telegram_user_id}")
 
     # --- encounter / combat ---
 

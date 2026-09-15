@@ -31,7 +31,7 @@ def test_render_circumstance_buff_player():
 
 
 def test_render_circumstance_debuff_enemy():
-    # §8: грани 1-2 — debuff кидающему. Кидает противник -> его Сила падает
+    # §8: грани 1-3 — debuff кидающему. Кидает противник -> его Сила падает
     # (что выгодно игроку), а не растёт — явно проверяем направление модификатора.
     text = r.render_circumstance("wolf", roll=2, outcome="debuff", roller_role="enemy")
     assert text == "🎲 Обстоятельство: 2 → ⚡ Скользкая земля\nСила волка уменьшена на этот бой (×0.8)"
@@ -51,8 +51,8 @@ def test_render_hp_status():
 @pytest.mark.parametrize(
     "side_role,triggered,expected",
     [
-        ("player", False, "🎲 Проверка удачи: 3 → двойного удара нет."),
-        ("player", True, "🎲 Проверка удачи: 9 → ✨ УДАЧА! Двойной удар!"),
+        ("player", False, "🎲 Твоя проверка удачи: 3 → двойного удара нет."),
+        ("player", True, "🎲 Твоя проверка удачи: 9 → ✨ УДАЧА! Двойной удар!"),
         ("enemy", False, "🎲 Волк проверяет удачу: 5 → двойного удара нет."),
     ],
 )
@@ -109,14 +109,24 @@ def test_render_compact_strike_miss():
     assert text == "🗡️ Удар 1: 2 → промах."
 
 
-def test_render_flee_opportunity_triggered():
-    text = r.render_flee_opportunity_check(current_hp=18, max_hp=85, luck_roll=7, triggered=True)
-    assert text == "⚠️ Твоё HP критически низкое! (18/85)\n🍀 Проверка удачи на побег: 7 → есть шанс уйти живым!"
+def test_render_flee_opportunity_triggered_player():
+    text = r.render_flee_opportunity_check("wolf", "player", current_hp=18, max_hp=85, luck_roll=7, triggered=True)
+    assert text == "⚠️ Твоё HP критически низкое! (18/85)\n🍀 Твоя проверка удачи на побег: 7 → есть шанс уйти живым!"
 
 
-def test_render_flee_opportunity_not_triggered():
-    text = r.render_flee_opportunity_check(current_hp=18, max_hp=85, luck_roll=2, triggered=False)
-    assert text == "🍀 Проверка удачи на побег: 2 → шанса уйти нет в этот раз."
+def test_render_flee_opportunity_triggered_enemy():
+    text = r.render_flee_opportunity_check("wolf", "enemy", current_hp=18, max_hp=85, luck_roll=7, triggered=True)
+    assert text == "⚠️ HP волка критически низкое! (18/85)\n🍀 Волк проверяет удачу на побег: 7 → есть шанс уйти живым!"
+
+
+def test_render_flee_opportunity_not_triggered_player():
+    text = r.render_flee_opportunity_check("wolf", "player", current_hp=18, max_hp=85, luck_roll=2, triggered=False)
+    assert text == "🍀 Твоя проверка удачи на побег: 2 → шанса уйти нет в этот раз."
+
+
+def test_render_flee_opportunity_not_triggered_enemy():
+    text = r.render_flee_opportunity_check("wolf", "enemy", current_hp=18, max_hp=85, luck_roll=2, triggered=False)
+    assert text == "🍀 Волк проверяет удачу на побег: 2 → шанса уйти нет в этот раз."
 
 
 def test_render_flee_attempt_player_survives():
@@ -131,7 +141,11 @@ def test_render_flee_attempt_player_caught():
 
 def test_render_flee_attempt_player_misses_pursuer():
     text = r.render_flee_attempt("wolf", "player", attack_roll=1, attack_percent=None, damage=0, defeated=False)
-    assert text == "🎲 Волк: 1 → промах! Тебе удаётся уйти чисто."
+    assert text == (
+        "🏃 Ты пытаешься сбежать — волк бьёт без ответа!\n"
+        "🎲 Атака волка: 1 → промах!\n"
+        "✅ Тебе удаётся уйти чисто."
+    )
 
 
 def test_render_flee_attempt_enemy_caught_and_killed():

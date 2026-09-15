@@ -28,11 +28,11 @@ def _now() -> datetime:
 
 
 def _roll_enemy_encounter() -> tuple:
-    """§6 gameplay_loop_mvp.md: d10, 1-6 мышь / 7-9 волк / 10 кабан."""
+    """§6 gameplay_loop_mvp.md: d10, 1-5 мышь / 6-8 волк / 9-10 кабан."""
     roll = random.randint(1, 10)
-    if roll <= 6:
+    if roll <= 5:
         return roll, "mouse"
-    if roll <= 9:
+    if roll <= 8:
         return roll, "wolf"
     return roll, "boar"
 

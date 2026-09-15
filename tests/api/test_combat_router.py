@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from api.dependencies import get_db, require_api_key
 from api.routers.combat import router as combat_router
 from api.routers.encounter import router as encounter_router
-from db.models import Character
+from db.models import Character, CombatSession
 from tests.api.conftest import override_get_db
 
 HEADERS = {"X-Telegram-User-Id": "1"}
@@ -204,6 +204,40 @@ def test_flee_gate_pauses_for_player_and_flee_decision_continue_resumes_turn(db_
     body = response.json()
     assert response.status_code == 200
     assert body["result"] == "victory"
+
+
+def test_flee_gate_burns_right_even_when_roll_fails(db_session_factory, monkeypatch):
+    # §6 (пересмотрено 2026-09-15, docs/notes.md п.9): одна попытка за бой на
+    # сторону — провал броска тоже тратит право, не только отказ после успеха.
+    _insert_character(db_session_factory, strength=10, agility=5, luck=2, hp_current=10.0)
+    client = make_client(db_session_factory)
+
+    session_id = _start_session_against_mouse(client, monkeypatch, extra_rolls=[])
+
+    # Ход 1 (игрок): gate-роллы luck_roll=10 -> не сработало (success_faces=1
+    # при luck=2), но право должно сгореть всё равно.
+    _patch_rolls(monkeypatch, [10, 10, 3, 10])  # gate=10, double-strike=10, атака=3(50%), уворот мимо
+    response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
+    body = response.json()
+    assert body["status"] == "active"
+    assert "Твоя проверка удачи на побег" in body["text"]
+    assert "шанса уйти нет" in body["text"]
+
+    db = db_session_factory()
+    session = db.get(CombatSession, session_id)
+    assert session.player_flee_right_used is True
+    db.close()
+
+    # Ход 2 (мышь) — просто продвигает очередь, промах.
+    _patch_rolls(monkeypatch, [10, 1, 5])
+    client.post(f"/combat/{session_id}/turn", headers=HEADERS)
+
+    # Ход 3 (игрок снова, HP всё ещё ниже порога): право уже использовано —
+    # проверка на побег больше не должна всплывать.
+    _patch_rolls(monkeypatch, [10, 1, 5])
+    response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
+    body = response.json()
+    assert "проверка удачи на побег" not in body["text"].lower()
 
 
 def test_flee_gate_flee_decision_ends_battle(db_session_factory, monkeypatch):

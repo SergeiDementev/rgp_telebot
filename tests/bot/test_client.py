@@ -64,6 +64,23 @@ async def test_allocate_point_sends_stat_in_body():
     assert result["character"]["strength"] == 4
 
 
+async def test_delete_character_handles_204_no_content():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        return httpx.Response(204)  # без тела вообще — как реально шлёт FastAPI на 204
+
+    client = make_client(handler)
+
+    result = await client.delete_character(1)
+
+    assert captured["method"] == "DELETE"
+    assert captured["path"] == "/character/1"
+    assert result is None
+
+
 async def test_search_encounter_sends_telegram_header():
     handler, captured = _echo_handler(200, {"combat_session_id": 5, "enemy_type": "wolf"})
     client = make_client(handler)

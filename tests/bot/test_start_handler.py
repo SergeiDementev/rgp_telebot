@@ -5,7 +5,16 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from bot.client import ApiError
-from bot.handlers.start import RULES_TEXT, WELCOME_TEXT, cmd_rules, cmd_start, start_game
+from bot.handlers.start import (
+    RESET_CONFIRM_TEXT,
+    WELCOME_TEXT,
+    cmd_reset,
+    cmd_start,
+    reset_cancel,
+    reset_confirm,
+    reset_request,
+    start_game,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -64,14 +73,6 @@ async def test_cmd_start_reraises_non_404_errors():
         await cmd_start(message, api)
 
 
-async def test_cmd_rules_sends_rules_text():
-    message = make_message()
-
-    await cmd_rules(message)
-
-    message.answer.assert_awaited_once_with(RULES_TEXT)
-
-
 async def test_start_game_creates_character_when_missing():
     callback = make_callback(full_name="Hero")
     api = AsyncMock()
@@ -102,3 +103,58 @@ async def test_start_game_reuses_existing_character_without_recreating():
 
     api.create_character.assert_not_called()
     callback.message.edit_text.assert_awaited_once()
+
+
+async def test_cmd_reset_asks_for_confirmation():
+    message = make_message()
+
+    await cmd_reset(message)
+
+    message.answer.assert_awaited_once()
+    args, kwargs = message.answer.call_args
+    assert args[0] == RESET_CONFIRM_TEXT
+    markup = kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "reset_confirm" in callback_datas
+    assert "reset_cancel" in callback_datas
+
+
+async def test_reset_request_edits_message_with_confirmation():
+    # Кнопка "🗑 Обнулить персонажа" на экране прокачки (bot/handlers/
+    # character.py, mode="levelup") — то же подтверждение, что и /reset, но
+    # редактирует сообщение, а не шлёт новое.
+    callback = make_callback()
+
+    await reset_request(callback)
+
+    callback.message.edit_text.assert_awaited_once()
+    args, kwargs = callback.message.edit_text.call_args
+    assert args[0] == RESET_CONFIRM_TEXT
+    markup = kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "reset_confirm" in callback_datas
+    assert "reset_cancel" in callback_datas
+    callback.answer.assert_awaited_once()
+
+
+async def test_reset_confirm_deletes_character_and_shows_start_button():
+    callback = make_callback()
+    api = AsyncMock()
+
+    await reset_confirm(callback, api)
+
+    api.delete_character.assert_awaited_once_with(callback.from_user.id)
+    callback.message.edit_text.assert_awaited_once()
+    args, kwargs = callback.message.edit_text.call_args
+    assert args[0] == WELCOME_TEXT
+    assert kwargs["reply_markup"] is not None
+    callback.answer.assert_awaited_once()
+
+
+async def test_reset_cancel_does_not_touch_character():
+    callback = make_callback()
+
+    await reset_cancel(callback)
+
+    callback.message.edit_text.assert_awaited_once_with("Отменено.")
+    callback.answer.assert_awaited_once()

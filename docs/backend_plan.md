@@ -118,11 +118,14 @@ class CombatSession:
 ## 5. Эндпоинты
 
 ```
-POST /character                      — создать персонажа (nickname из Telegram, стартовые статы)
-GET  /character/{telegram_user_id}   — текущее состояние (HP пересчитывается на лету при чтении)
-POST /character/{id}/allocate_point  — потратить одно очко прокачки: {"stat": "strength"}
+POST   /character                      — создать персонажа (nickname из Telegram, стартовые статы)
+GET    /character/{telegram_user_id}   — текущее состояние (HP пересчитывается на лету при чтении)
+POST   /character/{id}/allocate_point  — потратить одно очко прокачки: {"stat": "strength"}
+DELETE /character/{telegram_user_id}   — обнулить персонажа целиком (удаляет и его CombatSession);
+                                          в основном для тестирования (docs/notes.md, п.12), через
+                                          подтверждение на стороне бота, не по одному нажатию
 
-POST /encounter/search               — бросок d10 (60/30/10), создание CombatSession
+POST /encounter/search               — бросок d10 (50/30/20), создание CombatSession
                                         (status="awaiting_initiative")
 POST /combat/{id}/start              — бросок инициативы + обстоятельства одним вызовом
                                         (status -> "awaiting_confirmation")

@@ -11,7 +11,7 @@ core/combat_mechanics.py считает факты и не знает о тек�
 Пара мест, где мокапы в gameplay_loop_mvp.md §9 сами между собой
 расходятся в мелких деталях (например, провал уворота подписан то
 "не вышло!", то "не смог!"; пример обстоятельства на грани 2 подписан как
-buff, хотя по таблице §8 грани 1-2 — debuff) — здесь выбрана одна
+buff, хотя по таблице §8 грани 1-3 — debuff) — здесь выбрана одна
 последовательная формулировка на каждый случай, не обе сразу.
 """
 
@@ -64,7 +64,7 @@ def render_circumstance(enemy_type: str, roll: int, outcome, roller_role: str) -
 
 
 def render_double_strike_check(enemy_type: str, side_role: str, luck_roll: int, triggered: bool) -> str:
-    prefix = "Проверка удачи" if side_role == "player" else f"{ENEMY_NAMES[enemy_type]['nom_cap']} проверяет удачу"
+    prefix = "Твоя проверка удачи" if side_role == "player" else f"{ENEMY_NAMES[enemy_type]['nom_cap']} проверяет удачу"
     if triggered:
         return f"🎲 {prefix}: {luck_roll} → ✨ УДАЧА! Двойной удар!"
     return f"🎲 {prefix}: {luck_roll} → двойного удара нет."
@@ -136,13 +136,20 @@ def render_hp_status(
     return f"❤️ Ты: {player_hp:.0f}/{player_hp_max:.0f}   👹 {names['nom_cap']}: {enemy_hp:.0f}/{enemy_hp_max:.0f}"
 
 
-def render_flee_opportunity_check(current_hp: float, max_hp: float, luck_roll: int, triggered: bool) -> str:
+def render_flee_opportunity_check(
+    enemy_type: str, side_role: str, current_hp: float, max_hp: float, luck_roll: int, triggered: bool
+) -> str:
+    """Чья это проверка, должно быть видно сразу — иначе не отличить свою
+    проверку на побег от проверки моба (см. docs/notes.md, п.6)."""
+    if side_role == "player":
+        hp_label, prefix = "Твоё HP критически низкое", "Твоя проверка удачи на побег"
+    else:
+        names = ENEMY_NAMES[enemy_type]
+        hp_label, prefix = f"HP {names['gen_low']} критически низкое", f"{names['nom_cap']} проверяет удачу на побег"
+
     if triggered:
-        return (
-            f"⚠️ Твоё HP критически низкое! ({current_hp:.0f}/{max_hp:.0f})\n"
-            f"🍀 Проверка удачи на побег: {luck_roll} → есть шанс уйти живым!"
-        )
-    return f"🍀 Проверка удачи на побег: {luck_roll} → шанса уйти нет в этот раз."
+        return f"⚠️ {hp_label}! ({current_hp:.0f}/{max_hp:.0f})\n🍀 {prefix}: {luck_roll} → есть шанс уйти живым!"
+    return f"🍀 {prefix}: {luck_roll} → шанса уйти нет в этот раз."
 
 
 def render_flee_attempt(
@@ -153,21 +160,38 @@ def render_flee_attempt(
     damage: float,
     defeated: bool,
 ) -> str:
-    """§7: безответный удар преследователя. Точного мокапа в доке нет —
-    формулировка подобрана в стиле остальных сообщений."""
+    """§7: безответный удар преследователя — без фазы уворота у убегающего.
+    Многострочный формат (как у render_strike), а не одна строка: сообщение
+    сразу следом идёт заголовок итога боя (render_battle_end), и в одну
+    строку бросок на его фоне терялся (см. docs/notes.md, п.7)."""
     names = ENEMY_NAMES[enemy_type]
     if fleeing_role == "player":
+        header = f"🏃 Ты пытаешься сбежать — {names['nom_low']} бьёт без ответа!"
+        attack_label = f"Атака {names['gen_low']}"
         if attack_percent is None:
-            return f"🎲 {names['nom_cap']}: {attack_roll} → промах! Тебе удаётся уйти чисто."
+            return f"{header}\n🎲 {attack_label}: {attack_roll} → промах!\n✅ Тебе удаётся уйти чисто."
         if defeated:
-            return f"🎲 {names['nom_cap']}: {attack_roll} → {attack_percent}% силы. 💥 Удар настигает тебя ({damage:.0f} урона)."
-        return f"🎲 {names['nom_cap']}: {attack_roll} → {attack_percent}% силы. 💥 {damage:.0f} урона вдогонку, но ты вырываешься."
+            return (
+                f"{header}\n🎲 {attack_label}: {attack_roll} → {attack_percent}% силы."
+                f"\n💀 Удар настигает тебя ({damage:.0f} урона)."
+            )
+        return (
+            f"{header}\n🎲 {attack_label}: {attack_roll} → {attack_percent}% силы."
+            f"\n💥 {damage:.0f} урона вдогонку, но ты вырываешься."
+        )
 
+    header = f"🏃 {names['nom_cap']} пытается сбежать — твой удар без ответа!"
     if attack_percent is None:
-        return f"🎲 Твой удар: {attack_roll} → промах! {names['nom_cap']} убегает."
+        return f"{header}\n🎲 Твоя атака: {attack_roll} → промах!\n{names['nom_cap']} убегает."
     if defeated:
-        return f"🎲 Твой удар: {attack_roll} → {attack_percent}% силы. 💥 Добиваешь {names['acc_low']} на бегу ({damage:.0f} урона)."
-    return f"🎲 Твой удар: {attack_roll} → {attack_percent}% силы. 💥 {damage:.0f} урона, но {names['nom_low']} вырывается."
+        return (
+            f"{header}\n🎲 Твоя атака: {attack_roll} → {attack_percent}% силы."
+            f"\n💀 Добиваешь {names['acc_low']} на бегу ({damage:.0f} урона)."
+        )
+    return (
+        f"{header}\n🎲 Твоя атака: {attack_roll} → {attack_percent}% силы."
+        f"\n💥 {damage:.0f} урона, но {names['nom_low']} вырывается."
+    )
 
 
 def render_battle_end(

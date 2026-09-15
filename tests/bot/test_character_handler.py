@@ -11,7 +11,10 @@ from bot.handlers.character import (
     back_to_stats,
     finish_creation,
     open_allocation,
+    show_rules,
+    show_rules_section,
 )
+from bot.rules_content import RULES_MENU_TITLE, RULES_SECTIONS
 
 pytestmark = pytest.mark.asyncio
 
@@ -31,6 +34,41 @@ def make_callback(data: str, user_id: int = 1) -> MagicMock:
     return callback
 
 
+async def test_show_rules_edits_same_message_with_section_menu():
+    # /rules раньше слал отдельное сообщение и мог прийти не в очереди с
+    # редактируемым боевым (docs/notes.md, п.1) — теперь это кнопка, тот же
+    # edit_text, что и остальные экраны. Текст целиком (~7000 символов) не
+    # влезает в лимит сообщения Telegram (4096), поэтому это меню разделов,
+    # не сам текст правил (docs/notes.md, п.4).
+    callback = make_callback("show_rules")
+
+    await show_rules(callback)
+
+    callback.message.edit_text.assert_awaited_once()
+    text = callback.message.edit_text.call_args.args[0]
+    assert RULES_MENU_TITLE in text
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert len(markup.inline_keyboard) == len(RULES_SECTIONS) + 1  # + кнопка "Назад"
+    assert markup.inline_keyboard[0][0].callback_data == "rules_section:0"
+    assert markup.inline_keyboard[-1][0].callback_data == "back_to_stats"
+    callback.answer.assert_awaited_once()
+
+
+async def test_show_rules_section_shows_section_text_with_back_to_menu():
+    callback = make_callback("rules_section:2")
+
+    await show_rules_section(callback)
+
+    callback.message.edit_text.assert_awaited_once()
+    text = callback.message.edit_text.call_args.args[0]
+    expected_title, expected_body = RULES_SECTIONS[2]
+    assert expected_title in text
+    assert expected_body in text
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert markup.inline_keyboard[0][0].callback_data == "show_rules"
+    callback.answer.assert_awaited_once()
+
+
 async def test_open_allocation_shows_levelup_screen():
     callback = make_callback("open_allocation")
     api = AsyncMock()
@@ -41,7 +79,8 @@ async def test_open_allocation_shows_levelup_screen():
     text = callback.message.edit_text.call_args.args[0]
     assert "Прокачка характеристик" in text
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
-    assert markup.inline_keyboard[-1][0].callback_data == "back_to_stats"
+    assert markup.inline_keyboard[-2][0].callback_data == "back_to_stats"
+    assert markup.inline_keyboard[-1][0].callback_data == "reset_request"
 
 
 async def test_back_to_stats_shows_stats_screen():
@@ -54,6 +93,22 @@ async def test_back_to_stats_shows_stats_screen():
     text = callback.message.edit_text.call_args.args[0]
     assert "Hero" in text
     assert "Уровень" in text
+
+
+async def test_refresh_stats_shows_stats_screen():
+    # "Обновить" на экране статов — тот же хендлер, что и "Назад" из прокачки,
+    # но нужен как отдельная кнопка на любом заходе на экран статов, не
+    # только после прокачки (docs/notes.md, п.8).
+    callback = make_callback("refresh_stats")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+
+    await back_to_stats(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert "Hero" in text
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert markup.inline_keyboard[0][0].callback_data == "refresh_stats"
 
 
 async def test_allocate_levelup_spends_point_and_refreshes_screen():
@@ -70,7 +125,8 @@ async def test_allocate_levelup_spends_point_and_refreshes_screen():
     text = callback.message.edit_text.call_args.args[0]
     assert "Сила: 4" in text
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
-    assert markup.inline_keyboard[-1][0].callback_data == "back_to_stats"
+    assert markup.inline_keyboard[-2][0].callback_data == "back_to_stats"
+    assert markup.inline_keyboard[-1][0].callback_data == "reset_request"
 
 
 async def test_allocate_levelup_no_points_shows_alert_without_editing_message():
@@ -101,6 +157,8 @@ async def test_allocate_creation_uses_creation_screen():
     assert "Создание героя" in text
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[-1][0].callback_data == "finish_creation"
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "reset_request" not in callback_datas  # нечего обнуливать при создании персонажа
 
 
 async def test_finish_creation_shows_stats_screen_with_search_button():
@@ -113,4 +171,6 @@ async def test_finish_creation_shows_stats_screen_with_search_button():
     text = callback.message.edit_text.call_args.args[0]
     assert "Hero" in text
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
-    assert markup.inline_keyboard[0][0].callback_data == "search_encounter"
+    assert markup.inline_keyboard[0][0].callback_data == "refresh_stats"
+    assert markup.inline_keyboard[1][0].callback_data == "search_encounter"
+    assert markup.inline_keyboard[-1][0].callback_data == "show_rules"

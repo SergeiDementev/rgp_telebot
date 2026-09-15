@@ -96,6 +96,7 @@ async def test_confirm_flee_shows_post_battle_buttons():
     assert "refresh_after_battle" in callback_datas
     assert "search_encounter" in callback_datas
     assert "open_allocation" in callback_datas
+    assert "show_rules" in callback_datas
 
 
 async def test_take_turn_active_shows_turn_button():
@@ -119,7 +120,7 @@ async def test_take_turn_finished_shows_post_battle_buttons():
 
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert callback_datas == ["refresh_after_battle", "search_encounter", "open_allocation"]
+    assert callback_datas == ["refresh_after_battle", "search_encounter", "open_allocation", "show_rules"]
 
 
 async def test_take_turn_awaiting_flee_decision_shows_flee_buttons():
@@ -170,6 +171,9 @@ async def test_refresh_after_battle_shows_hp_and_timer():
 
     text = callback.message.edit_text.call_args.args[0]
     assert text == "❤️ HP: 15/50\n⏳ Полное восстановление через: ~35 сек."
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "show_rules" in callback_datas  # экран "Обновить" тоже должен вести к правилам
 
 
 async def test_refresh_after_battle_omits_timer_when_hp_full():

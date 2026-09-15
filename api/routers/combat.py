@@ -82,10 +82,12 @@ def _finish_battle(session: CombatSession, character: Character, result: str, db
 def _check_flee_gate(session: CombatSession, character: Character, db: Session) -> Optional[dict]:
     """§6 combat_mechanics.md: проверка в начале хода атакующей стороны.
 
-    Возвращает None, если проверка неприменима (право сгорело или HP выше
-    порога) — ход продолжается как обычно без вызова этой функции вообще.
-    Иначе — dict с "proceed" (продолжать ли сборку хода в этом же ответе) и
-    "text".
+    Одна попытка за бой на сторону (docs/notes.md, п.9) — право сгорает
+    сразу после броска, независимо от исхода, не только при отказе после
+    успеха. Возвращает None, если проверка неприменима (право уже
+    использовано или HP выше порога) — ход продолжается как обычно без
+    вызова этой функции вообще. Иначе — dict с "proceed" (продолжать ли
+    сборку хода в этом же ответе) и "text".
     """
     enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
     attacker_role = session.current_turn
@@ -100,10 +102,17 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
     if right_used or not cm.is_hp_at_or_below_flee_threshold(current_hp, max_hp):
         return None
 
+    if attacker_role == "player":
+        session.player_flee_right_used = True
+    else:
+        session.enemy_flee_right_used = True
+
     luck_roll = random.randint(1, 10)
     faces = cm.calculate_flee_opportunity_success_faces(luck, FLEE_MAX_FACES, FLEE_K)
     triggered = cm.is_flee_opportunity_triggered(luck_roll, faces)
-    check_text = rendering.render_flee_opportunity_check(current_hp, max_hp, luck_roll, triggered)
+    check_text = rendering.render_flee_opportunity_check(
+        session.enemy_type, attacker_role, current_hp, max_hp, luck_roll, triggered
+    )
     log_entry = {"type": "flee_opportunity_check", "side": attacker_role, "roll": luck_roll, "triggered": triggered}
 
     if not triggered:
@@ -358,7 +367,9 @@ def flee_decision(
             current_turn=session.current_turn, text=f"{flee_text}\n\n{finish_text}",
         )
 
-    # "continue" — право сгорает, ход доигрывается в этом же ответе (§6).
+    # "continue" — право уже сгорело в _check_flee_gate() при самом броске;
+    # присвоение здесь избыточно, но безвредно — оставлено для ясности.
+    # Ход доигрывается в этом же ответе (§6).
     if attacker_role == "player":
         session.player_flee_right_used = True
     else:

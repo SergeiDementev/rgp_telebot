@@ -131,12 +131,12 @@ def test_resolve_flee_attempt(
     [
         (1, "debuff"),
         (2, "debuff"),
-        (3, None),
+        (3, "debuff"),
         (4, None),
         (5, None),
         (6, None),
         (7, None),
-        (8, None),
+        (8, "buff"),
         (9, "buff"),
         (10, "buff"),
     ],
@@ -299,9 +299,9 @@ def test_circumstance_outcome_matches_declared_proportions():
         roll = _roll_d(rng)
         counts[cm.resolve_circumstance_outcome(roll)] += 1
 
-    assert counts["debuff"] / n == pytest.approx(0.2, abs=0.02)
-    assert counts[None] / n == pytest.approx(0.6, abs=0.02)
-    assert counts["buff"] / n == pytest.approx(0.2, abs=0.02)
+    assert counts["debuff"] / n == pytest.approx(0.3, abs=0.02)
+    assert counts[None] / n == pytest.approx(0.4, abs=0.02)
+    assert counts["buff"] / n == pytest.approx(0.3, abs=0.02)
 
 
 def test_dodge_success_rate_matches_calculated_faces_ratio():

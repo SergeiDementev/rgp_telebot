@@ -45,6 +45,7 @@ def _post_battle_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_after_battle")],
             [InlineKeyboardButton(text="🔍 Искать противника", callback_data="search_encounter")],
             [InlineKeyboardButton(text="📊 Прокачать статы", callback_data="open_allocation")],
+            [InlineKeyboardButton(text="📜 Правила", callback_data="show_rules")],
         ]
     )
 

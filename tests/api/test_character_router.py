@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from api.dependencies import DEV_DEFAULT_API_KEY, get_db, require_api_key
 from api.routers.character import router as character_router
-from db.models import Character
+from db.models import Character, CombatSession
 from tests.api.conftest import override_get_db
 
 
@@ -111,6 +111,40 @@ def test_allocate_point_no_points_left_returns_400(db_session_factory):
 def test_allocate_point_character_not_found_returns_404(db_session_factory):
     client = make_client(db_session_factory)
     response = client.post("/character/999/allocate_point", json={"stat": "strength"})
+    assert response.status_code == 404
+
+
+def test_delete_character_removes_character_and_combat_sessions(db_session_factory):
+    client = make_client(db_session_factory)
+    created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+
+    db = db_session_factory()
+    session = CombatSession(
+        character_id=created["id"],
+        enemy_type="mouse",
+        enemy_hp_current=20.0,
+        character_hp_snapshot=50.0,
+        status="active",
+        current_turn="player",
+        turn_log=[],
+    )
+    db.add(session)
+    db.commit()
+    db.close()
+
+    response = client.delete("/character/1")
+    assert response.status_code == 204
+
+    assert client.get("/character/1").status_code == 404
+
+    db = db_session_factory()
+    assert db.query(CombatSession).filter(CombatSession.character_id == created["id"]).count() == 0
+    db.close()
+
+
+def test_delete_character_not_found_returns_404(db_session_factory):
+    client = make_client(db_session_factory)
+    response = client.delete("/character/999")
     assert response.status_code == 404
 
 

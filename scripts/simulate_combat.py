@@ -69,7 +69,7 @@ ROTATION_ORDER = ["strength", "agility", "luck", "vitality"]
 CHECKPOINT_INTERVAL = 10
 CHECKPOINT_FIGHTS = 400  # поднято со 100 — меньше шума в % на контрольных точках
 
-ENCOUNTER_ORDER = ("mouse", "wolf", "boar")  # §6 gameplay_loop_mvp.md: 60/30/10 на d10
+ENCOUNTER_ORDER = ("mouse", "wolf", "boar")  # §6 gameplay_loop_mvp.md: 50/30/20 на d10
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +155,7 @@ def simulate_single_fight(player_stats: dict, enemy_stats: dict, policy: str, rn
         if not attacker["flee_right_used"] and cm.is_hp_at_or_below_flee_threshold(
             attacker["hp"], attacker["hp_max"], FLEE_THRESHOLD_PERCENT
         ):
+            attacker["flee_right_used"] = True  # §6: одна попытка за бой, право сгорает сразу при броске
             luck_roll = rng.randint(1, 10)
             faces = cm.calculate_flee_opportunity_success_faces(attacker["luck"], FLEE_MAX_FACES, FLEE_K)
             if cm.is_flee_opportunity_triggered(luck_roll, faces):
@@ -170,7 +171,6 @@ def simulate_single_fight(player_stats: dict, enemy_stats: dict, policy: str, rn
                     return _fight_result(
                         result, turns_taken, player, enemy, double_strikes, circumstance_outcome, circumstance_roller, flee_offers
                     )
-                attacker["flee_right_used"] = True  # отказ -> право сгорает навсегда
 
         # 5. Проверка двойного удара (§5).
         ds_faces = cm.calculate_double_strike_success_faces(attacker["luck"], DOUBLE_STRIKE_K)
@@ -296,11 +296,11 @@ def save_results(enemy_name: str, results: list, timestamp: str) -> Path:
 
 
 def roll_enemy_encounter(rng) -> str:
-    """§6 gameplay_loop_mvp.md: d10, 1-6 мышь / 7-9 волк / 10 кабан. Фиксировано весь MVP."""
+    """§6 gameplay_loop_mvp.md: d10, 1-5 мышь / 6-8 волк / 9-10 кабан."""
     roll = rng.randint(1, 10)
-    if roll <= 6:
+    if roll <= 5:
         return "mouse"
-    if roll <= 9:
+    if roll <= 8:
         return "wolf"
     return "boar"
 

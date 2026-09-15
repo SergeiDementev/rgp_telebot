@@ -78,7 +78,7 @@ def test_search_encounter_specific_roll(db_session_factory, monkeypatch):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)  # 7-9 -> волк
+    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)  # 6-8 -> волк
     response = client.post("/encounter/search", headers=HEADERS)
     assert response.json()["enemy_type"] == "wolf"
 
@@ -124,8 +124,8 @@ def test_start_combat_rerolls_initiative_tie(db_session_factory, monkeypatch):
     monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
 
-    # 5,5 -> ничья, перебрасываем; 7,4 -> игрок первый; 3 -> обстоятельства нет
-    rolls = iter([5, 5, 7, 4, 3])
+    # 5,5 -> ничья, перебрасываем; 7,4 -> игрок первый; 5 -> обстоятельства нет
+    rolls = iter([5, 5, 7, 4, 5])
     monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: next(rolls))
 
     response = client.post(f"/combat/{session_id}/start", headers=HEADERS)

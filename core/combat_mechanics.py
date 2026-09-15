@@ -126,10 +126,10 @@ def resolve_flee_attempt(
 
 
 def resolve_circumstance_outcome(roll: int) -> Optional[str]:
-    """§8: 1-2 -> "debuff", 3-8 -> None (нет обстоятельства), 9-10 -> "buff"."""
-    if roll <= 2:
+    """§8: 1-3 -> "debuff", 4-7 -> None (нет обстоятельства), 8-10 -> "buff"."""
+    if roll <= 3:
         return "debuff"
-    if roll <= 8:
+    if roll <= 7:
         return None
     return "buff"
 

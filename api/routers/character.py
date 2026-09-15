@@ -18,7 +18,7 @@ from api.schemas.character import (
     CharacterOut,
 )
 from core import progression as pr
-from db.models import Character
+from db.models import Character, CombatSession
 
 router = APIRouter(prefix="/character", tags=["character"], dependencies=[Depends(require_api_key)])
 
@@ -90,6 +90,22 @@ def get_character(telegram_user_id: int, db: Session = Depends(get_db)) -> Chara
     if character is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
     return _to_character_out(character)
+
+
+@router.delete("/{telegram_user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_character(telegram_user_id: int, db: Session = Depends(get_db)) -> None:
+    """Обнулить персонажа — в основном для тестирования (docs/notes.md), но
+    без ограничения на окружение. Удаляет и все его CombatSession — прямого
+    каскада на уровне БД нет (db/models.py), делаем явно в правильном
+    порядке (сессии боя, потом сам персонаж), иначе осиротевшие строки
+    останутся в БД."""
+    character = db.query(Character).filter(Character.telegram_user_id == telegram_user_id).first()
+    if character is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+
+    db.query(CombatSession).filter(CombatSession.character_id == character.id).delete()
+    db.delete(character)
+    db.commit()
 
 
 @router.post("/{character_id}/allocate_point", response_model=AllocatePointResponse)
