@@ -34,14 +34,17 @@ def test_resolve_attack_percent_boundaries(attack_roll, expected_percent):
 @pytest.mark.parametrize(
     "strength,attack_percent,expected_damage",
     [
-        (50, 60, 30.0),
-        (80, 100, 80.0),
-        (10, 0, 0.0),
-        (33, 73, 33 * 73 / 100),
+        (50, 60, 30),
+        (80, 100, 80),
+        (10, 0, 0),
+        (33, 73, round(33 * 73 / 100)),  # 24.09 -> округляется до целого
     ],
 )
 def test_calculate_damage(strength, attack_percent, expected_damage):
-    assert cm.calculate_damage(strength, attack_percent) == pytest.approx(expected_damage)
+    # Урон — всегда целое число (округление здесь же, не только при
+    # отображении) — иначе дробные HP просачиваются в бой и регенерацию
+    # (docs/notes.md).
+    assert cm.calculate_damage(strength, attack_percent) == expected_damage
 
 
 def test_dodge_success_faces_min_at_zero_agility():

@@ -12,6 +12,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.client import ApiClient
+from bot.utils import safe_edit_text
 
 router = Router()
 
@@ -139,5 +140,5 @@ async def refresh_after_battle(callback: CallbackQuery, api: ApiClient) -> None:
     lines = [f"❤️ HP: {character['hp_current']:.0f}/{character['hp_max']:.0f}"]
     if character["hp_seconds_to_full"] > 0:
         lines.append(f"⏳ Полное восстановление через: ~{character['hp_seconds_to_full']:.0f} сек.")
-    await callback.message.edit_text("\n".join(lines), reply_markup=_post_battle_keyboard())
+    await safe_edit_text(callback.message, "\n".join(lines), reply_markup=_post_battle_keyboard())
     await callback.answer()

@@ -4,6 +4,7 @@
 состояния между вызовами.
 """
 
+import math
 from datetime import datetime
 from typing import Optional
 
@@ -37,9 +38,13 @@ def get_current_hp(
     now: datetime,
     regen_per_second: float = REGEN_PER_SECOND_DEFAULT,
 ) -> float:
-    """§8: ленивый пересчёт HP по прошедшему времени, без фонового процесса."""
+    """§8: ленивый пересчёт HP по прошедшему времени, без фонового процесса.
+
+    Регенерация округляется вниз до целых HP — реальное время между
+    запросами почти никогда не кратно секунде, без округления это была бы
+    ещё одна дыра для дробных HP помимо урона в бою (см. docs/notes.md)."""
     elapsed_seconds = max((now - last_update_at).total_seconds(), 0)
-    regenerated = elapsed_seconds * regen_per_second
+    regenerated = math.floor(elapsed_seconds * regen_per_second)
     return min(hp_current + regenerated, hp_max)
 
 

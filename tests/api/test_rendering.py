@@ -44,7 +44,10 @@ def test_render_circumstance_uses_genitive_for_mouse():
 
 
 def test_render_hp_status():
-    text = r.render_hp_status("wolf", player_hp=34.0, player_hp_max=50.0, enemy_hp=12.4, enemy_hp_max=50.0)
+    # Урон и регенерация теперь всегда целые (core/combat_mechanics.py,
+    # core/progression.py — docs/notes.md) — HP, доходящий до рендера, дробным
+    # не бывает, отдельного округления в самом рендере больше не нужно.
+    text = r.render_hp_status("wolf", player_hp=34.0, player_hp_max=50.0, enemy_hp=12.0, enemy_hp_max=50.0)
     assert text == "❤️ Ты: 34/50   👹 Волк: 12/50"
 
 

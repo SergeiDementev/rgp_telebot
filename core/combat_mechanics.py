@@ -38,9 +38,14 @@ def resolve_attack_percent(attack_roll: int) -> Optional[int]:
     return ATTACK_SCALING_MIN_PERCENT + step * ATTACK_SCALING_STEP_PERCENT
 
 
-def calculate_damage(strength: float, attack_percent: int) -> float:
-    """§3: Урон = Сила × процент / 100."""
-    return strength * attack_percent / 100
+def calculate_damage(strength: float, attack_percent: int) -> int:
+    """§3: Урон = Сила × процент / 100, округлён до целого.
+
+    HP — дробные величины создавали путаницу без какой-либо пользы (живой
+    противник с 0.2 HP выглядел мёртвым в отображении, см. docs/notes.md) —
+    округляем сразу здесь, а не только при рендере: тогда внутреннее
+    состояние всегда совпадает с тем, что показано на экране."""
+    return round(strength * attack_percent / 100)
 
 
 def calculate_saturating_success_faces(

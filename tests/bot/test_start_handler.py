@@ -78,7 +78,7 @@ async def test_start_game_creates_character_when_missing():
     api = AsyncMock()
     api.get_character.side_effect = ApiError(404, "not found")
     api.create_character.return_value = {
-        "id": 1, "nickname": "Hero", "unspent_stat_points": 5, "strength": 3,
+        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
         "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
     }
 
@@ -95,7 +95,7 @@ async def test_start_game_reuses_existing_character_without_recreating():
     callback = make_callback()
     api = AsyncMock()
     api.get_character.return_value = {
-        "id": 1, "nickname": "Hero", "unspent_stat_points": 2, "strength": 4,
+        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 2, "strength": 4,
         "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 3,
     }
 
@@ -137,17 +137,24 @@ async def test_reset_request_edits_message_with_confirmation():
     callback.answer.assert_awaited_once()
 
 
-async def test_reset_confirm_deletes_character_and_shows_start_button():
-    callback = make_callback()
+async def test_reset_confirm_deletes_character_and_shows_creation_screen():
+    # Без приветственного текста и без лишнего клика "Начать игру" — сразу
+    # экран создания героя (docs/notes.md).
+    callback = make_callback(full_name="Hero")
     api = AsyncMock()
+    api.create_character.return_value = {
+        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
+        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+    }
 
     await reset_confirm(callback, api)
 
     api.delete_character.assert_awaited_once_with(callback.from_user.id)
+    api.create_character.assert_awaited_once_with(callback.from_user.id, "Hero")
     callback.message.edit_text.assert_awaited_once()
-    args, kwargs = callback.message.edit_text.call_args
-    assert args[0] == WELCOME_TEXT
-    assert kwargs["reply_markup"] is not None
+    text = callback.message.edit_text.call_args.args[0]
+    assert "Создание героя" in text
+    assert WELCOME_TEXT not in text
     callback.answer.assert_awaited_once()
 
 

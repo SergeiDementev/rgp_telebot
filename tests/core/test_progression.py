@@ -100,6 +100,14 @@ def test_get_current_hp_exact_regeneration_for_given_elapsed_time():
     assert pr.get_current_hp(hp_current=40, hp_max=60, last_update_at=last, now=now) == 55
 
 
+def test_get_current_hp_regeneration_rounds_down_fractional_seconds():
+    # Реальное время между запросами почти никогда не кратно секунде —
+    # округляем вниз, а не отдаём дробные HP (docs/notes.md).
+    last = datetime(2026, 1, 1, 12, 0, 0)
+    now = last + timedelta(seconds=15.9)
+    assert pr.get_current_hp(hp_current=40, hp_max=60, last_update_at=last, now=now) == 55
+
+
 def test_get_current_hp_caps_at_hp_max_for_large_elapsed_time():
     last = datetime(2026, 1, 1, 12, 0, 0)
     now = last + timedelta(hours=1)  # 3600 секунд — намного больше недостающих HP

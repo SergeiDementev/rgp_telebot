@@ -93,9 +93,17 @@ async def reset_request(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "reset_confirm")
 async def reset_confirm(callback: CallbackQuery, api: ApiClient) -> None:
+    """Сразу после удаления создаём нового персонажа и показываем экран
+    создания — без приветственного текста (он уже был показан при первом
+    /start, повторно не нужен, docs/notes.md) и без лишнего клика "Начать
+    игру": намерение начать заново уже подтверждено кнопкой "Да, удалить"."""
     await api.delete_character(callback.from_user.id)
-    await callback.message.edit_text(WELCOME_TEXT, reply_markup=_start_game_keyboard())
-    await callback.answer("Персонаж удалён")
+    character = await api.create_character(callback.from_user.id, callback.from_user.full_name)
+    await callback.message.edit_text(
+        render_allocation_screen(character, title="🧙 Создание героя"),
+        reply_markup=allocation_keyboard(character, mode="creation"),
+    )
+    await callback.answer("Персонаж обнулён")
 
 
 @router.callback_query(F.data == "reset_cancel")

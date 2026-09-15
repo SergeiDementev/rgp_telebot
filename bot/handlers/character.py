@@ -13,6 +13,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from bot.client import ApiClient, ApiError
 from bot.rules_content import RULES_MENU_TITLE, RULES_SECTIONS
+from bot.utils import safe_edit_text
 
 router = Router()
 
@@ -60,6 +61,7 @@ def rules_section_keyboard() -> InlineKeyboardMarkup:
 def render_allocation_screen(character: dict, *, title: str) -> str:
     lines = [
         title,
+        f"🏅 Уровень: {character['level']}",
         f"Доступно очков: {character['unspent_stat_points']}",
         "",
         f"💪 Сила: {character['strength']}",
@@ -133,7 +135,7 @@ async def open_allocation(callback: CallbackQuery, api: ApiClient) -> None:
 @router.callback_query(F.data == "refresh_stats")
 async def back_to_stats(callback: CallbackQuery, api: ApiClient) -> None:
     character = await api.get_character(callback.from_user.id)
-    await callback.message.edit_text(render_stats_screen(character), reply_markup=stats_screen_keyboard())
+    await safe_edit_text(callback.message, render_stats_screen(character), reply_markup=stats_screen_keyboard())
     await callback.answer()
 
 
