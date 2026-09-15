@@ -124,6 +124,18 @@ def render_compact_strike(
     return " ".join(parts)
 
 
+def render_hp_status(
+    enemy_type: str,
+    player_hp: float,
+    player_hp_max: float,
+    enemy_hp: float,
+    enemy_hp_max: float,
+) -> str:
+    """Шапка статуса HP — печатается первой строкой в каждом сообщении боя."""
+    names = ENEMY_NAMES[enemy_type]
+    return f"❤️ Ты: {player_hp:.0f}/{player_hp_max:.0f}   👹 {names['nom_cap']}: {enemy_hp:.0f}/{enemy_hp_max:.0f}"
+
+
 def render_flee_opportunity_check(current_hp: float, max_hp: float, luck_roll: int, triggered: bool) -> str:
     if triggered:
         return (

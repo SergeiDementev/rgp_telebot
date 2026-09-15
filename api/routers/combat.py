@@ -115,8 +115,9 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
         # Пауза — ждём отдельного POST /flee_decision (только игрок выбирает).
         session.status = "awaiting_flee_decision"
         session.turn_log = session.turn_log + [log_entry]
+        hp_status = _hp_status_text(session, character, enemy_stats)
         db.commit()
-        return {"proceed": False, "text": check_text}
+        return {"proceed": False, "text": f"{hp_status}\n\n{check_text}"}
 
     # §7: бот всегда бежит, если возможность открылась — резолвится синхронно.
     pursuer_strength = character.strength * session.strength_modifier_player
@@ -141,6 +142,15 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
     db.commit()
     db.refresh(session)
     return {"proceed": False, "text": f"{check_text}\n\n{flee_text}\n\n{finish_text}"}
+
+
+def _hp_status_text(session: CombatSession, character: Character, enemy_stats: dict) -> str:
+    """Шапка HP — печатается первой строкой в каждом сообщении боя (пока бой не завершён)."""
+    player_hp_max = pr.calculate_hp_max(character.vitality)
+    return rendering.render_hp_status(
+        session.enemy_type, session.character_hp_snapshot, player_hp_max,
+        session.enemy_hp_current, enemy_stats["hp_max"],
+    )
 
 
 def _resolve_attacker_turn(session: CombatSession, character: Character, db: Session) -> str:
@@ -242,11 +252,13 @@ def confirm_combat(
 
     if payload.decision == "fight":
         session.status = "active"
+        enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
+        hp_status = _hp_status_text(session, character, enemy_stats)
         db.commit()
         db.refresh(session)
         return CombatTurnResponse(
             combat_session_id=session.id, status=session.status, result=None,
-            current_turn=session.current_turn, text="⚔️ Ты вступаешь в бой!",
+            current_turn=session.current_turn, text=f"{hp_status}\n\n⚔️ Ты вступаешь в бой!",
         )
 
     # §9 шаг 3б / §7: отказ -> безответный удар противника без защиты.
@@ -296,6 +308,10 @@ def take_turn(
     turn_text = _resolve_attacker_turn(session, character, db)
     if gate is not None:
         turn_text = f"{gate['text']}\n\n{turn_text}"
+
+    if session.status != "finished":
+        enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
+        turn_text = f"{_hp_status_text(session, character, enemy_stats)}\n\n{turn_text}"
 
     return CombatTurnResponse(
         combat_session_id=session.id, status=session.status, result=session.result,
@@ -351,6 +367,10 @@ def flee_decision(
     db.commit()
 
     turn_text = _resolve_attacker_turn(session, character, db)
+    if session.status != "finished":
+        enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
+        turn_text = f"{_hp_status_text(session, character, enemy_stats)}\n\n{turn_text}"
+
     return CombatTurnResponse(
         combat_session_id=session.id, status=session.status, result=session.result,
         current_turn=session.current_turn, text=turn_text,

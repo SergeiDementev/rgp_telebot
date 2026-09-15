@@ -43,6 +43,11 @@ def test_render_circumstance_uses_genitive_for_mouse():
     assert "Сила мыши" in text
 
 
+def test_render_hp_status():
+    text = r.render_hp_status("wolf", player_hp=34.0, player_hp_max=50.0, enemy_hp=12.4, enemy_hp_max=50.0)
+    assert text == "❤️ Ты: 34/50   👹 Волк: 12/50"
+
+
 @pytest.mark.parametrize(
     "side_role,triggered,expected",
     [

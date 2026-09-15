@@ -81,6 +81,7 @@ def test_confirm_fight_transitions_to_active(db_session_factory, monkeypatch):
     response = client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
     assert response.status_code == 200
     assert response.json()["status"] == "active"
+    assert response.json()["text"].startswith("❤️ Ты: 50/50   👹 Мышь: 20/20")
 
 
 def test_confirm_flee_ends_battle_with_no_reward(db_session_factory, monkeypatch):
@@ -177,6 +178,7 @@ def test_turn_defeat_by_enemy(db_session_factory, monkeypatch):
     assert response.status_code == 200
     assert body["status"] == "active"  # бой продолжается, ход перешёл к мыши
     assert "промах" in body["text"]
+    assert body["text"].startswith("❤️ Ты:")  # HP-шапка на каждой фазе, не только в итоге
 
 
 def test_flee_gate_pauses_for_player_and_flee_decision_continue_resumes_turn(db_session_factory, monkeypatch):
@@ -194,6 +196,7 @@ def test_flee_gate_pauses_for_player_and_flee_decision_continue_resumes_turn(db_
     body = response.json()
     assert body["status"] == "awaiting_flee_decision"
     assert "шанс уйти живым" in body["text"]
+    assert body["text"].startswith("❤️ Ты:")
 
     # "continue" -> право сгорает, ход доигрывается тут же (гарантированная победа)
     _patch_rolls(monkeypatch, [10, 10, 10])  # double-strike нет, атака=100%, уворот мимо
