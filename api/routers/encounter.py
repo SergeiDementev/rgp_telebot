@@ -27,12 +27,15 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _roll_enemy_encounter() -> tuple:
-    """§6 gameplay_loop_mvp.md: d10, 1-5 мышь / 6-8 волк / 9-10 кабан."""
+def _roll_enemy_encounter(level: int) -> tuple:
+    """§6 gameplay_loop_mvp.md: d10, грани по pr.calculate_encounter_faces(level)
+    — на 1 уровне 50/30/20 (мышь/волк/кабан), к позднему уровню зеркально
+    20/30/50 (пересмотрено 2026-09-16, было фиксировано на всех уровнях)."""
+    mouse_faces, wolf_faces, _boar_faces = pr.calculate_encounter_faces(level)
     roll = random.randint(1, 10)
-    if roll <= 5:
+    if roll <= mouse_faces:
         return roll, "mouse"
-    if roll <= 8:
+    if roll <= mouse_faces + wolf_faces:
         return roll, "wolf"
     return roll, "boar"
 
@@ -60,7 +63,7 @@ def search_encounter(
             status_code=status.HTTP_409_CONFLICT, detail="character already has an active combat session"
         )
 
-    roll, enemy_type = _roll_enemy_encounter()
+    roll, enemy_type = _roll_enemy_encounter(character.level)
     enemy_stats = enemy_content.get_enemy_stats(enemy_type)
 
     # Снимок HP на начало боя — та же точка, где регенерация обычно

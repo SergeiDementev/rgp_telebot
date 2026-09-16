@@ -26,7 +26,7 @@ def _insert_character(db_session_factory, telegram_user_id=1, **overrides) -> in
     character = Character(
         telegram_user_id=telegram_user_id,
         nickname="Hero",
-        level=1,
+        level=overrides.get("level", 1),
         victory_points=0,
         unspent_stat_points=0,
         strength=overrides.get("strength", 10),
@@ -81,6 +81,23 @@ def test_search_encounter_specific_roll(db_session_factory, monkeypatch):
     monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)  # 6-8 -> волк
     response = client.post("/encounter/search", headers=HEADERS)
     assert response.json()["enemy_type"] == "wolf"
+
+
+def test_search_encounter_shifts_odds_by_character_level(db_session_factory, monkeypatch):
+    # §6 gameplay_loop_mvp.md, пересмотрено 2026-09-16: на 1 уровне грань 8 —
+    # ещё волк (мышь 1-5, волк 6-8, кабан 9-10), а на позднем уровне та же
+    # грань 8 уже кабан (мышь 1-2, волк 3-5, кабан 6-10) — пропорции сместились.
+    _insert_character(db_session_factory, telegram_user_id=1, level=1)
+    _insert_character(db_session_factory, telegram_user_id=2, level=9)
+    client = make_client(db_session_factory)
+
+    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)
+
+    low_level_response = client.post("/encounter/search", headers={"X-Telegram-User-Id": "1"})
+    high_level_response = client.post("/encounter/search", headers={"X-Telegram-User-Id": "2"})
+
+    assert low_level_response.json()["enemy_type"] == "wolf"
+    assert high_level_response.json()["enemy_type"] == "boar"
 
 
 def test_start_combat_transitions_to_awaiting_confirmation(db_session_factory, monkeypatch):

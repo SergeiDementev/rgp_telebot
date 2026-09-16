@@ -19,6 +19,14 @@ STAT_POINTS_PER_LEVEL = 2
 
 VICTORY_REWARD_DEFAULTS = {"mouse": 1, "wolf": 5, "boar": 15}
 
+# §6 gameplay_loop_mvp.md: пропорции поиска противника смещаются по уровню —
+# на 1 уровне 50/30/20 (мышь/волк/кабан), к ENCOUNTER_LEVEL_CAP зеркально
+# 20/30/50, дальше плато. Волк держится постоянно на 30%.
+ENCOUNTER_MOUSE_FACES_START = 5  # 50% на 1 уровне, из 10 граней d10
+ENCOUNTER_MOUSE_FACES_END = 2  # 20% на ENCOUNTER_LEVEL_CAP уровне
+ENCOUNTER_WOLF_FACES = 3  # 30%, постоянно на всех уровнях
+ENCOUNTER_LEVEL_CAP = 9
+
 STAT_NAMES = {"strength", "agility", "luck", "vitality"}
 
 
@@ -94,6 +102,23 @@ def calculate_stat_points_gained(
 ) -> int:
     """§5: очков прокачки за пройденные уровни = levels_gained × STAT_POINTS_PER_LEVEL."""
     return levels_gained * stat_points_per_level
+
+
+def calculate_encounter_faces(level: int) -> tuple[int, int, int]:
+    """§6: (грани_мыши, грани_волка, грани_кабана) для броска d10 на поиск
+    противника — сумма всегда 10. Линейная интерполяция от 1 до
+    ENCOUNTER_LEVEL_CAP уровня, дальше — плато на значениях
+    ENCOUNTER_LEVEL_CAP. Грани — целые числа (d10 не умеет в дробные
+    проценты), поэтому смещение получается ступенчатым, не строго по
+    уровню."""
+    clamped_level = min(max(level, 1), ENCOUNTER_LEVEL_CAP)
+    span = ENCOUNTER_LEVEL_CAP - 1
+    progress = (clamped_level - 1) / span if span > 0 else 1.0
+    mouse_faces = round(
+        ENCOUNTER_MOUSE_FACES_START + (ENCOUNTER_MOUSE_FACES_END - ENCOUNTER_MOUSE_FACES_START) * progress
+    )
+    boar_faces = 10 - ENCOUNTER_WOLF_FACES - mouse_faces  # d10 — 10 граней
+    return mouse_faces, ENCOUNTER_WOLF_FACES, boar_faces
 
 
 def calculate_victory_reward(enemy_type: str, rewards: Optional[dict] = None) -> int:

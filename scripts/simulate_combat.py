@@ -295,12 +295,13 @@ def save_results(enemy_name: str, results: list, timestamp: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def roll_enemy_encounter(rng) -> str:
-    """§6 gameplay_loop_mvp.md: d10, 1-5 мышь / 6-8 волк / 9-10 кабан."""
+def roll_enemy_encounter(rng, level: int) -> str:
+    """§6 gameplay_loop_mvp.md: d10, грани по pr.calculate_encounter_faces(level)."""
+    mouse_faces, wolf_faces, _boar_faces = pr.calculate_encounter_faces(level)
     roll = rng.randint(1, 10)
-    if roll <= 5:
+    if roll <= mouse_faces:
         return "mouse"
-    if roll <= 8:
+    if roll <= mouse_faces + wolf_faces:
         return "wolf"
     return "boar"
 
@@ -415,7 +416,7 @@ def simulate_progression_session(
     checkpoints = []
 
     for fight_index in range(1, session_fights + 1):
-        enemy_name = roll_enemy_encounter(rng)
+        enemy_name = roll_enemy_encounter(rng, level)
         fight_result = simulate_single_fight(stats, ENEMY_PRESETS[enemy_name], "always_fight", rng)
 
         reward = pr.calculate_battle_reward(fight_result["result"], enemy_name)
