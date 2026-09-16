@@ -6,6 +6,7 @@
 различаются только текстом, выбранным по `current_turn` из ответа сервера.
 """
 
+import asyncio
 from typing import Optional
 
 from aiogram import F, Router
@@ -15,6 +16,12 @@ from bot.client import ApiClient
 from bot.utils import safe_edit_text
 
 router = Router()
+
+# Пауза между ходами в автобое (docs/notes.md, п.3) — достаточно медленно,
+# чтобы реально видеть, что происходит (не мгновенный итог), и с большим
+# запасом от ориентировочного лимита Telegram на правки одного сообщения
+# (~1/сек) — 429 "Too Many Requests" при такой паузе не грозит.
+AUTO_BATTLE_TURN_DELAY_SECONDS = 2.5
 
 
 def _session_id_from(callback_data: str) -> int:
@@ -82,7 +89,8 @@ async def start_combat(callback: CallbackQuery, api: ApiClient) -> None:
             [
                 InlineKeyboardButton(text="⚔️ Вступить в бой", callback_data=f"confirm_fight:{session_id}"),
                 InlineKeyboardButton(text="🏃 Отступить", callback_data=f"confirm_flee:{session_id}"),
-            ]
+            ],
+            [InlineKeyboardButton(text="⚡ Автобой", callback_data=f"confirm_fight_auto:{session_id}")],
         ]
     )
     await callback.message.edit_text(response["text"], reply_markup=keyboard)
@@ -95,6 +103,33 @@ async def confirm_fight(callback: CallbackQuery, api: ApiClient) -> None:
     response = await api.confirm_combat(callback.from_user.id, session_id, "fight")
     await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("confirm_fight_auto:"))
+async def confirm_fight_auto(callback: CallbackQuery, api: ApiClient) -> None:
+    """Автобой — выбирается заново для каждого конкретного боя в момент
+    решения "вступить/отступить", не общая настройка (docs/notes.md, п.3:
+    решили не заводить под это отдельную колонку в Character — этот вариант
+    проще и без изменений в БД). Вступает в бой и сам крутит цикл ходов, пока
+    не понадобится решение игрока (побег по HP) или бой не закончится —
+    имитирует ручное нажатие: сообщение реально обновляется на каждом ходу
+    с паузой между ними (AUTO_BATTLE_TURN_DELAY_SECONDS), не одним
+    сообщением в конце — иначе не видно, что происходит."""
+    session_id = _session_id_from(callback.data)
+    response = await api.confirm_combat(callback.from_user.id, session_id, "fight")
+    await callback.message.edit_text(response["text"])
+    await callback.answer()  # отвечаем сразу — цикл ниже может растянуться на десятки секунд
+
+    turns_taken = 0
+    while response["status"] == "active":
+        await asyncio.sleep(AUTO_BATTLE_TURN_DELAY_SECONDS)
+        response = await api.take_turn(callback.from_user.id, session_id)
+        turns_taken += 1
+        battle_still_active = response["status"] == "active"
+        text = f"⚡ Автобой — ход {turns_taken}\n\n{response['text']}"
+        await callback.message.edit_text(
+            text, reply_markup=None if battle_still_active else _next_step_markup(session_id, response)
+        )
 
 
 @router.callback_query(F.data.startswith("confirm_flee:"))
