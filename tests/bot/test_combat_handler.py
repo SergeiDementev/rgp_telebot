@@ -5,11 +5,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import bot.handlers.combat as combat_handlers
+from bot.client import ApiError
 from bot.handlers.combat import (
     confirm_fight,
     confirm_fight_auto,
     confirm_flee,
     flee_decision_continue,
+    flee_decision_continue_auto,
     flee_decision_flee,
     refresh_after_battle,
     search_encounter,
@@ -41,6 +43,29 @@ async def test_search_encounter_shows_initiative_button():
     assert text == "Ты наткнулся на волка."
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[0][0].callback_data == "start_combat:5"
+
+
+async def test_search_encounter_shows_friendly_alert_on_existing_session():
+    # Раньше 409 от API падал необработанным исключением и "ронял" бота
+    # (docs/notes.md) — например, если процесс перезапустили посреди боя.
+    callback = make_callback("search_encounter")
+    api = AsyncMock()
+    api.search_encounter.side_effect = ApiError(409, "character already has an active combat session")
+
+    await search_encounter(callback, api)
+
+    callback.message.edit_text.assert_not_called()
+    callback.answer.assert_awaited_once()
+    assert callback.answer.call_args.kwargs.get("show_alert") is True
+
+
+async def test_search_encounter_reraises_other_errors():
+    callback = make_callback("search_encounter")
+    api = AsyncMock()
+    api.search_encounter.side_effect = ApiError(500, "boom")
+
+    with pytest.raises(ApiError):
+        await search_encounter(callback, api)
 
 
 async def test_start_combat_shows_fight_or_flee_buttons():
@@ -141,7 +166,35 @@ async def test_confirm_fight_auto_stops_at_flee_decision(monkeypatch):
 
     last_call = callback.message.edit_text.call_args_list[-1]
     callback_datas = [btn.callback_data for row in last_call.kwargs["reply_markup"].inline_keyboard for btn in row]
-    assert callback_datas == ["flee_decision_flee:5", "flee_decision_continue:5"]
+    # "Биться дальше" ведёт на _auto-вариант — бой шёл в автобою (docs/notes.md, п.3),
+    # счётчик ходов (1) зашит в сам колбэк, чтобы возобновление продолжило сквозной счёт.
+    assert callback_datas == ["flee_decision_flee:5", "flee_decision_continue_auto:5:1"]
+
+
+async def test_flee_decision_continue_auto_resumes_autobattle_with_running_turn_count(monkeypatch):
+    # После "Биться дальше" на паузе автобоя (turns_taken=3 в колбэке) бой
+    # должен продолжиться автоматически, а не отдать ход обратно вручную —
+    # и счёт ходов должен идти дальше с 4, не сбрасываться (docs/notes.md, п.3).
+    monkeypatch.setattr(combat_handlers.asyncio, "sleep", AsyncMock())
+
+    callback = make_callback("flee_decision_continue_auto:5:3")
+    api = AsyncMock()
+    api.flee_decision.return_value = {"status": "active", "current_turn": "enemy", "text": "Ход 4"}
+    api.take_turn.return_value = {"status": "finished", "result": "victory", "text": "Ты победил!"}
+
+    await flee_decision_continue_auto(callback, api)
+
+    api.flee_decision.assert_awaited_once_with(1, 5, "continue")
+    callback.answer.assert_awaited_once()
+
+    first_call = callback.message.edit_text.call_args_list[0]
+    assert first_call.args[0] == "⚡ Автобой — ход 4\n\nХод 4"
+    assert first_call.kwargs["reply_markup"] is None  # бой ещё активен
+
+    last_call = callback.message.edit_text.call_args_list[-1]
+    assert last_call.args[0] == "⚡ Автобой — ход 5\n\nТы победил!"
+    callback_datas = [btn.callback_data for row in last_call.kwargs["reply_markup"].inline_keyboard for btn in row]
+    assert "search_encounter" in callback_datas
 
 
 async def test_confirm_flee_shows_post_battle_buttons():

@@ -20,12 +20,19 @@ STAT_POINTS_PER_LEVEL = 2
 VICTORY_REWARD_DEFAULTS = {"mouse": 1, "wolf": 5, "boar": 15}
 
 # §6 gameplay_loop_mvp.md: пропорции поиска противника смещаются по уровню —
-# на 1 уровне 50/30/20 (мышь/волк/кабан), к ENCOUNTER_LEVEL_CAP зеркально
-# 20/30/50, дальше плато. Волк держится постоянно на 30%.
-ENCOUNTER_MOUSE_FACES_START = 5  # 50% на 1 уровне, из 10 граней d10
-ENCOUNTER_MOUSE_FACES_END = 2  # 20% на ENCOUNTER_LEVEL_CAP уровне
-ENCOUNTER_WOLF_FACES = 3  # 30%, постоянно на всех уровнях
-ENCOUNTER_LEVEL_CAP = 9
+# от 60/30/10 (мышь/волк/кабан) на 1-2 уровне до зеркальных 10/30/60 на
+# 9-10 уровне, дальше плато. Волк держится постоянно на 30%. Таблица по
+# диапазонам, не формула — переход неравномерный (двойной шаг между 5-6 и
+# 7-8 уровнем, намеренно, пересмотрено на плейтесте 2026-09-16), доверять
+# линейной интерполяции здесь нельзя.
+ENCOUNTER_FACES_BY_LEVEL_BAND = (
+    # (верхняя граница диапазона, грани_мыши, грани_волка, грани_кабана) — сумма всегда 10
+    (2, 6, 3, 1),
+    (4, 5, 3, 2),
+    (6, 4, 3, 3),
+    (8, 2, 3, 5),
+    (10, 1, 3, 6),
+)
 
 STAT_NAMES = {"strength", "agility", "luck", "vitality"}
 
@@ -106,19 +113,14 @@ def calculate_stat_points_gained(
 
 def calculate_encounter_faces(level: int) -> tuple[int, int, int]:
     """§6: (грани_мыши, грани_волка, грани_кабана) для броска d10 на поиск
-    противника — сумма всегда 10. Линейная интерполяция от 1 до
-    ENCOUNTER_LEVEL_CAP уровня, дальше — плато на значениях
-    ENCOUNTER_LEVEL_CAP. Грани — целые числа (d10 не умеет в дробные
-    проценты), поэтому смещение получается ступенчатым, не строго по
-    уровню."""
-    clamped_level = min(max(level, 1), ENCOUNTER_LEVEL_CAP)
-    span = ENCOUNTER_LEVEL_CAP - 1
-    progress = (clamped_level - 1) / span if span > 0 else 1.0
-    mouse_faces = round(
-        ENCOUNTER_MOUSE_FACES_START + (ENCOUNTER_MOUSE_FACES_END - ENCOUNTER_MOUSE_FACES_START) * progress
-    )
-    boar_faces = 10 - ENCOUNTER_WOLF_FACES - mouse_faces  # d10 — 10 граней
-    return mouse_faces, ENCOUNTER_WOLF_FACES, boar_faces
+    противника — сумма всегда 10. Смотрит ENCOUNTER_FACES_BY_LEVEL_BAND по
+    диапазону уровня; уровни выше последнего диапазона — плато на его
+    значениях."""
+    for max_level, mouse_faces, wolf_faces, boar_faces in ENCOUNTER_FACES_BY_LEVEL_BAND:
+        if level <= max_level:
+            return mouse_faces, wolf_faces, boar_faces
+    _, mouse_faces, wolf_faces, boar_faces = ENCOUNTER_FACES_BY_LEVEL_BAND[-1]
+    return mouse_faces, wolf_faces, boar_faces
 
 
 def calculate_victory_reward(enemy_type: str, rewards: Optional[dict] = None) -> int:
