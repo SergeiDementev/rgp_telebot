@@ -1,6 +1,7 @@
 """FastAPI-приложение — сборка роутеров (backend_plan.md §3).
 
-Запуск: uvicorn api.main:app --reload
+Запуск: alembic upgrade head (один раз/после каждой новой миграции),
+затем uvicorn api.main:app --reload
 Swagger: http://127.0.0.1:8000/docs
 """
 
@@ -9,12 +10,9 @@ from fastapi import FastAPI
 from api.routers.character import router as character_router
 from api.routers.combat import router as combat_router
 from api.routers.encounter import router as encounter_router
-from db import models as _models  # noqa: F401 — регистрирует ORM-модели в Base.metadata
-from db.session import Base, engine
 
-# Без alembic на этапе MVP (backend_plan.md §10) — таблицы создаются по факту,
-# если их ещё нет.
-Base.metadata.create_all(bind=engine)
+# Схему БД создаёт и обновляет только `alembic upgrade head` (migrations/) —
+# приложение само её больше не трогает при старте.
 
 app = FastAPI(title="RPG Telegram Bot API", version="0.1.0")
 
