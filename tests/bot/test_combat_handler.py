@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import bot.handlers.combat as combat_handlers
+from bot.client import ApiError
 from bot.handlers.combat import (
     confirm_fight,
     confirm_fight_auto,
@@ -41,6 +42,30 @@ async def test_search_encounter_shows_initiative_button():
     assert text == "Ты наткнулся на волка."
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[0][0].callback_data == "start_combat:5"
+
+
+async def test_search_encounter_shows_friendly_alert_on_existing_session():
+    # 409 — у персонажа уже есть незавершённый CombatSession (например, после
+    # рестарта процесса посреди боя) — не должно валить хендлер (docs/notes.md).
+    callback = make_callback("search_encounter")
+    api = AsyncMock()
+    api.search_encounter.side_effect = ApiError(409, "already has an active combat session")
+
+    await search_encounter(callback, api)
+
+    callback.answer.assert_awaited_once_with(
+        "У тебя уже есть незавершённый бой — сначала заверши его.", show_alert=True
+    )
+    callback.message.edit_text.assert_not_awaited()
+
+
+async def test_search_encounter_reraises_other_errors():
+    callback = make_callback("search_encounter")
+    api = AsyncMock()
+    api.search_encounter.side_effect = ApiError(500, "internal error")
+
+    with pytest.raises(ApiError):
+        await search_encounter(callback, api)
 
 
 async def test_start_combat_shows_fight_or_flee_buttons():

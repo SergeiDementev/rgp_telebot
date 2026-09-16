@@ -12,7 +12,7 @@ from typing import Optional
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot.client import ApiClient
+from bot.client import ApiClient, ApiError
 from bot.utils import safe_edit_text
 
 router = Router()
@@ -69,7 +69,13 @@ def _next_step_markup(session_id: int, response: dict) -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == "search_encounter")
 async def search_encounter(callback: CallbackQuery, api: ApiClient) -> None:
-    response = await api.search_encounter(callback.from_user.id)
+    try:
+        response = await api.search_encounter(callback.from_user.id)
+    except ApiError as error:
+        if error.status_code != 409:
+            raise
+        await callback.answer("У тебя уже есть незавершённый бой — сначала заверши его.", show_alert=True)
+        return
     session_id = response["combat_session_id"]
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
