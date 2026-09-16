@@ -163,7 +163,10 @@ async def confirm_fight_auto(callback: CallbackQuery, api: ApiClient) -> None:
     проще и без изменений в БД)."""
     session_id = _session_id_from(callback.data)
     response = await api.confirm_combat(callback.from_user.id, session_id, "fight")
-    await callback.message.edit_text(response["text"])
+    # Отсчёт внизу сообщения — чтобы первая пауза перед автобоем не выглядела
+    # зависанием: игрок читает "3... 2... 1...", и задержка перестаёт мешать
+    # (docs/notes.md). Появляется только здесь, при самом входе в автобой.
+    await callback.message.edit_text(f"{response['text']}\n\n3... 2... 1...")
     await callback.answer()  # отвечаем сразу — цикл ниже может растянуться на десятки секунд
 
     await asyncio.sleep(AUTO_BATTLE_TURN_DELAY_SECONDS)

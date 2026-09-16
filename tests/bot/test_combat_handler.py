@@ -140,7 +140,7 @@ async def test_confirm_fight_auto_edits_message_on_every_turn_with_delay(monkeyp
     callback.answer.assert_awaited_once()
 
     first_text = callback.message.edit_text.call_args_list[0].args[0]
-    assert first_text == "⚔️ Ты вступаешь в бой!"
+    assert first_text == "⚔️ Ты вступаешь в бой!\n\n3... 2... 1..."
 
     second_call = callback.message.edit_text.call_args_list[1]
     assert second_call.args[0] == "⚡ Автобой — ход 1\n\nХод 1"
