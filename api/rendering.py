@@ -21,18 +21,29 @@ ENEMY_NAMES = {
         "acc_cap": "Мышь", "acc_low": "мышь",
         "gen_low": "мыши",
         "ins_cap": "Мышью",
+        # Мышь — существительное женского рода: формы глаголов/прилагательных,
+        # относящихся к противнику, должны с ним согласовываться (docs/notes.md).
+        "dodge_verb": "увернулась",
+        "alive_adj": "живой",
+        "fled_verb": "сбежала",
     },
     "wolf": {
         "nom_cap": "Волк", "nom_low": "волк",
         "acc_cap": "Волка", "acc_low": "волка",
         "gen_low": "волка",
         "ins_cap": "Волком",
+        "dodge_verb": "увернулся",
+        "alive_adj": "живым",
+        "fled_verb": "сбежал",
     },
     "boar": {
         "nom_cap": "Кабан", "nom_low": "кабан",
         "acc_cap": "Кабана", "acc_low": "кабана",
         "gen_low": "кабана",
         "ins_cap": "Кабаном",
+        "dodge_verb": "увернулся",
+        "alive_adj": "живым",
+        "fled_verb": "сбежал",
     },
 }
 
@@ -83,15 +94,17 @@ def render_strike(
     names = ENEMY_NAMES[enemy_type]
     if side_role == "player":
         attack_label, dodge_label, damage_verb = "Твоя атака", f"{names['nom_cap']} уворачивается", "Ты наносишь"
+        dodge_verb = names["dodge_verb"]
     else:
         attack_label, dodge_label, damage_verb = f"Атака {names['gen_low']}", "Твой уворот", f"{names['nom_cap']} наносит"
+        dodge_verb = "увернулся"
 
     if attack_percent is None:
         return f"🗡️ {attack_label}: {attack_roll} → промах!"
 
     lines = [f"🗡️ {attack_label}: {attack_roll} → {attack_percent}% силы."]
     if dodged:
-        lines.append(f"🛡️ {dodge_label}: {dodge_roll} → увернулся!")
+        lines.append(f"🛡️ {dodge_label}: {dodge_roll} → {dodge_verb}!")
         lines.append("✅ Урон полностью пропущен.")
     else:
         lines.append(f"🛡️ {dodge_label}: {dodge_roll} → не вышло!")
@@ -110,14 +123,18 @@ def render_compact_strike(
     damage: float,
 ) -> str:
     """Компактная (однострочная) форма удара — используется внутри двойного удара."""
-    dodge_label = f"{ENEMY_NAMES[enemy_type]['nom_cap']} уворачивается" if side_role == "player" else "Ты уворачиваешься"
+    names = ENEMY_NAMES[enemy_type]
+    if side_role == "player":
+        dodge_label, dodge_verb = f"{names['nom_cap']} уворачивается", names["dodge_verb"]
+    else:
+        dodge_label, dodge_verb = "Ты уворачиваешься", "увернулся"
 
     if attack_percent is None:
         return f"🗡️ Удар {strike_number}: {attack_roll} → промах."
 
     parts = [f"🗡️ Удар {strike_number}: {attack_roll} → {attack_percent}% силы."]
     if dodged:
-        parts.append(f"🛡️ {dodge_label}: {dodge_roll} → увернулся!")
+        parts.append(f"🛡️ {dodge_label}: {dodge_roll} → {dodge_verb}!")
     else:
         parts.append(f"🛡️ {dodge_label}: {dodge_roll} → не вышло!")
         parts.append(f"💥 {damage:.0f} урона.")
@@ -142,13 +159,15 @@ def render_flee_opportunity_check(
     """Чья это проверка, должно быть видно сразу — иначе не отличить свою
     проверку на побег от проверки моба (см. docs/notes.md, п.6)."""
     if side_role == "player":
-        hp_label, prefix = "Твоё HP критически низкое", "Твоя проверка удачи на побег"
+        hp_label, prefix, alive_adj = "Твоё HP критически низкое", "Твоя проверка удачи на побег", "живым"
     else:
         names = ENEMY_NAMES[enemy_type]
-        hp_label, prefix = f"HP {names['gen_low']} критически низкое", f"{names['nom_cap']} проверяет удачу на побег"
+        hp_label = f"HP {names['gen_low']} критически низкое"
+        prefix = f"{names['nom_cap']} проверяет удачу на побег"
+        alive_adj = names["alive_adj"]
 
     if triggered:
-        return f"⚠️ {hp_label}! ({current_hp:.0f}/{max_hp:.0f})\n🍀 {prefix}: {luck_roll} → есть шанс уйти живым!"
+        return f"⚠️ {hp_label}! ({current_hp:.0f}/{max_hp:.0f})\n🍀 {prefix}: {luck_roll} → есть шанс уйти {alive_adj}!"
     return f"🍀 {prefix}: {luck_roll} → шанса уйти нет в этот раз."
 
 
@@ -214,7 +233,7 @@ def render_battle_end(
         header = f"🏃 Тебе удалось уйти от боя с {names['ins_cap']}."
         reward_line = None
     elif result == "enemy_fled":
-        header = f"🏃 {names['nom_cap']} сбежал, добить не удалось."
+        header = f"🏃 {names['nom_cap']} {names['fled_verb']}, добить не удалось."
         reward_line = None
     else:
         raise ValueError(f"unknown battle result: {result!r}")

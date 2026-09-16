@@ -105,11 +105,26 @@ def test_render_compact_strike_dodged():
     assert text == "🗡️ Удар 2: 5 → 50% силы. 🛡️ Волк уворачивается: 7 → увернулся!"
 
 
+def test_render_strike_dodged_uses_feminine_verb_for_mouse():
+    # Мышь — женский род: "увернулась", не "увернулся" (docs/notes.md).
+    text = r.render_strike(
+        "mouse", "player", attack_roll=6, attack_percent=60, dodge_roll=8, dodged=True, damage=0
+    )
+    assert "Мышь уворачивается: 8 → увернулась!" in text
+
+
 def test_render_compact_strike_miss():
     text = r.render_compact_strike(
         "wolf", "player", 1, attack_roll=2, attack_percent=None, dodge_roll=None, dodged=None, damage=0
     )
     assert text == "🗡️ Удар 1: 2 → промах."
+
+
+def test_render_compact_strike_dodged_uses_feminine_verb_for_mouse():
+    text = r.render_compact_strike(
+        "mouse", "player", 1, attack_roll=9, attack_percent=90, dodge_roll=3, dodged=True, damage=0
+    )
+    assert "Мышь уворачивается: 3 → увернулась!" in text
 
 
 def test_render_flee_opportunity_triggered_player():
@@ -120,6 +135,12 @@ def test_render_flee_opportunity_triggered_player():
 def test_render_flee_opportunity_triggered_enemy():
     text = r.render_flee_opportunity_check("wolf", "enemy", current_hp=18, max_hp=85, luck_roll=7, triggered=True)
     assert text == "⚠️ HP волка критически низкое! (18/85)\n🍀 Волк проверяет удачу на побег: 7 → есть шанс уйти живым!"
+
+
+def test_render_flee_opportunity_triggered_enemy_uses_feminine_adjective_for_mouse():
+    # "уйти живой", не "уйти живым" — мышь женского рода (docs/notes.md).
+    text = r.render_flee_opportunity_check("mouse", "enemy", current_hp=4, max_hp=20, luck_roll=7, triggered=True)
+    assert "есть шанс уйти живой!" in text
 
 
 def test_render_flee_opportunity_not_triggered_player():
@@ -189,6 +210,14 @@ def test_render_battle_end_enemy_fled():
         "wolf", "enemy_fled", reward=0, victory_points_total=0, hp_current=50, hp_max=60, hp_seconds_to_full=10
     )
     assert text.startswith("🏃 Волк сбежал")
+
+
+def test_render_battle_end_enemy_fled_uses_feminine_verb_for_mouse():
+    # "Мышь сбежала", не "Мышь сбежал" (docs/notes.md).
+    text = r.render_battle_end(
+        "mouse", "enemy_fled", reward=0, victory_points_total=0, hp_current=10, hp_max=20, hp_seconds_to_full=10
+    )
+    assert text.startswith("🏃 Мышь сбежала")
 
 
 def test_render_battle_end_omits_regen_line_when_already_full():
