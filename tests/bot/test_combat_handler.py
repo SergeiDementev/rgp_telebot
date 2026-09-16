@@ -4,8 +4,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import bot.handlers.combat as combat_handlers
 from bot.handlers.combat import (
     confirm_fight,
+    confirm_fight_auto,
     confirm_flee,
     flee_decision_continue,
     flee_decision_flee,
@@ -51,7 +53,7 @@ async def test_start_combat_shows_fight_or_flee_buttons():
     api.start_combat.assert_awaited_once_with(1, 5)
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert callback_datas == ["confirm_fight:5", "confirm_flee:5"]
+    assert callback_datas == ["confirm_fight:5", "confirm_flee:5", "confirm_fight_auto:5"]
 
 
 async def test_confirm_fight_shows_attack_button_when_player_goes_first():
@@ -81,6 +83,65 @@ async def test_confirm_fight_shows_defend_button_when_enemy_goes_first():
 
     button = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
     assert button.text == "🛡️ Защищаться"
+
+
+async def test_confirm_fight_auto_edits_message_on_every_turn_with_delay(monkeypatch):
+    # Имитирует ручное нажатие: не одно сообщение в конце, а правка на
+    # каждом ходу с паузой между ними (docs/notes.md, п.3).
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr(combat_handlers.asyncio, "sleep", sleep_mock)
+
+    callback = make_callback("confirm_fight_auto:5")
+    api = AsyncMock()
+    api.confirm_combat.return_value = {
+        "status": "active", "result": None, "current_turn": "player", "text": "⚔️ Ты вступаешь в бой!"
+    }
+    api.take_turn.side_effect = [
+        {"status": "active", "result": None, "current_turn": "enemy", "text": "Ход 1"},
+        {"status": "active", "result": None, "current_turn": "player", "text": "Ход 2"},
+        {"status": "finished", "result": "victory", "current_turn": "player", "text": "Ты победил!"},
+    ]
+
+    await confirm_fight_auto(callback, api)
+
+    api.confirm_combat.assert_awaited_once_with(1, 5, "fight")
+    assert api.take_turn.await_count == 3
+    assert sleep_mock.await_count == 3
+    for call in sleep_mock.await_args_list:
+        assert call.args[0] == combat_handlers.AUTO_BATTLE_TURN_DELAY_SECONDS
+
+    # entrance + 3 хода = 4 правки сообщения; answer() зовётся один раз, сразу после входа в бой.
+    assert callback.message.edit_text.await_count == 4
+    callback.answer.assert_awaited_once()
+
+    first_text = callback.message.edit_text.call_args_list[0].args[0]
+    assert first_text == "⚔️ Ты вступаешь в бой!"
+
+    second_call = callback.message.edit_text.call_args_list[1]
+    assert second_call.args[0] == "⚡ Автобой — ход 1\n\nХод 1"
+    assert second_call.kwargs["reply_markup"] is None  # бой ещё активен — кнопок нет
+
+    last_call = callback.message.edit_text.call_args_list[-1]
+    assert last_call.args[0] == "⚡ Автобой — ход 3\n\nТы победил!"
+    callback_datas = [btn.callback_data for row in last_call.kwargs["reply_markup"].inline_keyboard for btn in row]
+    assert "search_encounter" in callback_datas  # финальный экран — с постбоевой клавиатурой
+
+
+async def test_confirm_fight_auto_stops_at_flee_decision(monkeypatch):
+    monkeypatch.setattr(combat_handlers.asyncio, "sleep", AsyncMock())
+
+    callback = make_callback("confirm_fight_auto:5")
+    api = AsyncMock()
+    api.confirm_combat.return_value = {"status": "active", "current_turn": "player", "text": "..."}
+    api.take_turn.return_value = {
+        "status": "awaiting_flee_decision", "current_turn": "player", "text": "⚠️ Шанс уйти живым!"
+    }
+
+    await confirm_fight_auto(callback, api)
+
+    last_call = callback.message.edit_text.call_args_list[-1]
+    callback_datas = [btn.callback_data for row in last_call.kwargs["reply_markup"].inline_keyboard for btn in row]
+    assert callback_datas == ["flee_decision_flee:5", "flee_decision_continue:5"]
 
 
 async def test_confirm_flee_shows_post_battle_buttons():
