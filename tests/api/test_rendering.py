@@ -255,3 +255,27 @@ def test_render_battle_end_rejects_unknown_result():
         r.render_battle_end(
             "wolf", "draw", reward=0, victory_points_total=0, hp_current=1, hp_max=1, hp_seconds_to_full=0
         )
+
+
+def test_render_battle_end_boss_defeat_uses_boss_declension():
+    # Победа над боссом рендерится отдельно (render_boss_victory), но
+    # поражение/побег всё ещё идут через обычный render_battle_end и должны
+    # использовать полную грамматическую запись "boss" из ENEMY_NAMES.
+    text = r.render_battle_end(
+        "boss", "defeat", reward=0, victory_points_total=0, hp_current=0, hp_max=60, hp_seconds_to_full=60
+    )
+    assert text.startswith("💀 Ты пал в бою с Лесным Королём...")
+
+
+def test_render_boss_encounter_mentions_boss():
+    text = r.render_boss_encounter()
+    assert "Лесно" in text  # "Лесного Короля"/"Лесной Король" в зависимости от формулировки
+    assert text
+
+
+def test_render_boss_victory_shows_reward_and_no_hp_line():
+    text = r.render_boss_victory(reward=100, victory_points_total=250)
+    assert "Лесного Короля" in text
+    assert "🏆 +100 победных очков (всего: 250)" in text
+    assert "❤️ HP" not in text
+    assert "⏳" not in text

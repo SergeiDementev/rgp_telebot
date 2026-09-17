@@ -17,7 +17,12 @@ LEVEL_THRESHOLD_STEP_DEFAULT = 4
 
 STAT_POINTS_PER_LEVEL = 2
 
-VICTORY_REWARD_DEFAULTS = {"mouse": 1, "wolf": 5, "boar": 15}
+VICTORY_REWARD_DEFAULTS = {"mouse": 1, "wolf": 5, "boar": 15, "boss": 100}
+
+# Финальный босс (docs/notes.md, п.36) — статы откалиброваны в
+# scripts/simulate_boss.py под типичного персонажа 9-10 уровня, доступ
+# открывается по факту достижения этого уровня, не раньше.
+BOSS_LEVEL_REQUIREMENT = 9
 
 # §6 gameplay_loop_mvp.md: пропорции поиска противника смещаются по уровню —
 # от 60/30/10 (мышь/волк/кабан) на 1-2 уровне до зеркальных 10/30/60 на

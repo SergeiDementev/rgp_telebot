@@ -36,7 +36,8 @@ project/
 │   ├── main.py               # сборка приложения, create_all(), /health
 │   ├── routers/
 │   │   ├── character.py     # создание/просмотр персонажа, прокачка
-│   │   ├── encounter.py     # поиск противника + инициатива/обстоятельство (/start)
+│   │   ├── encounter.py     # поиск противника + инициатива/обстоятельство (/start);
+│   │   │                    # + целенаправленная встреча с боссом (/search_boss, docs/notes.md п.36)
 │   │   └── combat.py        # confirm/turn/flee_decision/use_potion/get — цикл ходов боя
 │   ├── schemas/              # Pydantic-модели запросов/ответов (character.py, combat.py)
 │   ├── rendering.py           # структурированные факты боя → готовый текст для клиента
@@ -52,12 +53,13 @@ project/
 │                              # само приложение при старте её больше не трогает
 │
 ├── content/                  # статичные игровые данные — готово (этап 2)
-│   └── enemies.json          # статы мышь/волк/кабан
+│   └── enemies.json          # статы мышь/волк/кабан/boss + can_flee по каждому (docs/notes.md п.36)
 │
 ├── scripts/                  # готово
 │   ├── simulate_combat.py         # консольный симулятор боёв для калибровки (см. §8, этап 2)
 │   ├── simulate_combat_economy.py # + слой экономики (лут/золото/зелья) поверх того же движка
-│   └── simulate_boss.py           # калибровка статов финального босса (docs/notes.md пп.26-29)
+│   └── simulate_boss.py           # калибровка статов финального босса (docs/notes.md пп.26-29,
+│                                   # статы перенесены в content/enemies.json в п.36)
 │
 ├── tests/                     # готово — pytest, зеркалит структуру выше
 │   ├── core/
@@ -75,7 +77,8 @@ project/
     ├── handlers/
     │   ├── start.py           # /start, /rules, создание персонажа
     │   ├── character.py       # экран статов, "Меню игрока" (статы/прокачка + золото/лут/зелья,
-    │   │                      # docs/notes.md п.30; общий экран для создания и левел-апа)
+    │   │                      # docs/notes.md п.30; общий экран для создания и левел-апа) +
+    │   │                      # кнопка "Финальный босс" на главном экране (п.36)
     │   └── combat.py          # весь боевой цикл — поиск, инициатива, ходы, завершение
     └── main.py                 # сборка Dispatcher, регистрация роутеров, polling
 ```
@@ -151,6 +154,11 @@ POST   /character/{id}/buy_potion      — {"size": "small" | "large"} — пр�
 
 POST /encounter/search               — бросок d10 (50/30/20), создание CombatSession
                                         (status="awaiting_initiative")
+POST /encounter/search_boss          — docs/notes.md п.36: без броска — целенаправленная встреча
+                                        с финальным боссом (enemy_type="boss"), не через ростер.
+                                        403 detail="level_too_low", если character.level ниже
+                                        pr.BOSS_LEVEL_REQUIREMENT (бот тоже прячет/блокирует
+                                        кнопку сам, но сервер не доверяет клиенту)
 POST /combat/{id}/start              — бросок инициативы + обстоятельства одним вызовом
                                         (status -> "awaiting_confirmation")
 
@@ -167,7 +175,7 @@ POST /combat/{id}/use_potion         — docs/notes.md п.33: { "size": "small" 
 GET  /combat/{id}                    — текущее состояние сессии (восстановление после сбоя бота)
 ```
 
-`CombatTurnResponse` (ответы `/confirm`, `/turn`, `/flee_decision`, `/use_potion`) несёт снимок инвентаря зелий игрока (`potions_small`, `potions_large`, `potion_used_this_battle`) — бот решает по нему, показывать ли кнопки "🧪 Малое"/"🧪 Большое" на следующем ходу, без отдельного `GET /character` на каждом шаге.
+`CombatTurnResponse` (ответы `/confirm`, `/turn`, `/flee_decision`, `/use_potion`) несёт снимок инвентаря зелий игрока (`potions_small`, `potions_large`, `potion_used_this_battle`) — бот решает по нему, показывать ли кнопки "🧪 Малое"/"🧪 Большое" на следующем ходу, без отдельного `GET /character` на каждом шаге. Также несёт `enemy_type` (docs/notes.md п.36) — бот по нему (вместе с `result == "victory"`) определяет победу именно над боссом и показывает экран поздравления вместо обычной постбоевой клавиатуры, тоже без лишнего запроса.
 
 `/encounter/search` и `/combat/{id}/start` — два отдельных запроса, а не один: в `gameplay_loop_mvp.md` §9 это два отдельных нажатия кнопки ("Искать противника", затем отдельно "Определить инициативу"), а принцип "один HTTP-запрос = один шаг" (§1) требует по запросу на каждое нажатие.
 

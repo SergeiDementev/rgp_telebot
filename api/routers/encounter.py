@@ -48,11 +48,7 @@ def _circumstance_multiplier(outcome) -> float:
     return 1.0
 
 
-@router.post("/encounter/search", response_model=EncounterSearchResponse)
-def search_encounter(
-    character: Character = Depends(get_current_character),
-    db: Session = Depends(get_db),
-) -> EncounterSearchResponse:
+def _require_no_active_session(character: Character, db: Session) -> None:
     active_session = (
         db.query(CombatSession)
         .filter(CombatSession.character_id == character.id, CombatSession.status != "finished")
@@ -63,7 +59,14 @@ def search_encounter(
             status_code=status.HTTP_409_CONFLICT, detail="character already has an active combat session"
         )
 
-    roll, enemy_type = _roll_enemy_encounter(character.level)
+
+def _start_encounter_session(
+    character: Character, db: Session, enemy_type: str, turn_log_entry: dict, text: str
+) -> EncounterSearchResponse:
+    """Общая часть создания CombatSession для обоих путей поиска противника
+    (обычный ростер и целенаправленная встреча с боссом, docs/notes.md,
+    п.36) — отличаются только тем, как выбран `enemy_type`/что попадает в
+    первую запись `turn_log`/какой текст встречи, остальное идентично."""
     enemy_stats = enemy_content.get_enemy_stats(enemy_type)
 
     # Снимок HP на начало боя — та же точка, где регенерация обычно
@@ -83,7 +86,7 @@ def search_encounter(
         character_hp_snapshot=hp_current,
         current_turn=None,
         status="awaiting_initiative",
-        turn_log=[{"type": "encounter", "roll": roll, "enemy_type": enemy_type}],
+        turn_log=[turn_log_entry],
     )
     db.add(session)
     db.commit()
@@ -93,7 +96,41 @@ def search_encounter(
         combat_session_id=session.id,
         enemy_type=enemy_type,
         status=session.status,
+        text=text,
+    )
+
+
+@router.post("/encounter/search", response_model=EncounterSearchResponse)
+def search_encounter(
+    character: Character = Depends(get_current_character),
+    db: Session = Depends(get_db),
+) -> EncounterSearchResponse:
+    _require_no_active_session(character, db)
+    roll, enemy_type = _roll_enemy_encounter(character.level)
+    return _start_encounter_session(
+        character, db, enemy_type,
+        turn_log_entry={"type": "encounter", "roll": roll, "enemy_type": enemy_type},
         text=rendering.render_encounter(enemy_type, roll),
+    )
+
+
+@router.post("/encounter/search_boss", response_model=EncounterSearchResponse)
+def search_boss_encounter(
+    character: Character = Depends(get_current_character),
+    db: Session = Depends(get_db),
+) -> EncounterSearchResponse:
+    """Целенаправленная встреча с финальным боссом (docs/notes.md, п.36) —
+    не через случайный ростер §6: кнопка на главном экране, доступна с
+    pr.BOSS_LEVEL_REQUIREMENT уровня. Бот прячет/блокирует кнопку раньше
+    этого уровня сам, но проверка здесь обязательна — клиенту в этом не
+    доверяем (тот же принцип, что и везде в этом роутере)."""
+    if character.level < pr.BOSS_LEVEL_REQUIREMENT:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="level_too_low")
+    _require_no_active_session(character, db)
+    return _start_encounter_session(
+        character, db, "boss",
+        turn_log_entry={"type": "encounter", "enemy_type": "boss"},
+        text=rendering.render_boss_encounter(),
     )
 
 

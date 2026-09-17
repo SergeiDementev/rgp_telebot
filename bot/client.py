@@ -102,6 +102,9 @@ class ApiClient:
     async def search_encounter(self, telegram_user_id: int) -> dict:
         return await self._request("POST", "/encounter/search", telegram_user_id=telegram_user_id)
 
+    async def search_boss_encounter(self, telegram_user_id: int) -> dict:
+        return await self._request("POST", "/encounter/search_boss", telegram_user_id=telegram_user_id)
+
     async def start_combat(self, telegram_user_id: int, combat_session_id: int) -> dict:
         return await self._request(
             "POST", f"/combat/{combat_session_id}/start", telegram_user_id=telegram_user_id

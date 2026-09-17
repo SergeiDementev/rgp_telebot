@@ -55,7 +55,7 @@ async def cmd_start(message: Message, api: ApiClient) -> None:
 
     # §1: персонаж уже есть — повторный /start не пересоздаёт его.
     await message.answer(WELCOME_TEXT)
-    await message.answer(render_stats_screen(character), reply_markup=stats_screen_keyboard())
+    await message.answer(render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
 
 
 @router.callback_query(F.data == "start_game")

@@ -38,6 +38,14 @@ def test_resolve_loot_drop_nothing_has_zero_price():
     assert price == 0
 
 
+@pytest.mark.parametrize("roll", [1, 50, 100])
+def test_resolve_loot_drop_boss_never_drops_anything(roll):
+    # docs/notes.md, п.36 — финальный босс без лута, любой бросок -> "nothing".
+    name, price = ec.resolve_loot_drop("boss", roll)
+    assert name == "nothing"
+    assert price == 0
+
+
 def test_sell_loot_value_sums_by_price():
     loot = {"mouse_pelt": 14, "wolf_fang": 3}
     assert ec.sell_loot_value(loot) == 14 * 2 + 3 * 8

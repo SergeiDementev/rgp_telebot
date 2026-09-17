@@ -13,6 +13,7 @@ from bot.handlers.combat import (
     flee_decision_continue_auto,
     flee_decision_flee,
     refresh_after_battle,
+    search_boss_encounter,
     search_encounter,
     start_combat,
     take_turn,
@@ -66,6 +67,47 @@ async def test_search_encounter_reraises_other_errors():
 
     with pytest.raises(ApiError):
         await search_encounter(callback, api)
+
+
+async def test_search_boss_encounter_shows_initiative_button():
+    callback = make_callback("search_boss_encounter")
+    api = AsyncMock()
+    api.search_boss_encounter.return_value = {
+        "combat_session_id": 9, "enemy_type": "boss", "text": "Ты входишь в чертог Лесного Короля."
+    }
+
+    await search_boss_encounter(callback, api)
+
+    api.search_boss_encounter.assert_awaited_once_with(1)
+    text = callback.message.edit_text.call_args.args[0]
+    assert text == "Ты входишь в чертог Лесного Короля."
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert markup.inline_keyboard[0][0].callback_data == "start_combat:9"
+
+
+async def test_search_boss_encounter_shows_alert_on_existing_session():
+    callback = make_callback("search_boss_encounter")
+    api = AsyncMock()
+    api.search_boss_encounter.side_effect = ApiError(409, "character already has an active combat session")
+
+    await search_boss_encounter(callback, api)
+
+    callback.message.edit_text.assert_not_called()
+    callback.answer.assert_awaited_once()
+    assert callback.answer.call_args.kwargs.get("show_alert") is True
+
+
+async def test_search_boss_encounter_shows_alert_when_level_too_low():
+    # Защита от гонки — сервер тоже проверяет уровень (docs/notes.md, п.36),
+    # даже если кнопка на главном экране уже должна была быть заперта.
+    callback = make_callback("search_boss_encounter")
+    api = AsyncMock()
+    api.search_boss_encounter.side_effect = ApiError(403, "level_too_low")
+
+    await search_boss_encounter(callback, api)
+
+    callback.message.edit_text.assert_not_called()
+    callback.answer.assert_awaited_once_with("Финальный босс пока недоступен.", show_alert=True)
 
 
 async def test_start_combat_shows_fight_flee_and_auto_buttons():
@@ -330,6 +372,39 @@ async def test_take_turn_finished_shows_post_battle_buttons():
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert callback_datas == ["refresh_after_battle", "search_encounter", "open_allocation", "show_rules"]
+
+
+async def test_take_turn_boss_victory_shows_restart_button_only():
+    # docs/notes.md, п.36 — победа над боссом заканчивает игру: вместо
+    # обычной постбоевой клавиатуры единственная кнопка "Начать заново",
+    # переиспользующая callback_data "reset_confirm" (bot/handlers/start.py).
+    callback = make_callback("take_turn:5")
+    api = AsyncMock()
+    api.take_turn.return_value = {
+        "status": "finished", "result": "victory", "enemy_type": "boss", "text": "🎉 Ты повергнул Лесного Короля!"
+    }
+
+    await take_turn(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["reset_confirm"]
+
+
+async def test_take_turn_boss_defeat_shows_normal_post_battle_buttons():
+    # Поражение от босса — обычный постбоевой экран, можно попробовать снова.
+    callback = make_callback("take_turn:5")
+    api = AsyncMock()
+    api.take_turn.return_value = {
+        "status": "finished", "result": "defeat", "enemy_type": "boss", "text": "💀 Ты пал..."
+    }
+
+    await take_turn(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "search_encounter" in callback_datas
+    assert "reset_confirm" not in callback_datas
 
 
 async def test_take_turn_awaiting_flee_decision_shows_flee_buttons():

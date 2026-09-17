@@ -83,6 +83,20 @@ def _post_battle_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def _boss_victory_keyboard() -> InlineKeyboardMarkup:
+    """Победа над финальным боссом — конец игры (docs/notes.md, п.36), не
+    обычный постбоевой экран: единственный выход — обнулить персонажа и
+    начать заново. Кнопка нарочно ведёт на тот же callback_data
+    "reset_confirm", что и подтверждение "🗑 Обнулить персонажа"
+    (bot/handlers/start.py) — тот хендлер уже делает ровно то, что нужно
+    здесь (удалить + пересоздать + показать экран создания), без
+    дополнительного диалога "точно?": само нажатие уже осознанный выбор,
+    других кнопок на этом экране нет."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🔄 Начать заново", callback_data="reset_confirm")]]
+    )
+
+
 def _next_step_markup(session_id: int, response: dict, *, mode: str = "manual") -> InlineKeyboardMarkup:
     """Выбор клавиатуры по статусу ответа confirm/turn/flee_decision. Ветка
     "status active" ниже — единственное место, строящее кнопку хода, и
@@ -91,6 +105,8 @@ def _next_step_markup(session_id: int, response: dict, *, mode: str = "manual") 
     цикле, см. _run_autobattle) — поэтому кнопки зелий (см. _potion_buttons),
     добавленные здесь, структурно не могут появиться в автобою."""
     if response["status"] == "finished":
+        if response.get("enemy_type") == "boss" and response.get("result") == "victory":
+            return _boss_victory_keyboard()
         return _post_battle_keyboard()
     if response["status"] == "awaiting_flee_decision":
         return _flee_choice_keyboard(session_id, mode=mode)
@@ -111,6 +127,33 @@ async def search_encounter(callback: CallbackQuery, api: ApiClient) -> None:
         # У персонажа уже есть незавершённая боевая сессия (см. api/routers/
         # encounter.py) — например, бот перезапустили посреди боя. Раньше
         # это падало необработанным исключением (docs/notes.md).
+        await callback.answer("У тебя уже есть незавершённый бой — сначала заверши его.", show_alert=True)
+        return
+    session_id = response["combat_session_id"]
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⚔️ Определить инициативу", callback_data=f"start_combat:{session_id}")]
+        ]
+    )
+    await callback.message.edit_text(response["text"], reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "search_boss_encounter")
+async def search_boss_encounter(callback: CallbackQuery, api: ApiClient) -> None:
+    """Целенаправленная встреча с финальным боссом (docs/notes.md, п.36) —
+    кнопка на главном экране (bot/handlers/character.py::stats_screen_
+    keyboard), а не через "Искать противника". Уровневый гейт бот уже
+    проверил при показе кнопки (см. boss_locked), но сервер проверяет его
+    тоже — на случай гонки (сообщение с кнопкой могло устареть)."""
+    try:
+        response = await api.search_boss_encounter(callback.from_user.id)
+    except ApiError as error:
+        if error.status_code == 403:
+            await callback.answer("Финальный босс пока недоступен.", show_alert=True)
+            return
+        if error.status_code != 409:
+            raise
         await callback.answer("У тебя уже есть незавершённый бой — сначала заверши его.", show_alert=True)
         return
     session_id = response["combat_session_id"]

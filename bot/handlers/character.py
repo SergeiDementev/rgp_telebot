@@ -55,6 +55,12 @@ BUY_POTION_ERROR_MESSAGES = {
 
 MENU_SCREEN_TITLE = "👤 Меню игрока"
 
+# Дублирует core/progression.py::BOSS_LEVEL_REQUIREMENT (docs/notes.md,
+# п.36) — тот же паттерн дублирования, что и у цен/капов зелий выше: бот
+# сам решает, показывать ли кнопку активной или "запертой", без похода в API.
+BOSS_LEVEL_REQUIREMENT = 9
+BOSS_LOCKED_ALERT_TEXT = f"Финальный босс станет доступен с {BOSS_LEVEL_REQUIREMENT}-го уровня."
+
 
 def render_stats_screen(character: dict) -> str:
     """§4: переиспользуемый экран статов персонажа."""
@@ -70,13 +76,27 @@ def render_stats_screen(character: dict) -> str:
     )
 
 
-def stats_screen_keyboard() -> InlineKeyboardMarkup:
+def _boss_button(character: dict) -> InlineKeyboardButton:
+    """Кнопка финального босса — всегда в основном меню, последней, но
+    активна только с BOSS_LEVEL_REQUIREMENT уровня (docs/notes.md, п.36).
+    До этого уровня текст самой кнопки объясняет условие — нажатие всё
+    равно возможно (Telegram не даёт по-настоящему disabled-кнопки), но
+    ведёт на отдельный колбэк с алертом, не в бой."""
+    if character["level"] >= BOSS_LEVEL_REQUIREMENT:
+        return InlineKeyboardButton(text="⚔️ Финальный босс", callback_data="search_boss_encounter")
+    return InlineKeyboardButton(
+        text=f"🔒 Финальный босс (с {BOSS_LEVEL_REQUIREMENT} уровня)", callback_data="boss_locked"
+    )
+
+
+def stats_screen_keyboard(character: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_stats")],
             [InlineKeyboardButton(text="🔍 Искать противника", callback_data="search_encounter")],
             [InlineKeyboardButton(text=MENU_SCREEN_TITLE, callback_data="open_allocation")],
             [InlineKeyboardButton(text="📜 Правила", callback_data="show_rules")],
+            [_boss_button(character)],
         ]
     )
 
@@ -235,8 +255,16 @@ async def open_allocation(callback: CallbackQuery, api: ApiClient) -> None:
 @router.callback_query(F.data == "refresh_stats")
 async def back_to_stats(callback: CallbackQuery, api: ApiClient) -> None:
     character = await api.get_character(callback.from_user.id)
-    await safe_edit_text(callback.message, render_stats_screen(character), reply_markup=stats_screen_keyboard())
+    await safe_edit_text(callback.message, render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
     await callback.answer()
+
+
+@router.callback_query(F.data == "boss_locked")
+async def boss_locked(callback: CallbackQuery) -> None:
+    """Кнопка "Финальный босс" видна всегда (docs/notes.md, п.36), но ниже
+    BOSS_LEVEL_REQUIREMENT уровня ведёт сюда — Telegram не даёт настоящую
+    disabled-кнопку, поэтому объясняем условие алертом, без похода в API."""
+    await callback.answer(BOSS_LOCKED_ALERT_TEXT, show_alert=True)
 
 
 @router.callback_query(F.data.startswith("allocate:"))
@@ -276,7 +304,7 @@ async def allocate_creation(callback: CallbackQuery, api: ApiClient) -> None:
 @router.callback_query(F.data == "finish_creation")
 async def finish_creation(callback: CallbackQuery, api: ApiClient) -> None:
     character = await api.get_character(callback.from_user.id)
-    await callback.message.edit_text(render_stats_screen(character), reply_markup=stats_screen_keyboard())
+    await callback.message.edit_text(render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
     await callback.answer()
 
 

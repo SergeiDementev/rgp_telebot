@@ -184,3 +184,48 @@ def test_start_combat_twice_returns_409(db_session_factory, monkeypatch):
     assert first.status_code == 200
     second = client.post(f"/combat/{session_id}/start", headers=HEADERS)
     assert second.status_code == 409
+
+
+def test_search_boss_encounter_creates_session_at_required_level(db_session_factory):
+    # docs/notes.md, п.36 — доступ с pr.BOSS_LEVEL_REQUIREMENT (9) уровня.
+    _insert_character(db_session_factory, level=9)
+    client = make_client(db_session_factory)
+
+    response = client.post("/encounter/search_boss", headers=HEADERS)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["enemy_type"] == "boss"
+    assert body["status"] == "awaiting_initiative"
+    assert body["text"]
+
+
+def test_search_boss_encounter_below_required_level_returns_403(db_session_factory):
+    _insert_character(db_session_factory, level=8)
+    client = make_client(db_session_factory)
+
+    response = client.post("/encounter/search_boss", headers=HEADERS)
+    assert response.status_code == 403
+    assert response.json()["detail"] == "level_too_low"
+
+
+def test_search_boss_encounter_rejects_second_active_session(db_session_factory):
+    _insert_character(db_session_factory, level=9)
+    client = make_client(db_session_factory)
+
+    first = client.post("/encounter/search_boss", headers=HEADERS)
+    assert first.status_code == 200
+    second = client.post("/encounter/search_boss", headers=HEADERS)
+    assert second.status_code == 409
+
+
+def test_search_boss_encounter_does_not_roll_dice(db_session_factory, monkeypatch):
+    # Целенаправленная встреча, не случайный ростер (§6) — никакого броска.
+    def _fail_randint(*_args, **_kwargs):
+        raise AssertionError("search_boss_encounter must not roll dice")
+
+    _insert_character(db_session_factory, level=9)
+    client = make_client(db_session_factory)
+    monkeypatch.setattr("api.routers.encounter.random.randint", _fail_randint)
+
+    response = client.post("/encounter/search_boss", headers=HEADERS)
+    assert response.status_code == 200

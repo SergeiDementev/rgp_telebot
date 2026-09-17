@@ -214,10 +214,17 @@ def test_calculate_encounter_faces_always_sums_to_ten():
         ("mouse", 1),
         ("wolf", 5),
         ("boar", 15),
+        ("boss", 100),
     ],
 )
 def test_calculate_victory_reward_draft_values(enemy_type, expected_reward):
     assert pr.calculate_victory_reward(enemy_type) == expected_reward
+
+
+def test_boss_level_requirement_is_nine():
+    # docs/notes.md, п.36 — статы босса откалиброваны под 9-10 уровень
+    # (scripts/simulate_boss.py), доступ открывается не раньше.
+    assert pr.BOSS_LEVEL_REQUIREMENT == 9
 
 
 @pytest.mark.parametrize("enemy_type,expected_reward", [("mouse", 1), ("wolf", 5), ("boar", 15)])

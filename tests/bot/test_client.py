@@ -115,6 +115,17 @@ async def test_search_encounter_sends_telegram_header():
     assert result["enemy_type"] == "wolf"
 
 
+async def test_search_boss_encounter_sends_telegram_header():
+    handler, captured = _echo_handler(200, {"combat_session_id": 9, "enemy_type": "boss"})
+    client = make_client(handler)
+
+    result = await client.search_boss_encounter(telegram_user_id=7)
+
+    assert captured["path"] == "/encounter/search_boss"
+    assert captured["headers"]["x-telegram-user-id"] == "7"
+    assert result["enemy_type"] == "boss"
+
+
 async def test_start_combat_path_and_header():
     handler, captured = _echo_handler(200, {"status": "awaiting_confirmation"})
     client = make_client(handler)

@@ -428,3 +428,32 @@
 - Лут в списке теперь показывает цену продажи: один экземпляр — просто `(N зол.)`, несколько — `×count (N зол.)`, где N = цена за штуку × count. Цены продублированы в `bot/handlers/character.py::LOOT_ITEM_PRICES` (бот не импортирует `core/economy.py` — тот же паттерн, что и `LOOT_ITEM_NAMES_RU`/цены зелий).
 
 Тесты: `tests/bot/test_character_handler.py` — `test_open_allocation_shows_levelup_screen` адаптирован под отсутствие заголовка, `test_open_allocation_shows_loot_and_potions_when_present` — под цены в строке лута, добавлен `test_open_allocation_shows_plain_price_for_single_loot_item`. Все 403 теста проходят, бот перезапущен на каждом шаге (API не трогали).
+
+## 36. Финальный босс перенесён из симулятора в реальную игру — ✅ сделано (2026-09-18)
+
+Статы и `ENEMY_CAN_FLEE` были откалиброваны в `scripts/simulate_boss.py` ещё в пп.28-29, но в саму игру никогда не переносились — не было ни записи в контенте врагов, ни пути встречи, ни текста. Перед реализацией уточнил у пользователя открытые дизайн-решения (путь встречи, повторяемость, лут, имя) — ответы легли в основу решения ниже.
+
+**Дизайн-решения (с пользователем):**
+- Путь встречи — отдельная кнопка "⚔️ Финальный босс" ВСЕГДА в основном меню, последней (после "Правила"), а не через случайный ростер поиска. До `BOSS_LEVEL_REQUIREMENT` (9) уровня кнопка видна, но заперта — пояснение прямо в тексте кнопки ("🔒 Финальный босс (с 9 уровня)"), нажатие даёт алерт, не бой (Telegram не даёт true-disabled кнопку).
+- Повторяемость — предложил не заводить отдельный флаг "босс побеждён" на `Character`: победа сразу ведёт на экран с одной кнопкой "Начать заново", после которой персонаж всё равно обнуляется, так что отдельного состояния "жив и уже победил босса" в игре никогда не возникает. Определяется на лету по `session.enemy_type == "boss" and result == "victory"`, не хранится.
+- Лут — не даётся вообще (решение пользователя: "это конец игры", трофей — тема для будущего).
+- Имя — "Лесной Король".
+
+**Контент и `core/`:**
+- `content/enemies.json` — новая запись `"boss"` (hp_max=150, strength=22, agility=9, luck=4 — статы из `BOSS_PRESET` п.28 без изменений) плюс новое поле `can_flee` у ВСЕХ записей (`true` у mouse/wolf/boar, `false` у boss) — так `ENEMY_CAN_FLEE` из симулятора наконец попал в реальный движок: данными по мобу, не отдельным хардкод-словарём.
+- `core/progression.py` — `BOSS_LEVEL_REQUIREMENT = 9`, `VICTORY_REWARD_DEFAULTS["boss"] = 100` (число почти декоративное — персонаж обнуляется сразу после, но `calculate_victory_reward` требует ключ, иначе `KeyError` при победе).
+- `core/economy.py` — `LOOT_TABLE["boss"] = [("nothing", 100, 0)]` — по решению пользователя, всегда "ничего".
+
+**API:**
+- `api/routers/combat.py::_check_flee_gate` — для стороны `enemy` теперь сначала смотрит `enemy_stats.get("can_flee", True)`; `False` — выходит сразу (`return None`), без броска и без траты права. Право игрока сбежать не затронуто вообще.
+- `api/routers/combat.py::_finish_battle` — при `enemy_type == "boss" and result == "victory"` рендерит `rendering.render_boss_victory(...)` вместо обычного `render_battle_end` (без HP/таймера регена — дальше только "Начать заново"); поражение/побег от босса по-прежнему идут через обычный `render_battle_end`.
+- `api/routers/encounter.py` — общая часть `search_encounter`/новой `search_boss_encounter` вынесена в `_require_no_active_session`/`_start_encounter_session` (были задублированы, стало общее). `POST /encounter/search_boss` — без броска (никакого случайного ростера), с проверкой `character.level < BOSS_LEVEL_REQUIREMENT -> 403 "level_too_low"` — бот прячет/блокирует кнопку сам, но сервер не доверяет клиенту (тот же принцип, что и везде в этом роутере).
+- `api/schemas/combat.py::CombatTurnResponse` — новое поле `enemy_type` (через уже существующий `_turn_response()`) — бот иначе не мог бы узнать, что бой закончился именно с боссом, не делая лишний `get_character`.
+- `api/rendering.py` — `ENEMY_NAMES["boss"]` (полная грамматика: "Лесной Король"/"Лесного Короля"/"Лесным Королём"), `render_boss_encounter()` (текст входа в бой без "🎲 Бросок" — это не случайная встреча), `render_boss_victory()` (поздравление + награда, без HP-блока).
+
+**Бот:**
+- `bot/handlers/character.py::stats_screen_keyboard()` — сменил сигнатуру (теперь принимает `character`, все 3 вызывающих места обновлены), добавляет `_boss_button()` последней строкой: активна с 9 уровня (`callback_data="search_boss_encounter"`) или заперта (`callback_data="boss_locked"`, alert `BOSS_LOCKED_ALERT_TEXT`). `BOSS_LEVEL_REQUIREMENT` продублирован локально (бот не импортирует `core/`, тот же паттерн, что и цены зелий).
+- `bot/handlers/combat.py::search_boss_encounter` — зеркало `search_encounter`, плюс обработка `403` отдельным alert'ом. `_boss_victory_keyboard()` — единственная кнопка "🔄 Начать заново" с `callback_data="reset_confirm"` — **переиспользует существующий хендлер** `reset_confirm` (`bot/handlers/start.py`, уже делает ровно "удалить + пересоздать + показать экран создания"), без нового кода и без диалога "точно?": само нажатие после экрана поздравления уже осознанный выбор. `_next_step_markup()` в ветке "finished" проверяет `enemy_type == "boss" and result == "victory"` до выбора обычной постбоевой клавиатуры — работает одинаково что в ручном бою, что в автобою (общая функция).
+- Кнопку в постбоевую клавиатуру (`_post_battle_keyboard()` в combat.py) НЕ добавлял — по формулировке пользователя ("в основном меню"), намеренно уже, чем можно было бы; если понадобится и там, дополнительно уточнить.
+
+Тесты: `tests/core/test_progression.py` (+2), `tests/core/test_economy.py` (+1 параметризованный), `tests/api/test_rendering.py` (+3), `tests/api/test_encounter_router.py` (+4: создание сессии, гейт по уровню, 409, отсутствие броска), `tests/api/test_combat_router.py` (+2: поздравление без лута/HP-блока и корректная награда, невозможность побега стороны enemy у босса даже при низком HP), `tests/bot/test_client.py` (+1), `tests/bot/test_character_handler.py` (+3: заперта/активна/алерт), `tests/bot/test_combat_handler.py` (+5: вход в бой, 409, 403, клавиатура победы, клавиатура поражения — не путать с обычной). Все 426 тестов проходят, API и бот перезапущены.

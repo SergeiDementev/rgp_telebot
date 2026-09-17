@@ -61,12 +61,33 @@ ENEMY_NAMES = {
         "alive_adj": "живым",
         "fled_verb": "сбежал",
     },
+    "boss": {
+        "nom_cap": "Лесной Король", "nom_low": "лесной король",
+        "acc_cap": "Лесного Короля", "acc_low": "лесного короля",
+        "gen_low": "лесного короля",
+        "ins_cap": "Лесным Королём",
+        "dodge_verb": "увернулся",
+        "alive_adj": "живым",
+        # Никогда не рендерится по-настоящему — can_flee=false в
+        # content/enemies.json (docs/notes.md, п.36) гарантирует, что бросок
+        # на побег для боевой стороны "enemy" не происходит вообще, но поле
+        # держим ради целостности словаря (та же форма, что и у остальных).
+        "fled_verb": "сбежал",
+    },
 }
 
 
 def render_encounter(enemy_type: str, roll: int) -> str:
     names = ENEMY_NAMES[enemy_type]
     return f"🎲 Бросок: {roll} → {names['nom_cap']}!\n\nТы наткнулся на {names['acc_low']}."
+
+
+def render_boss_encounter() -> str:
+    """Вход в бой с финальным боссом (docs/notes.md, п.36) — не через
+    случайный ростер поиска (§6), поэтому без формата "🎲 Бросок: N → ..." у
+    render_encounter: игрок выбирает эту встречу целенаправленно кнопкой, не
+    кубиком."""
+    return "👑 Ты входишь в чертог Лесного Короля. Отступать некуда — он уже смотрит на тебя."
 
 
 def render_initiative(enemy_type: str, player_roll: int, enemy_roll: int, first_role: str) -> str:
@@ -273,3 +294,15 @@ def render_battle_end(
     if hp_seconds_to_full > 0:
         lines.append(f"⏳ Полное восстановление через: ~{hp_seconds_to_full:.0f} сек.")
     return "\n".join(lines)
+
+
+def render_boss_victory(reward: int, victory_points_total: int) -> str:
+    """Победа над финальным боссом — конец игры (docs/notes.md, п.36), не
+    обычный `render_battle_end`: без строки HP/таймера регена (персонаж всё
+    равно обнуляется следующим нажатием) и с отдельным поздравительным
+    заголовком вместо стандартного "Бой окончен!"."""
+    return (
+        "🎉 Ты повергнул Лесного Короля!\n\n"
+        f"🏆 +{reward} победных очков (всего: {victory_points_total})\n\n"
+        "Приключение окончено. Спасибо, что играл(а)!"
+    )

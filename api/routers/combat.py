@@ -86,6 +86,12 @@ def _finish_battle(session: CombatSession, character: Character, result: str, db
             loot_dropped = loot_name
             character.loot = {**character.loot, loot_name: character.loot.get(loot_name, 0) + 1}
 
+    # Победа над финальным боссом — конец игры (docs/notes.md, п.36), не
+    # обычный экран боя: своё поздравление вместо render_battle_end, без
+    # HP/таймера регена (дальше только "Начать заново").
+    if session.enemy_type == "boss" and result == "victory":
+        return rendering.render_boss_victory(reward, character.victory_points)
+
     hp_max = pr.calculate_hp_max(character.vitality)
     seconds_to_full = pr.time_to_full_hp(character.hp_current, hp_max)
     return rendering.render_battle_end(
@@ -136,6 +142,11 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
         right_used = session.player_flee_right_used
         current_hp, max_hp, luck = session.character_hp_snapshot, pr.calculate_hp_max(character.vitality), character.luck
     else:
+        # Финальный босс бьётся до конца (docs/notes.md, п.36) — can_flee в
+        # content/enemies.json, не хардкод по названию: право игрока сбежать
+        # эта проверка не затрагивает вообще, она только про сторону enemy.
+        if not enemy_stats.get("can_flee", True):
+            return None
         right_used = session.enemy_flee_right_used
         current_hp, max_hp, luck = session.enemy_hp_current, enemy_stats["hp_max"], enemy_stats["luck"]
 
@@ -208,7 +219,7 @@ def _turn_response(session: CombatSession, character: Character, text: str) -> C
     отдельного вызова get_character на каждом шаге."""
     return CombatTurnResponse(
         combat_session_id=session.id, status=session.status, result=session.result,
-        current_turn=session.current_turn, text=text,
+        current_turn=session.current_turn, enemy_type=session.enemy_type, text=text,
         potions_small=character.potions_small, potions_large=character.potions_large,
         potion_used_this_battle=session.player_potion_used_this_battle,
     )

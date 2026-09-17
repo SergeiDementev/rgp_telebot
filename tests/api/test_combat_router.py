@@ -30,7 +30,7 @@ def _insert_character(db_session_factory, telegram_user_id=1, **overrides) -> in
     character = Character(
         telegram_user_id=telegram_user_id,
         nickname="Hero",
-        level=1,
+        level=overrides.get("level", 1),
         victory_points=overrides.get("victory_points", 0),
         unspent_stat_points=0,
         strength=overrides.get("strength", 10),
@@ -67,6 +67,16 @@ def _start_session_against_mouse(client, monkeypatch, extra_rolls, headers=HEADE
     затем extra_rolls доступны для последующих вызовов (turn/flee_decision)."""
     _patch_rolls(monkeypatch, [3, 7, 4, 5, *extra_rolls])  # 3->мышь, 7>4->игрок первый, 5->none
     session_id = client.post("/encounter/search", headers=headers).json()["combat_session_id"]
+    client.post(f"/combat/{session_id}/start", headers=headers)
+    client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=headers)
+    return session_id
+
+
+def _start_session_against_boss(client, monkeypatch, extra_rolls, headers=HEADERS):
+    """search_boss (без броска, docs/notes.md п.36) -> start (игрок первый,
+    обстоятельства нет) -> confirm(fight), затем extra_rolls для /turn."""
+    _patch_rolls(monkeypatch, [7, 4, 5, *extra_rolls])  # 7>4->игрок первый, 5->none
+    session_id = client.post("/encounter/search_boss", headers=headers).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=headers)
     client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=headers)
     return session_id
@@ -385,6 +395,73 @@ def test_flee_gate_burns_right_even_when_roll_fails(db_session_factory, monkeypa
     response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
     body = response.json()
     assert "проверка удачи на побег" not in body["text"].lower()
+
+
+def test_turn_victory_against_boss_shows_congratulations_and_no_loot(db_session_factory, monkeypatch):
+    # docs/notes.md, п.36 — победа над боссом рендерится отдельным экраном
+    # поздравления (render_boss_victory), не обычным render_battle_end: без
+    # строки HP/таймера регена и без лута (LOOT_TABLE["boss"] = "nothing").
+    _insert_character(db_session_factory, level=9, strength=1000, agility=10, luck=2)
+    client = make_client(db_session_factory)
+
+    session_id = _start_session_against_boss(
+        client, monkeypatch,
+        extra_rolls=[10, 10, 10, 100],  # double-strike нет, атака=100%, уворот мимо, лут roll (неважно какой)
+    )
+
+    response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
+    body = response.json()
+    assert response.status_code == 200
+    assert body["result"] == "victory"
+    assert body["status"] == "finished"
+    assert body["enemy_type"] == "boss"
+    assert "Лесного Короля" in body["text"]
+    assert "🎁 Добыча" not in body["text"]
+    assert "❤️ HP" not in body["text"]  # экран поздравления, не обычный итог боя
+
+    db = db_session_factory()
+    character = db.query(Character).filter(Character.telegram_user_id == 1).first()
+    assert character.victory_points == 100  # VICTORY_REWARD_DEFAULTS["boss"]
+    assert character.loot == {}
+    db.close()
+
+
+def test_boss_enemy_side_never_triggers_flee_gate(db_session_factory, monkeypatch):
+    # can_flee=false в content/enemies.json (docs/notes.md, п.36) — сторона
+    # enemy у босса никогда не проверяет побег, даже при HP далеко ниже
+    # порога 25%. Сессия собрана напрямую в БД — довести HP именно
+    # атакующей стороны "enemy" до низкого порога через полный HTTP-поток
+    # заняло бы много ходов и не добавило бы проверке ничего нового.
+    character_id = _insert_character(db_session_factory, level=9, strength=1, agility=1, luck=1, hp_current=50.0)
+    client = make_client(db_session_factory)
+
+    db = db_session_factory()
+    session = CombatSession(
+        character_id=character_id,
+        enemy_type="boss",
+        enemy_hp_current=10.0,  # 10/150 — далеко ниже 25%-порога
+        character_hp_snapshot=50.0,
+        current_turn="enemy",
+        status="active",
+        turn_log=[],
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    session_id = session.id
+    db.close()
+
+    _patch_rolls(monkeypatch, [10, 1, 1])  # double-strike нет, атака=1 -> промах (исход не важен)
+    response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
+    body = response.json()
+    assert response.status_code == 200
+    assert "побег" not in body["text"].lower()
+    assert "уйти" not in body["text"].lower()
+
+    db = db_session_factory()
+    refreshed = db.get(CombatSession, session_id)
+    assert refreshed.enemy_flee_right_used is False  # право даже не тронуто
+    db.close()
 
 
 def test_flee_gate_flee_decision_ends_battle(db_session_factory, monkeypatch):
