@@ -72,3 +72,19 @@ class CombatSession(Base):
     updated_at = Column(DateTime, nullable=False, default=_utcnow, onupdate=_utcnow)
 
     character = relationship("Character")
+
+
+class StatAllocationLog(Base):
+    """История выбора статов при прокачке (docs/notes.md) — раньше в БД
+    хранился только итоговый результат (текущие значения статов на
+    Character), без истории самих решений "на каком уровне что выбрал".
+    Пишется при каждом вызове allocate_point, включая распределение
+    стартового пула при создании персонажа (тот же эндпоинт/механика)."""
+
+    __tablename__ = "stat_allocation_log"
+
+    id = Column(Integer, primary_key=True)
+    character_id = Column(Integer, ForeignKey("characters.id"), nullable=False, index=True)
+    stat = Column(String, nullable=False)
+    level_at_time = Column(Integer, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=_utcnow)
