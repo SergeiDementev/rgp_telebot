@@ -15,6 +15,22 @@ buff, хотя по таблице §8 грани 1-3 — debuff) — здесь
 последовательная формулировка на каждый случай, не обе сразу.
 """
 
+from typing import Optional
+
+# Дублирует bot/handlers/character.py::LOOT_ITEM_NAMES_RU (docs/notes.md,
+# п.30/31) — бот и api не делят импорты (разные процессы, общаются только
+# по HTTP), а показ добычи в конце боя рендерится здесь же, где и весь
+# остальной текст боя, поэтому своя копия. Синхронизировать вручную при
+# добавлении новых предметов в core/economy.py::LOOT_TABLE.
+LOOT_ITEM_NAMES_RU = {
+    "mouse_pelt": "Мышиная шкурка",
+    "mouse_tail": "Мышиный хвост",
+    "wolf_fang": "Клык волка",
+    "wolf_pelt": "Шкура волка",
+    "boar_tusk": "Клык кабана",
+    "boar_hide": "Шкура кабана",
+}
+
 ENEMY_NAMES = {
     "mouse": {
         "nom_cap": "Мышь", "nom_low": "мышь",
@@ -141,6 +157,14 @@ def render_compact_strike(
     return " ".join(parts)
 
 
+def render_potion_used(size: str, heal: float) -> str:
+    """Автоматическое исцеление зельем в начале хода игрока (docs/notes.md,
+    п.31) — не бросок, поэтому без "🎲"; показывает сам факт и сколько
+    вылечило, тем же принципом прозрачности, что и остальной бой."""
+    label = "Большое" if size == "large" else "Малое"
+    return f"🧪 {label} зелье: +{heal:.0f} HP."
+
+
 def render_hp_status(
     enemy_type: str,
     player_hp: float,
@@ -221,6 +245,7 @@ def render_battle_end(
     hp_current: float,
     hp_max: float,
     hp_seconds_to_full: float,
+    loot_dropped: Optional[str] = None,
 ) -> str:
     names = ENEMY_NAMES[enemy_type]
     if result == "victory":
@@ -241,6 +266,8 @@ def render_battle_end(
     lines = [header]
     if reward_line:
         lines.append(reward_line)
+    if loot_dropped:
+        lines.append(f"🎁 Добыча: {LOOT_ITEM_NAMES_RU.get(loot_dropped, loot_dropped)}")
     lines.append("")
     lines.append(f"❤️ HP: {hp_current:.0f}/{hp_max:.0f}")
     if hp_seconds_to_full > 0:

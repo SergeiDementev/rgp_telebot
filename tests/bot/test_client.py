@@ -155,6 +155,17 @@ async def test_flee_decision_sends_decision():
     assert captured["json"] == {"decision": "continue"}
 
 
+async def test_use_potion_sends_size_and_header():
+    handler, captured = _echo_handler(200, {"status": "active", "current_turn": "enemy"})
+    client = make_client(handler)
+
+    await client.use_potion(telegram_user_id=7, combat_session_id=5, size="large")
+
+    assert captured["path"] == "/combat/5/use_potion"
+    assert captured["json"] == {"size": "large"}
+    assert captured["headers"]["x-telegram-user-id"] == "7"
+
+
 async def test_get_combat_session_path_and_header():
     handler, captured = _echo_handler(200, {"status": "active"})
     client = make_client(handler)

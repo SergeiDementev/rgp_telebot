@@ -128,6 +128,14 @@ class ApiClient:
             json={"decision": decision},
         )
 
+    async def use_potion(self, telegram_user_id: int, combat_session_id: int, size: str) -> dict:
+        return await self._request(
+            "POST",
+            f"/combat/{combat_session_id}/use_potion",
+            telegram_user_id=telegram_user_id,
+            json={"size": size},
+        )
+
     async def get_combat_session(self, telegram_user_id: int, combat_session_id: int) -> dict:
         return await self._request(
             "GET", f"/combat/{combat_session_id}", telegram_user_id=telegram_user_id

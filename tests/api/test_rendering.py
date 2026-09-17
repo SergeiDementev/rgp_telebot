@@ -43,6 +43,14 @@ def test_render_circumstance_uses_genitive_for_mouse():
     assert "Сила мыши" in text
 
 
+def test_render_potion_used_small():
+    assert r.render_potion_used("small", 12.0) == "🧪 Малое зелье: +12 HP."
+
+
+def test_render_potion_used_large():
+    assert r.render_potion_used("large", 25) == "🧪 Большое зелье: +25 HP."
+
+
 def test_render_hp_status():
     # Урон и регенерация теперь всегда целые (core/combat_mechanics.py,
     # core/progression.py — docs/notes.md) — HP, доходящий до рендера, дробным
@@ -184,6 +192,21 @@ def test_render_battle_end_victory():
     assert text == (
         "⚔️ Бой окончен! Ты победил Волка.\n"
         "🏆 +5 победных очков (всего: 23)\n"
+        "\n"
+        "❤️ HP: 40/60\n"
+        "⏳ Полное восстановление через: ~20 сек."
+    )
+
+
+def test_render_battle_end_victory_with_loot_shows_loot_line():
+    text = r.render_battle_end(
+        "wolf", "victory", reward=5, victory_points_total=23, hp_current=40, hp_max=60, hp_seconds_to_full=20,
+        loot_dropped="wolf_fang",
+    )
+    assert text == (
+        "⚔️ Бой окончен! Ты победил Волка.\n"
+        "🏆 +5 победных очков (всего: 23)\n"
+        "🎁 Добыча: Клык волка\n"
         "\n"
         "❤️ HP: 40/60\n"
         "⏳ Полное восстановление через: ~20 сек."

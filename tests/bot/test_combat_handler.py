@@ -19,6 +19,7 @@ from bot.handlers.combat import (
     search_encounter,
     start_combat,
     take_turn,
+    use_potion,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -97,6 +98,126 @@ async def test_confirm_fight_shows_attack_button_when_player_goes_first():
     button = markup.inline_keyboard[0][0]
     assert button.text == "🎲 Атаковать"
     assert button.callback_data == "take_turn:5"
+
+
+async def test_confirm_fight_shows_no_potion_buttons_when_none_owned():
+    callback = make_callback("confirm_fight:5")
+    api = AsyncMock()
+    api.confirm_combat.return_value = {
+        "status": "active", "current_turn": "player", "text": "...",
+        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": False,
+    }
+
+    await confirm_fight(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert len(markup.inline_keyboard) == 1  # только кнопка хода, без второй строки
+
+
+async def test_confirm_fight_shows_both_potion_buttons_when_both_owned():
+    # docs/notes.md, п.33 — зелье кнопкой, только на ходу игрока, только в
+    # ручном бою: обе кнопки видны сразу, если куплены оба размера.
+    callback = make_callback("confirm_fight:5")
+    api = AsyncMock()
+    api.confirm_combat.return_value = {
+        "status": "active", "current_turn": "player", "text": "...",
+        "potions_small": 2, "potions_large": 1, "potion_used_this_battle": False,
+    }
+
+    await confirm_fight(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert len(markup.inline_keyboard) == 2
+    potion_row = markup.inline_keyboard[1]
+    callback_datas = [btn.callback_data for btn in potion_row]
+    assert callback_datas == ["use_potion:5:small", "use_potion:5:large"]
+
+
+async def test_confirm_fight_shows_only_owned_potion_size():
+    callback = make_callback("confirm_fight:5")
+    api = AsyncMock()
+    api.confirm_combat.return_value = {
+        "status": "active", "current_turn": "player", "text": "...",
+        "potions_small": 0, "potions_large": 3, "potion_used_this_battle": False,
+    }
+
+    await confirm_fight(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "use_potion:5:small" not in callback_datas
+    assert "use_potion:5:large" in callback_datas
+
+
+async def test_confirm_fight_hides_potion_buttons_when_already_used_this_battle():
+    callback = make_callback("confirm_fight:5")
+    api = AsyncMock()
+    api.confirm_combat.return_value = {
+        "status": "active", "current_turn": "player", "text": "...",
+        "potions_small": 2, "potions_large": 1, "potion_used_this_battle": True,
+    }
+
+    await confirm_fight(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert len(markup.inline_keyboard) == 1
+
+
+async def test_take_turn_hides_potion_buttons_on_enemy_turn():
+    # Зелье — только "на этапе атаки" игрока, не на ходу противника (тот же
+    # инвентарь мог бы формально позволить, но кнопка не должна появляться).
+    callback = make_callback("take_turn:5")
+    api = AsyncMock()
+    api.take_turn.return_value = {
+        "status": "active", "current_turn": "enemy", "text": "...",
+        "potions_small": 2, "potions_large": 1, "potion_used_this_battle": False,
+    }
+
+    await take_turn(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert len(markup.inline_keyboard) == 1
+    assert markup.inline_keyboard[0][0].text == "🛡️ Защищаться"
+
+
+async def test_use_potion_success_shows_updated_turn_button():
+    callback = make_callback("use_potion:5:large")
+    api = AsyncMock()
+    api.use_potion.return_value = {
+        "status": "active", "current_turn": "enemy", "text": "🧪 Большое зелье: +25 HP.",
+        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": True,
+    }
+
+    await use_potion(callback, api)
+
+    api.use_potion.assert_awaited_once_with(1, 5, "large")
+    text = callback.message.edit_text.call_args.args[0]
+    assert text == "🧪 Большое зелье: +25 HP."
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert markup.inline_keyboard[0][0].text == "🛡️ Защищаться"  # ход уже передан противнику
+    assert len(markup.inline_keyboard) == 1  # лимит сгорел — кнопок зелья больше нет
+    callback.answer.assert_awaited_once()
+
+
+async def test_use_potion_already_used_shows_alert_without_editing_message():
+    callback = make_callback("use_potion:5:small")
+    api = AsyncMock()
+    api.use_potion.side_effect = ApiError(400, "already_used")
+
+    await use_potion(callback, api)
+
+    callback.message.edit_text.assert_not_called()
+    callback.answer.assert_awaited_once_with("Зелье в этом бою уже использовано.", show_alert=True)
+
+
+async def test_use_potion_not_owned_shows_distinct_alert():
+    callback = make_callback("use_potion:5:small")
+    api = AsyncMock()
+    api.use_potion.side_effect = ApiError(400, "not_owned")
+
+    await use_potion(callback, api)
+
+    callback.answer.assert_awaited_once_with("У тебя нет такого зелья.", show_alert=True)
 
 
 async def test_confirm_fight_shows_defend_button_when_enemy_goes_first():

@@ -37,7 +37,7 @@ project/
 │   ├── routers/
 │   │   ├── character.py     # создание/просмотр персонажа, прокачка
 │   │   ├── encounter.py     # поиск противника + инициатива/обстоятельство (/start)
-│   │   └── combat.py        # confirm/turn/flee_decision/get — цикл ходов боя
+│   │   └── combat.py        # confirm/turn/flee_decision/use_potion/get — цикл ходов боя
 │   ├── schemas/              # Pydantic-модели запросов/ответов (character.py, combat.py)
 │   ├── rendering.py           # структурированные факты боя → готовый текст для клиента
 │   ├── dependencies.py       # сессия БД, авторизация бота, получение текущего персонажа
@@ -158,8 +158,16 @@ POST /combat/{id}/confirm            — { "decision": "fight" | "flee" } — п
 POST /combat/{id}/turn               — выполнить один ход игрока (+ автоматически ход бота,
                                         если следующая очередь его)
 POST /combat/{id}/flee_decision      — { "decision": "flee" | "continue" } — по HP-порогу
+POST /combat/{id}/use_potion         — docs/notes.md п.33: { "size": "small" | "large" } — явное
+                                        действие игрока кнопкой на его ходу атаки, заменяет удар
+                                        в этот ход (передаёт ход противнику). Лимит — раз за бой,
+                                        общий на оба размера. 409, если не бой не активен/не ход
+                                        игрока; 400 с detail="already_used"|"not_owned" — бот
+                                        показывает разное сообщение по причине
 GET  /combat/{id}                    — текущее состояние сессии (восстановление после сбоя бота)
 ```
+
+`CombatTurnResponse` (ответы `/confirm`, `/turn`, `/flee_decision`, `/use_potion`) несёт снимок инвентаря зелий игрока (`potions_small`, `potions_large`, `potion_used_this_battle`) — бот решает по нему, показывать ли кнопки "🧪 Малое"/"🧪 Большое" на следующем ходу, без отдельного `GET /character` на каждом шаге.
 
 `/encounter/search` и `/combat/{id}/start` — два отдельных запроса, а не один: в `gameplay_loop_mvp.md` §9 это два отдельных нажатия кнопки ("Искать противника", затем отдельно "Определить инициативу"), а принцип "один HTTP-запрос = один шаг" (§1) требует по запросу на каждое нажатие.
 

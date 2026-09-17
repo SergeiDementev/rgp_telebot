@@ -72,6 +72,10 @@ class CombatSession(Base):
     player_flee_right_used = Column(Boolean, nullable=False, default=False)
     enemy_flee_right_used = Column(Boolean, nullable=False, default=False)
 
+    # Зелья (docs/notes.md, п.31) — лимит "раз за бой", своё поле, не завязан
+    # на player_flee_right_used. Только игрок — у моба зелий нет вообще.
+    player_potion_used_this_battle = Column(Boolean, nullable=False, default=False)
+
     turn_log = Column(JSON, nullable=False, default=list)
 
     created_at = Column(DateTime, nullable=False, default=_utcnow)

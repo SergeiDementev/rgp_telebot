@@ -33,10 +33,34 @@ def _session_id_and_turns_from(callback_data: str) -> tuple[int, int]:
     return int(session_id_str), int(turns_str)
 
 
+USE_POTION_ERROR_MESSAGES = {
+    "already_used": "Зелье в этом бою уже использовано.",
+    "not_owned": "У тебя нет такого зелья.",
+}
+
+
 def _turn_button(session_id: int, current_turn: Optional[str]) -> InlineKeyboardButton:
     if current_turn == "enemy":
         return InlineKeyboardButton(text="🛡️ Защищаться", callback_data=f"take_turn:{session_id}")
     return InlineKeyboardButton(text="🎲 Атаковать", callback_data=f"take_turn:{session_id}")
+
+
+def _potion_buttons(session_id: int, response: dict) -> list[InlineKeyboardButton]:
+    """Зелье — явное действие кнопкой на этапе атаки, только в ручном бою
+    (docs/notes.md, п.33). Автобой и "Показать результат" никогда не строят
+    клавиатуру через эту ветку _next_step_markup, пока бой активен (см. её
+    докстринг) — кнопка структурно не может там появиться, отдельный флаг
+    режима не нужен. Кнопка есть, только пока куплено хотя бы одно зелье
+    нужного размера и лимит "раз за бой" (общий на оба размера) не сгорел;
+    никогда — на ходу противника."""
+    if response.get("current_turn") != "player" or response.get("potion_used_this_battle"):
+        return []
+    buttons = []
+    if response.get("potions_small", 0) > 0:
+        buttons.append(InlineKeyboardButton(text="🧪 Малое", callback_data=f"use_potion:{session_id}:small"))
+    if response.get("potions_large", 0) > 0:
+        buttons.append(InlineKeyboardButton(text="🧪 Большое", callback_data=f"use_potion:{session_id}:large"))
+    return buttons
 
 
 def _flee_choice_keyboard(session_id: int, *, mode: str = "manual", turns_taken: int = 0) -> InlineKeyboardMarkup:
@@ -77,12 +101,22 @@ def _post_battle_keyboard() -> InlineKeyboardMarkup:
 
 
 def _next_step_markup(session_id: int, response: dict, *, mode: str = "manual", turns_taken: int = 0) -> InlineKeyboardMarkup:
-    """Выбор клавиатуры по статусу ответа confirm/turn/flee_decision."""
+    """Выбор клавиатуры по статусу ответа confirm/turn/flee_decision. Ветка
+    "status active" ниже — единственное место, строящее кнопку хода, и
+    вызывается только из ручного боя (confirm_fight/take_turn/use_potion);
+    автобой и "Показать результат" всегда проходят мимо неё, пока бой
+    активен (reply_markup=None в цикле, см. _run_autobattle/_run_fast_battle) —
+    поэтому кнопки зелий (см. _potion_buttons), добавленные здесь, структурно
+    не могут появиться ни в автобою, ни в "Показать результат"."""
     if response["status"] == "finished":
         return _post_battle_keyboard()
     if response["status"] == "awaiting_flee_decision":
         return _flee_choice_keyboard(session_id, mode=mode, turns_taken=turns_taken)
-    return InlineKeyboardMarkup(inline_keyboard=[[_turn_button(session_id, response.get("current_turn"))]])
+    rows = [[_turn_button(session_id, response.get("current_turn"))]]
+    potion_buttons = _potion_buttons(session_id, response)
+    if potion_buttons:
+        rows.append(potion_buttons)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.callback_query(F.data == "search_encounter")
@@ -219,6 +253,23 @@ async def confirm_flee(callback: CallbackQuery, api: ApiClient) -> None:
 async def take_turn(callback: CallbackQuery, api: ApiClient) -> None:
     session_id = _session_id_from(callback.data)
     response = await api.take_turn(callback.from_user.id, session_id)
+    await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("use_potion:"))
+async def use_potion(callback: CallbackQuery, api: ApiClient) -> None:
+    """Зелье — явное действие игрока кнопкой на его ходу атаки, только в
+    ручном бою (docs/notes.md, п.33). Заменяет атаку в этот ход — сервер
+    сам передаёт ход противнику (api/routers/combat.py::_use_potion)."""
+    _, session_id_str, size = callback.data.split(":")
+    session_id = int(session_id_str)
+    try:
+        response = await api.use_potion(callback.from_user.id, session_id, size)
+    except ApiError as error:
+        message = USE_POTION_ERROR_MESSAGES.get(error.detail, "Сейчас нельзя использовать зелье.")
+        await callback.answer(message, show_alert=True)
+        return
     await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
     await callback.answer()
 

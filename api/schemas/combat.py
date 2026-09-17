@@ -29,12 +29,19 @@ class FleeDecisionRequest(BaseModel):
     decision: Literal["flee", "continue"]
 
 
+class UsePotionRequest(BaseModel):
+    size: Literal["small", "large"]
+
+
 class CombatTurnResponse(BaseModel):
     combat_session_id: int
     status: str
     result: Optional[str] = None
     current_turn: Optional[str] = None
     text: str
+    potions_small: int
+    potions_large: int
+    potion_used_this_battle: bool
 
 
 class CombatSessionOut(BaseModel):
