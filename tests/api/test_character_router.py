@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from api.dependencies import DEV_DEFAULT_API_KEY, get_db, require_api_key
 from api.routers.character import router as character_router
-from db.models import Character, CombatSession
+from db.models import Character, CombatSession, StatAllocationLog
 from tests.api.conftest import override_get_db
 
 
@@ -89,6 +89,22 @@ def test_allocate_point_decrements_pool_and_increments_stat(db_session_factory):
     assert body["unspent_stat_points"] == 4
 
 
+def test_allocate_point_logs_stat_and_level(db_session_factory):
+    # docs/notes.md: раньше выбор стата при прокачке нигде не сохранялся,
+    # только итоговое значение на персонаже — теперь пишем историю.
+    client = make_client(db_session_factory)
+    created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+
+    client.post(f"/character/{created['id']}/allocate_point", json={"stat": "luck"})
+
+    db = db_session_factory()
+    logs = db.query(StatAllocationLog).filter(StatAllocationLog.character_id == created["id"]).all()
+    db.close()
+    assert len(logs) == 1
+    assert logs[0].stat == "luck"
+    assert logs[0].level_at_time == 1
+
+
 def test_allocate_point_unknown_stat_returns_422(db_session_factory):
     client = make_client(db_session_factory)
     created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
@@ -117,6 +133,7 @@ def test_allocate_point_character_not_found_returns_404(db_session_factory):
 def test_delete_character_removes_character_and_combat_sessions(db_session_factory):
     client = make_client(db_session_factory)
     created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+    client.post(f"/character/{created['id']}/allocate_point", json={"stat": "strength"})
 
     db = db_session_factory()
     session = CombatSession(
@@ -139,6 +156,7 @@ def test_delete_character_removes_character_and_combat_sessions(db_session_facto
 
     db = db_session_factory()
     assert db.query(CombatSession).filter(CombatSession.character_id == created["id"]).count() == 0
+    assert db.query(StatAllocationLog).filter(StatAllocationLog.character_id == created["id"]).count() == 0
     db.close()
 
 
