@@ -18,10 +18,10 @@ from bot.utils import safe_edit_text
 router = Router()
 
 # Пауза между ходами в автобое (docs/notes.md, п.3) — достаточно медленно,
-# чтобы реально видеть, что происходит (не мгновенный итог), и с большим
+# чтобы реально видеть, что происходит (не мгновенный итог), и всё ещё с
 # запасом от ориентировочного лимита Telegram на правки одного сообщения
 # (~1/сек) — 429 "Too Many Requests" при такой паузе не грозит.
-AUTO_BATTLE_TURN_DELAY_SECONDS = 2.5
+AUTO_BATTLE_TURN_DELAY_SECONDS = 1.5
 
 
 def _session_id_from(callback_data: str) -> int:
