@@ -26,9 +26,11 @@
 
 ```
 project/
-├── core/                    # чистая игровая логика, без внешних зависимостей — готово
-│   ├── combat_mechanics.py  # см. combat_mechanics.md (circumstance — часть этого файла, не отдельный модуль)
-│   └── progression.py       # формулы уровней, регенерации HP, наград, очков прокачки
+├── core/                    # чистая игровая логика, без внешних зависимостей
+│   ├── combat_mechanics.py  # см. combat_mechanics.md (circumstance — часть этого файла, не отдельный модуль) — готово
+│   ├── progression.py       # формулы уровней, регенерации HP, наград, очков прокачки — готово
+│   └── economy.py           # готово (docs/notes.md п.30): LOOT_TABLE, цены/капы зелий — единый источник
+│                            # для api/ и scripts/simulate_combat_economy.py, не дублируются
 │
 ├── api/                     # FastAPI-приложение — готово (этап 3)
 │   ├── main.py               # сборка приложения, create_all(), /health
@@ -53,7 +55,9 @@ project/
 │   └── enemies.json          # статы мышь/волк/кабан
 │
 ├── scripts/                  # готово
-│   └── simulate_combat.py    # консольный симулятор боёв для калибровки (см. §8, этап 2)
+│   ├── simulate_combat.py         # консольный симулятор боёв для калибровки (см. §8, этап 2)
+│   ├── simulate_combat_economy.py # + слой экономики (лут/золото/зелья) поверх того же движка
+│   └── simulate_boss.py           # калибровка статов финального босса (docs/notes.md пп.26-29)
 │
 ├── tests/                     # готово — pytest, зеркалит структуру выше
 │   ├── core/
@@ -70,7 +74,8 @@ project/
     ├── client.py              # асинхронная обёртка над httpx для вызовов api/
     ├── handlers/
     │   ├── start.py           # /start, /rules, создание персонажа
-    │   ├── character.py       # экран статов, прокачка (общий экран для создания и левел-апа)
+    │   ├── character.py       # экран статов, "Меню игрока" (статы/прокачка + золото/лут/зелья,
+    │   │                      # docs/notes.md п.30; общий экран для создания и левел-апа)
     │   └── combat.py          # весь боевой цикл — поиск, инициатива, ходы, завершение
     └── main.py                 # сборка Dispatcher, регистрация роутеров, polling
 ```
@@ -94,6 +99,14 @@ class Character:
     hp_current: float
     last_hp_update_at: datetime   # для ленивого пересчёта регенерации
     created_at: datetime
+
+    # docs/notes.md п.30 — "Меню игрока": экономика поверх боя
+    gold: int = 0                 # копится продажей лута, тратится на зелья
+    loot: JSON                     # {"<item_name>": <count>, ...} — стакается; цены/веса — в core/economy.py,
+                                    # не в БД, здесь только количество у персонажа
+    potions_small: int = 0
+    potions_large: int = 0        # оба капа (SMALL_POTION_CAP=5 / LARGE_POTION_CAP=3) — тоже в core/economy.py,
+                                    # перенесены из допущения симулятора в постоянное правило игры
 
 class CombatSession:
     id: int
@@ -127,6 +140,14 @@ POST   /character/{id}/allocate_point  — потратить одно очко 
 DELETE /character/{telegram_user_id}   — обнулить персонажа целиком (удаляет и его CombatSession);
                                           в основном для тестирования (docs/notes.md, п.12), через
                                           подтверждение на стороне бота, не по одному нажатию
+
+POST   /character/{id}/sell_loot       — docs/notes.md п.30: продать весь лут разом, начислить
+                                          gold по ценам из core/economy.py; инвентарь лута обнуляется
+POST   /character/{id}/buy_potion      — {"size": "small" | "large"} — проверяет gold >= цена
+                                          И потолок капа (core/economy.py) не достигнут; при нарушении
+                                          любого условия — понятная ошибка (4xx с причиной detail =
+                                          "not_enough_gold" | "cap_reached"), не молчаливый no-op —
+                                          бот показывает игроку разный alert по этим двум причинам
 
 POST /encounter/search               — бросок d10 (50/30/20), создание CombatSession
                                         (status="awaiting_initiative")

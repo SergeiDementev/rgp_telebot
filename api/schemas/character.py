@@ -23,6 +23,10 @@ class CharacterOut(BaseModel):
     hp_current: float
     hp_max: float
     hp_seconds_to_full: float
+    gold: int
+    loot: dict[str, int]
+    potions_small: int
+    potions_large: int
 
 
 class AllocatePointRequest(BaseModel):
@@ -30,4 +34,16 @@ class AllocatePointRequest(BaseModel):
 
 
 class AllocatePointResponse(BaseModel):
+    character: CharacterOut
+
+
+class SellLootResponse(BaseModel):
+    character: CharacterOut
+
+
+class BuyPotionRequest(BaseModel):
+    size: str
+
+
+class BuyPotionResponse(BaseModel):
     character: CharacterOut

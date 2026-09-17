@@ -14,9 +14,13 @@ from api.dependencies import get_db, require_api_key
 from api.schemas.character import (
     AllocatePointRequest,
     AllocatePointResponse,
+    BuyPotionRequest,
+    BuyPotionResponse,
     CharacterCreate,
     CharacterOut,
+    SellLootResponse,
 )
+from core import economy as ec
 from core import progression as pr
 from db.models import Character, CombatSession, StatAllocationLog
 
@@ -54,6 +58,10 @@ def _to_character_out(character: Character) -> CharacterOut:
         hp_current=hp_current,
         hp_max=hp_max,
         hp_seconds_to_full=pr.time_to_full_hp(hp_current, hp_max),
+        gold=character.gold,
+        loot=character.loot,
+        potions_small=character.potions_small,
+        potions_large=character.potions_large,
     )
 
 
@@ -77,6 +85,10 @@ def create_character(payload: CharacterCreate, db: Session = Depends(get_db)) ->
         vitality=BASE_STATS["vitality"],
         hp_current=hp_max,
         last_hp_update_at=_now(),
+        gold=0,
+        loot={},
+        potions_small=0,
+        potions_large=0,
     )
     db.add(character)
     db.commit()
@@ -137,3 +149,46 @@ def allocate_point(
     db.commit()
     db.refresh(character)
     return AllocatePointResponse(character=_to_character_out(character))
+
+
+@router.post("/{character_id}/sell_loot", response_model=SellLootResponse)
+def sell_loot(character_id: int, db: Session = Depends(get_db)) -> SellLootResponse:
+    """Продаёт весь инвентарь лута разом (docs/gameplay_loop_mvp.md §5) —
+    нет отдельного шага "выбрать, что продать": упрощение, как и в
+    симуляторе (docs/notes.md, п.26)."""
+    character = db.get(Character, character_id)
+    if character is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+
+    character.gold += ec.sell_loot_value(character.loot)
+    character.loot = {}
+    db.commit()
+    db.refresh(character)
+    return SellLootResponse(character=_to_character_out(character))
+
+
+@router.post("/{character_id}/buy_potion", response_model=BuyPotionResponse)
+def buy_potion(character_id: int, payload: BuyPotionRequest, db: Session = Depends(get_db)) -> BuyPotionResponse:
+    character = db.get(Character, character_id)
+    if character is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+
+    if payload.size not in ec.POTION_SIZES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"unknown potion size: {payload.size!r}"
+        )
+
+    # Проверяем ЗАРАНЕЕ, а не ловим ValueError из ec.buy_potion() — причина
+    # отказа ("cap_reached" | "not_enough_gold") идёт в detail явно, бот
+    # должен показать игроку правильное сообщение, не общий "нельзя"
+    # (docs/gameplay_loop_mvp.md — паттерн видимости кнопок покупки).
+    reason = ec.check_can_buy_potion(character.gold, character.potions_small, character.potions_large, payload.size)
+    if reason is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
+
+    character.gold, character.potions_small, character.potions_large = ec.buy_potion(
+        character.gold, character.potions_small, character.potions_large, payload.size
+    )
+    db.commit()
+    db.refresh(character)
+    return BuyPotionResponse(character=_to_character_out(character))

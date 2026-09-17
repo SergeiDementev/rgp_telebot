@@ -9,8 +9,10 @@ from bot.handlers.character import (
     allocate_creation,
     allocate_levelup,
     back_to_stats,
+    buy_potion,
     finish_creation,
     open_allocation,
+    sell_loot,
     show_rules,
     show_rules_section,
 )
@@ -22,6 +24,7 @@ BASE_CHARACTER = {
     "id": 1, "nickname": "Hero", "level": 1, "victory_points": 0, "points_to_next_level": 8,
     "unspent_stat_points": 5, "strength": 3, "agility": 3, "luck": 1, "vitality": 3,
     "hp_current": 50.0, "hp_max": 50.0,
+    "gold": 0, "loot": {}, "potions_small": 0, "potions_large": 0,
 }
 
 
@@ -77,10 +80,136 @@ async def test_open_allocation_shows_levelup_screen():
     await open_allocation(callback, api)
 
     text = callback.message.edit_text.call_args.args[0]
-    assert "Прокачка характеристик" in text
+    assert "Меню игрока" in text
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[-2][0].callback_data == "back_to_stats"
     assert markup.inline_keyboard[-1][0].callback_data == "reset_request"
+
+
+async def test_open_allocation_shows_economy_sections_empty_by_default():
+    # docs/notes.md, п.30 — "Меню игрока": золото/лут/зелья добавлены к
+    # прежнему экрану прокачки. У свежего персонажа всё по нулям.
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+
+    await open_allocation(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert "💰 Золото: 0" in text
+    assert "📦 Лут: пока нет" in text
+    assert "🧪 Зелья: пока нет" in text
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "sell_loot" not in callback_datas  # лута нет — кнопка продажи полностью исчезает
+    assert "buy_potion:small" in callback_datas  # кнопки покупки видны всегда
+    assert "buy_potion:large" in callback_datas
+
+
+async def test_open_allocation_shows_loot_and_potions_when_present():
+    character = {
+        **BASE_CHARACTER,
+        "gold": 23,
+        "loot": {"mouse_pelt": 14, "wolf_fang": 3},
+        "potions_small": 2,
+        "potions_large": 1,
+    }
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = character
+
+    await open_allocation(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert "💰 Золото: 23" in text
+    assert "Мышиная шкурка ×14" in text
+    assert "Клык волка ×3" in text
+    assert "Малое ×2" in text
+    assert "Большое ×1" in text
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "sell_loot" in callback_datas  # лут есть — кнопка продажи видна
+
+
+async def test_buy_potion_buttons_show_cap_reached_label_instead_of_price():
+    character = {**BASE_CHARACTER, "potions_small": 5, "potions_large": 3}  # оба на потолке
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = character
+
+    await open_allocation(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    buttons = {btn.callback_data: btn.text for row in markup.inline_keyboard for btn in row}
+    assert "уже максимум" in buttons["buy_potion:small"]
+    assert "уже максимум" in buttons["buy_potion:large"]
+    assert "зол." not in buttons["buy_potion:small"]
+
+
+async def test_buy_potion_buttons_show_price_when_under_cap():
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+
+    await open_allocation(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    buttons = {btn.callback_data: btn.text for row in markup.inline_keyboard for btn in row}
+    assert "8 зол." in buttons["buy_potion:small"]
+    assert "50 зол." in buttons["buy_potion:large"]
+
+
+async def test_sell_loot_calls_api_and_refreshes_menu_screen():
+    callback = make_callback("sell_loot")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "loot": {"mouse_pelt": 14}}
+    api.sell_loot.return_value = {"character": {**BASE_CHARACTER, "gold": 28, "loot": {}}}
+
+    await sell_loot(callback, api)
+
+    api.sell_loot.assert_awaited_once_with(1)
+    text = callback.message.edit_text.call_args.args[0]
+    assert "💰 Золото: 28" in text
+    assert "📦 Лут: пока нет" in text
+    callback.answer.assert_awaited_once()
+
+
+async def test_buy_potion_success_refreshes_menu_screen():
+    callback = make_callback("buy_potion:small")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "gold": 100}
+    api.buy_potion.return_value = {"character": {**BASE_CHARACTER, "gold": 92, "potions_small": 1}}
+
+    await buy_potion(callback, api)
+
+    api.buy_potion.assert_awaited_once_with(1, "small")
+    text = callback.message.edit_text.call_args.args[0]
+    assert "Малое ×1" in text
+    callback.answer.assert_awaited_once()
+
+
+async def test_buy_potion_not_enough_gold_shows_alert_without_editing_message():
+    callback = make_callback("buy_potion:large")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+    api.buy_potion.side_effect = ApiError(400, "not_enough_gold")
+
+    await buy_potion(callback, api)
+
+    callback.message.edit_text.assert_not_called()
+    callback.answer.assert_awaited_once_with("Не хватает золота.", show_alert=True)
+
+
+async def test_buy_potion_cap_reached_shows_distinct_alert():
+    callback = make_callback("buy_potion:large")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+    api.buy_potion.side_effect = ApiError(400, "cap_reached")
+
+    await buy_potion(callback, api)
+
+    callback.message.edit_text.assert_not_called()
+    callback.answer.assert_awaited_once_with("Уже максимум зелий этого размера.", show_alert=True)
 
 
 async def test_back_to_stats_shows_stats_screen():

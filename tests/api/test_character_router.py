@@ -8,8 +8,24 @@ from fastapi.testclient import TestClient
 
 from api.dependencies import DEV_DEFAULT_API_KEY, get_db, require_api_key
 from api.routers.character import router as character_router
+from core import economy as ec
 from db.models import Character, CombatSession, StatAllocationLog
 from tests.api.conftest import override_get_db
+
+
+def _set_character_economy(db_session_factory, character_id, *, gold=None, loot=None, potions_small=None, potions_large=None):
+    db = db_session_factory()
+    character = db.get(Character, character_id)
+    if gold is not None:
+        character.gold = gold
+    if loot is not None:
+        character.loot = loot
+    if potions_small is not None:
+        character.potions_small = potions_small
+    if potions_large is not None:
+        character.potions_large = potions_large
+    db.commit()
+    db.close()
 
 
 def make_client(db_session_factory, *, bypass_api_key: bool = True) -> TestClient:
@@ -127,6 +143,103 @@ def test_allocate_point_no_points_left_returns_400(db_session_factory):
 def test_allocate_point_character_not_found_returns_404(db_session_factory):
     client = make_client(db_session_factory)
     response = client.post("/character/999/allocate_point", json={"stat": "strength"})
+    assert response.status_code == 404
+
+
+def test_sell_loot_adds_gold_and_clears_inventory(db_session_factory):
+    client = make_client(db_session_factory)
+    created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+    _set_character_economy(db_session_factory, created["id"], gold=3, loot={"mouse_pelt": 14, "wolf_fang": 3})
+
+    response = client.post(f"/character/{created['id']}/sell_loot")
+
+    assert response.status_code == 200
+    body = response.json()["character"]
+    assert body["gold"] == 3 + 14 * ec.LOOT_ITEM_PRICES["mouse_pelt"] + 3 * ec.LOOT_ITEM_PRICES["wolf_fang"]
+    assert body["loot"] == {}
+
+
+def test_sell_loot_empty_inventory_is_a_no_op(db_session_factory):
+    client = make_client(db_session_factory)
+    created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+
+    response = client.post(f"/character/{created['id']}/sell_loot")
+
+    assert response.status_code == 200
+    body = response.json()["character"]
+    assert body["gold"] == 0
+    assert body["loot"] == {}
+
+
+def test_sell_loot_character_not_found_returns_404(db_session_factory):
+    client = make_client(db_session_factory)
+    response = client.post("/character/999/sell_loot")
+    assert response.status_code == 404
+
+
+def test_buy_potion_small_deducts_gold_and_increments_count(db_session_factory):
+    client = make_client(db_session_factory)
+    created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+    _set_character_economy(db_session_factory, created["id"], gold=100)
+
+    response = client.post(f"/character/{created['id']}/buy_potion", json={"size": "small"})
+
+    assert response.status_code == 200
+    body = response.json()["character"]
+    assert body["gold"] == 100 - ec.SMALL_POTION_PRICE
+    assert body["potions_small"] == 1
+    assert body["potions_large"] == 0
+
+
+def test_buy_potion_large_deducts_gold_and_increments_count(db_session_factory):
+    client = make_client(db_session_factory)
+    created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+    _set_character_economy(db_session_factory, created["id"], gold=100)
+
+    response = client.post(f"/character/{created['id']}/buy_potion", json={"size": "large"})
+
+    assert response.status_code == 200
+    body = response.json()["character"]
+    assert body["gold"] == 100 - ec.LARGE_POTION_PRICE
+    assert body["potions_large"] == 1
+
+
+def test_buy_potion_not_enough_gold_returns_400_with_reason(db_session_factory):
+    client = make_client(db_session_factory)
+    created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+    _set_character_economy(db_session_factory, created["id"], gold=0)
+
+    response = client.post(f"/character/{created['id']}/buy_potion", json={"size": "small"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "not_enough_gold"
+
+
+def test_buy_potion_cap_reached_returns_400_with_distinct_reason(db_session_factory):
+    # Даже с горой золота — если кап уже достигнут, причина именно
+    # "cap_reached", не "not_enough_gold" (бот должен показать разное).
+    client = make_client(db_session_factory)
+    created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+    _set_character_economy(db_session_factory, created["id"], gold=10_000, potions_large=ec.LARGE_POTION_CAP)
+
+    response = client.post(f"/character/{created['id']}/buy_potion", json={"size": "large"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "cap_reached"
+
+
+def test_buy_potion_unknown_size_returns_422(db_session_factory):
+    client = make_client(db_session_factory)
+    created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+
+    response = client.post(f"/character/{created['id']}/buy_potion", json={"size": "medium"})
+
+    assert response.status_code == 422
+
+
+def test_buy_potion_character_not_found_returns_404(db_session_factory):
+    client = make_client(db_session_factory)
+    response = client.post("/character/999/buy_potion", json={"size": "small"})
     assert response.status_code == 404
 
 

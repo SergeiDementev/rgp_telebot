@@ -68,7 +68,7 @@ async def start_game(callback: CallbackQuery, api: ApiClient) -> None:
         character = await api.create_character(callback.from_user.id, callback.from_user.full_name)
 
     await callback.message.edit_text(
-        render_allocation_screen(character, title="🧙 Создание героя"),
+        render_allocation_screen(character, title="🧙 Создание героя", mode="creation"),
         reply_markup=allocation_keyboard(character, mode="creation"),
     )
     await callback.answer()
@@ -100,7 +100,7 @@ async def reset_confirm(callback: CallbackQuery, api: ApiClient) -> None:
     await api.delete_character(callback.from_user.id)
     character = await api.create_character(callback.from_user.id, callback.from_user.full_name)
     await callback.message.edit_text(
-        render_allocation_screen(character, title="🧙 Создание героя"),
+        render_allocation_screen(character, title="🧙 Создание героя", mode="creation"),
         reply_markup=allocation_keyboard(character, mode="creation"),
     )
     await callback.answer("Персонаж обнулён")

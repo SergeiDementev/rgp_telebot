@@ -41,6 +41,12 @@ class Character(Base):
     last_hp_update_at = Column(DateTime, nullable=False, default=_utcnow)
     created_at = Column(DateTime, nullable=False, default=_utcnow)
 
+    # Экономика (docs/notes.md, п.30) — цены/капы в core/economy.py, не здесь.
+    gold = Column(Integer, nullable=False, default=0)
+    loot = Column(JSON, nullable=False, default=dict)  # {"<item_name>": <count>, ...}
+    potions_small = Column(Integer, nullable=False, default=0)
+    potions_large = Column(Integer, nullable=False, default=0)
+
 
 class CombatSession(Base):
     __tablename__ = "combat_sessions"

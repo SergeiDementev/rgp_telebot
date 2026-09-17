@@ -64,6 +64,29 @@ async def test_allocate_point_sends_stat_in_body():
     assert result["character"]["strength"] == 4
 
 
+async def test_sell_loot_posts_to_correct_path():
+    handler, captured = _echo_handler(200, {"character": {"gold": 30, "loot": {}}})
+    client = make_client(handler)
+
+    result = await client.sell_loot(1)
+
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/character/1/sell_loot"
+    assert captured["json"] is None
+    assert result["character"]["gold"] == 30
+
+
+async def test_buy_potion_sends_size_in_body():
+    handler, captured = _echo_handler(200, {"character": {"potions_small": 1}})
+    client = make_client(handler)
+
+    result = await client.buy_potion(1, "small")
+
+    assert captured["path"] == "/character/1/buy_potion"
+    assert captured["json"] == {"size": "small"}
+    assert result["character"]["potions_small"] == 1
+
+
 async def test_delete_character_handles_204_no_content():
     captured = {}
 

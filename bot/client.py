@@ -86,6 +86,14 @@ class ApiClient:
             "POST", f"/character/{character_id}/allocate_point", json={"stat": stat}
         )
 
+    async def sell_loot(self, character_id: int) -> dict:
+        return await self._request("POST", f"/character/{character_id}/sell_loot")
+
+    async def buy_potion(self, character_id: int, size: str) -> dict:
+        return await self._request(
+            "POST", f"/character/{character_id}/buy_potion", json={"size": size}
+        )
+
     async def delete_character(self, telegram_user_id: int) -> None:
         await self._request("DELETE", f"/character/{telegram_user_id}")
 
