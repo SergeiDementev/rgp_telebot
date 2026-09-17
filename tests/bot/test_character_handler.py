@@ -80,7 +80,8 @@ async def test_open_allocation_shows_levelup_screen():
     await open_allocation(callback, api)
 
     text = callback.message.edit_text.call_args.args[0]
-    assert "Меню игрока" in text
+    # Без отдельной заголовочной строки — экран начинается сразу с уровня.
+    assert text.startswith("🏅 Уровень:")
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[-2][0].callback_data == "back_to_stats"
     assert markup.inline_keyboard[-1][0].callback_data == "reset_request"
@@ -122,13 +123,28 @@ async def test_open_allocation_shows_loot_and_potions_when_present():
 
     text = callback.message.edit_text.call_args.args[0]
     assert "💰 Золото: 23" in text
-    assert "Мышиная шкурка ×14" in text
-    assert "Клык волка ×3" in text
+    # docs/notes.md — цена в скобках: для нескольких штук это цена×количество.
+    assert "Мышиная шкурка ×14 (28 зол.)" in text  # 2 зол./шт × 14
+    assert "Клык волка ×3 (24 зол.)" in text  # 8 зол./шт × 3
     assert "Малое ×2" in text
     assert "Большое ×1" in text
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert "sell_loot" in callback_datas  # лут есть — кнопка продажи видна
+
+
+async def test_open_allocation_shows_plain_price_for_single_loot_item():
+    # Один экземпляр — просто цена, без "×1" и без умножения.
+    character = {**BASE_CHARACTER, "loot": {"wolf_pelt": 1}}
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = character
+
+    await open_allocation(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert "Шкура волка (20 зол.)" in text
+    assert "×1" not in text
 
 
 async def test_buy_potion_buttons_show_cap_reached_label_instead_of_price():

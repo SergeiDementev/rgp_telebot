@@ -6,7 +6,6 @@
 различаются только текстом, выбранным по `current_turn` из ответа сервера.
 """
 
-import asyncio
 from typing import Optional
 
 from aiogram import F, Router
@@ -17,20 +16,9 @@ from bot.utils import safe_edit_text
 
 router = Router()
 
-# Пауза между ходами в автобое (docs/notes.md, п.3) — достаточно медленно,
-# чтобы реально видеть, что происходит (не мгновенный итог), и всё ещё с
-# запасом от ориентировочного лимита Telegram на правки одного сообщения
-# (~1/сек) — 429 "Too Many Requests" при такой паузе не грозит.
-AUTO_BATTLE_TURN_DELAY_SECONDS = 1.5
-
 
 def _session_id_from(callback_data: str) -> int:
     return int(callback_data.split(":", 1)[1])
-
-
-def _session_id_and_turns_from(callback_data: str) -> tuple[int, int]:
-    _, session_id_str, turns_str = callback_data.split(":")
-    return int(session_id_str), int(turns_str)
 
 
 USE_POTION_ERROR_MESSAGES = {
@@ -47,12 +35,12 @@ def _turn_button(session_id: int, current_turn: Optional[str]) -> InlineKeyboard
 
 def _potion_buttons(session_id: int, response: dict) -> list[InlineKeyboardButton]:
     """Зелье — явное действие кнопкой на этапе атаки, только в ручном бою
-    (docs/notes.md, п.33). Автобой и "Показать результат" никогда не строят
-    клавиатуру через эту ветку _next_step_markup, пока бой активен (см. её
-    докстринг) — кнопка структурно не может там появиться, отдельный флаг
-    режима не нужен. Кнопка есть, только пока куплено хотя бы одно зелье
-    нужного размера и лимит "раз за бой" (общий на оба размера) не сгорел;
-    никогда — на ходу противника."""
+    (docs/notes.md, п.33). Автобой никогда не строит клавиатуру через эту
+    ветку _next_step_markup, пока бой активен (см. её докстринг) — кнопка
+    структурно не может там появиться, отдельный флаг режима не нужен.
+    Кнопка есть, только пока куплено хотя бы одно зелье нужного размера и
+    лимит "раз за бой" (общий на оба размера) не сгорел; никогда — на ходу
+    противника."""
     if response.get("current_turn") != "player" or response.get("potion_used_this_battle"):
         return []
     buttons = []
@@ -63,22 +51,17 @@ def _potion_buttons(session_id: int, response: dict) -> list[InlineKeyboardButto
     return buttons
 
 
-def _flee_choice_keyboard(session_id: int, *, mode: str = "manual", turns_taken: int = 0) -> InlineKeyboardMarkup:
-    """`mode` — как боя продолжится после "Биться дальше", раз пауза могла
-    случиться посреди авто- или быстрого боя (docs/notes.md, пп.3, 26), не
-    только вручную:
+def _flee_choice_keyboard(session_id: int, *, mode: str = "manual") -> InlineKeyboardMarkup:
+    """`mode` — как бой продолжится после "Биться дальше", раз пауза могла
+    случиться посреди автобоя (docs/notes.md, пп.3, 25, 34), не только
+    вручную:
     - "manual" — обычный цикл ход-за-ходом.
-    - "auto" — возобновляет анимированный автобой; сквозной счёт ходов
-      зашит в сам callback_data (бот не хранит состояние между сообщениями,
-      больше протащить это число неоткуда).
-    - "fast" — возобновляет тихий автобой без анимации; счёт ходов не
-      нужен, он нигде не отображается."""
-    if mode == "auto":
-        continue_callback = f"flee_decision_continue_auto:{session_id}:{turns_taken}"
-    elif mode == "fast":
-        continue_callback = f"flee_decision_continue_fast:{session_id}"
-    else:
-        continue_callback = f"flee_decision_continue:{session_id}"
+    - "auto" — возобновляет автобой (тихо крутит ходы до конца/следующей
+      паузы, без анимации по шагам — см. docs/notes.md, п.34: единственный
+      оставшийся автоматический режим, раньше был "Показать результат")."""
+    continue_callback = (
+        f"flee_decision_continue_auto:{session_id}" if mode == "auto" else f"flee_decision_continue:{session_id}"
+    )
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -100,18 +83,17 @@ def _post_battle_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def _next_step_markup(session_id: int, response: dict, *, mode: str = "manual", turns_taken: int = 0) -> InlineKeyboardMarkup:
+def _next_step_markup(session_id: int, response: dict, *, mode: str = "manual") -> InlineKeyboardMarkup:
     """Выбор клавиатуры по статусу ответа confirm/turn/flee_decision. Ветка
     "status active" ниже — единственное место, строящее кнопку хода, и
     вызывается только из ручного боя (confirm_fight/take_turn/use_potion);
-    автобой и "Показать результат" всегда проходят мимо неё, пока бой
-    активен (reply_markup=None в цикле, см. _run_autobattle/_run_fast_battle) —
-    поэтому кнопки зелий (см. _potion_buttons), добавленные здесь, структурно
-    не могут появиться ни в автобою, ни в "Показать результат"."""
+    автобой всегда проходит мимо неё, пока бой активен (reply_markup=None в
+    цикле, см. _run_autobattle) — поэтому кнопки зелий (см. _potion_buttons),
+    добавленные здесь, структурно не могут появиться в автобою."""
     if response["status"] == "finished":
         return _post_battle_keyboard()
     if response["status"] == "awaiting_flee_decision":
-        return _flee_choice_keyboard(session_id, mode=mode, turns_taken=turns_taken)
+        return _flee_choice_keyboard(session_id, mode=mode)
     rows = [[_turn_button(session_id, response.get("current_turn"))]]
     potion_buttons = _potion_buttons(session_id, response)
     if potion_buttons:
@@ -151,10 +133,7 @@ async def start_combat(callback: CallbackQuery, api: ApiClient) -> None:
                 InlineKeyboardButton(text="⚔️ Вступить в бой", callback_data=f"confirm_fight:{session_id}"),
                 InlineKeyboardButton(text="🏃 Отступить", callback_data=f"confirm_flee:{session_id}"),
             ],
-            [
-                InlineKeyboardButton(text="⚡ Автобой", callback_data=f"confirm_fight_auto:{session_id}"),
-                InlineKeyboardButton(text="🏁 Показать результат", callback_data=f"confirm_fight_fast:{session_id}"),
-            ],
+            [InlineKeyboardButton(text="⚡ Автобой", callback_data=f"confirm_fight_auto:{session_id}")],
         ]
     )
     await callback.message.edit_text(response["text"], reply_markup=keyboard)
@@ -169,45 +148,17 @@ async def confirm_fight(callback: CallbackQuery, api: ApiClient) -> None:
     await callback.answer()
 
 
-async def _run_autobattle(
-    callback: CallbackQuery, api: ApiClient, session_id: int, response: dict, turns_taken: int
-) -> None:
-    """Общий цикл автобоя (docs/notes.md, п.3) — переиспользуется и при
-    первом входе в бой (confirm_fight_auto), и при возобновлении после
-    паузы на решение "сбежать/биться дальше" (flee_decision_continue_auto).
-    `response` — уже полученный результат последнего резолвнутого хода
-    (его и показываем первым, только потом крутим цикл дальше), `turns_taken`
-    — сквозной счётчик для подписи "⚡ Автобой — ход N", в т.ч. после паузы.
-
-    Имитирует ручное нажатие: сообщение реально обновляется на каждом ходу
-    с паузой между ними (AUTO_BATTLE_TURN_DELAY_SECONDS), не одним
-    сообщением в конце — иначе не видно, что происходит. Останавливается на
-    решении игрока (побег по HP) или на конце боя."""
-    while True:
-        battle_active = response["status"] == "active"
-        text = f"⚡ Автобой — ход {turns_taken}\n\n{response['text']}"
-        await callback.message.edit_text(
-            text,
-            reply_markup=None
-            if battle_active
-            else _next_step_markup(session_id, response, mode="auto", turns_taken=turns_taken),
-        )
-        if not battle_active:
-            return
-        await asyncio.sleep(AUTO_BATTLE_TURN_DELAY_SECONDS)
-        response = await api.take_turn(callback.from_user.id, session_id)
-        turns_taken += 1
-
-
-async def _run_fast_battle(callback: CallbackQuery, api: ApiClient, session_id: int, response: dict) -> None:
-    """Тихий вариант автобоя (docs/notes.md, п.25) — та же механика, что и
-    `_run_autobattle`, только без анимации: крутит ходы молча, без пауз и
-    без правки сообщения на каждом шаге, и один раз показывает результат —
-    либо паузу на решение "сбежать/биться дальше", либо конец боя. Для
-    коротких боёв с мышью, которые скучно читать по шагам."""
+async def _run_autobattle(callback: CallbackQuery, api: ApiClient, session_id: int, response: dict) -> None:
+    """Автобой (docs/notes.md, п.34 — было "Показать результат", п.25;
+    старый анимированный автобой с паузой между ходами удалён — раз зельём
+    всё равно нельзя пользоваться вне ручного боя, прокручивать сообщения
+    по одному ходу не даёт игроку ничего, кроме ожидания). Крутит ходы
+    молча, без пауз и без правки сообщения на каждом шаге, и один раз
+    показывает результат — либо паузу на решение "сбежать/биться дальше",
+    либо конец боя."""
     while response["status"] == "active":
         response = await api.take_turn(callback.from_user.id, session_id)
-    await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response, mode="fast"))
+    await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response, mode="auto"))
 
 
 @router.callback_query(F.data.startswith("confirm_fight_auto:"))
@@ -218,27 +169,8 @@ async def confirm_fight_auto(callback: CallbackQuery, api: ApiClient) -> None:
     проще и без изменений в БД)."""
     session_id = _session_id_from(callback.data)
     response = await api.confirm_combat(callback.from_user.id, session_id, "fight")
-    # Отсчёт внизу сообщения — чтобы первая пауза перед автобоем не выглядела
-    # зависанием: игрок читает "3... 2... 1...", и задержка перестаёт мешать
-    # (docs/notes.md). Появляется только здесь, при самом входе в автобой.
-    await callback.message.edit_text(f"{response['text']}\n\n3... 2... 1...")
-    await callback.answer()  # отвечаем сразу — цикл ниже может растянуться на десятки секунд
-
-    await asyncio.sleep(AUTO_BATTLE_TURN_DELAY_SECONDS)
-    response = await api.take_turn(callback.from_user.id, session_id)
-    await _run_autobattle(callback, api, session_id, response, turns_taken=1)
-
-
-@router.callback_query(F.data.startswith("confirm_fight_fast:"))
-async def confirm_fight_fast(callback: CallbackQuery, api: ApiClient) -> None:
-    """"Показать результат" (docs/notes.md, п.25) — черновое название.
-    Механика та же, что у автобоя (`confirm_fight_auto`), но без анимации:
-    вступает в бой и сразу крутит ходы молча до паузы на решение или до
-    конца боя, одной правкой сообщения показывает итог."""
-    session_id = _session_id_from(callback.data)
-    response = await api.confirm_combat(callback.from_user.id, session_id, "fight")
     await callback.answer()
-    await _run_fast_battle(callback, api, session_id, response)
+    await _run_autobattle(callback, api, session_id, response)
 
 
 @router.callback_query(F.data.startswith("confirm_flee:"))
@@ -293,23 +225,12 @@ async def flee_decision_continue(callback: CallbackQuery, api: ApiClient) -> Non
 @router.callback_query(F.data.startswith("flee_decision_continue_auto:"))
 async def flee_decision_continue_auto(callback: CallbackQuery, api: ApiClient) -> None:
     """Тот же выбор "Биться дальше", но бой шёл в автобою (docs/notes.md,
-    п.3) — резолвит решение и сразу возобновляет автобой тем же циклом
+    п.34) — резолвит решение и сразу возобновляет автобой тем же циклом
     (_run_autobattle), а не отдаёт ход обратно вручную."""
-    session_id, turns_taken = _session_id_and_turns_from(callback.data)
-    response = await api.flee_decision(callback.from_user.id, session_id, "continue")
-    await callback.answer()
-    await _run_autobattle(callback, api, session_id, response, turns_taken=turns_taken + 1)
-
-
-@router.callback_query(F.data.startswith("flee_decision_continue_fast:"))
-async def flee_decision_continue_fast(callback: CallbackQuery, api: ApiClient) -> None:
-    """Тот же выбор "Биться дальше", но бой шёл в режиме "Показать результат"
-    (docs/notes.md, п.25) — резолвит решение и сразу возобновляет тихий
-    автобой (`_run_fast_battle`), а не отдаёт ход обратно вручную."""
     session_id = _session_id_from(callback.data)
     response = await api.flee_decision(callback.from_user.id, session_id, "continue")
     await callback.answer()
-    await _run_fast_battle(callback, api, session_id, response)
+    await _run_autobattle(callback, api, session_id, response)
 
 
 @router.callback_query(F.data == "refresh_after_battle")

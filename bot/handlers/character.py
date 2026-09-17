@@ -37,6 +37,17 @@ LOOT_ITEM_NAMES_RU = {
     "boar_hide": "Шкура кабана",
 }
 
+# Цена продажи за штуку (core/economy.py::LOOT_ITEM_PRICES) — для строки
+# лута на экране "Меню игрока" (docs/notes.md), та же дублирующая логика.
+LOOT_ITEM_PRICES = {
+    "mouse_pelt": 2,
+    "mouse_tail": 5,
+    "wolf_fang": 8,
+    "wolf_pelt": 20,
+    "boar_tusk": 20,
+    "boar_hide": 50,
+}
+
 BUY_POTION_ERROR_MESSAGES = {
     "not_enough_gold": "Не хватает золота.",
     "cap_reached": "Уже максимум зелий этого размера.",
@@ -85,8 +96,16 @@ def rules_section_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ К списку разделов", callback_data="show_rules")]])
 
 
+def _render_loot_item(name: str, count: int) -> str:
+    display_name = LOOT_ITEM_NAMES_RU.get(name, name)
+    price = LOOT_ITEM_PRICES.get(name, 0)
+    if count == 1:
+        return f"{display_name} ({price} зол.)"
+    return f"{display_name} ×{count} ({price * count} зол.)"
+
+
 def _render_loot_line(loot: dict) -> str:
-    items = [f"{LOOT_ITEM_NAMES_RU.get(name, name)} ×{count}" for name, count in loot.items() if count > 0]
+    items = [_render_loot_item(name, count) for name, count in loot.items() if count > 0]
     return f"📦 Лут: {', '.join(items)}" if items else "📦 Лут: пока нет"
 
 
@@ -118,7 +137,6 @@ def render_allocation_screen(character: dict, *, title: str, mode: str) -> str:
         )
 
     lines = [
-        title,
         f"🏅 Уровень: {character['level']}",
         f"💪 Сила: {character['strength']}",
         f"🤸 Ловкость: {character['agility']}",
@@ -126,15 +144,11 @@ def render_allocation_screen(character: dict, *, title: str, mode: str) -> str:
         f"❤️ Здоровье: {character['vitality']}  (HP max: {character['hp_max']:.0f})",
         "",
         f"🏆 Победные очки: {character['victory_points']} (до след. уровня: {character['points_to_next_level']})",
-        f"💰 Золото: {character['gold']}",
     ]
     if character["unspent_stat_points"] > 0:
         lines.append(f"Доступно очков прокачки: {character['unspent_stat_points']}")
-    else:
-        lines.append(
-            "Нет свободных очков. Получишь ещё при следующем уровне "
-            f"(до след. уровня: {character['points_to_next_level']} победных очков)."
-        )
+    lines.append("")
+    lines.append(f"💰 Золото: {character['gold']}")
     lines.append("")
     lines.append(_render_loot_line(character["loot"]))
     lines.append(_render_potions_line(character["potions_small"], character["potions_large"]))
@@ -180,12 +194,10 @@ def allocation_keyboard(character: dict, *, mode: str) -> InlineKeyboardMarkup:
 
     if any(count > 0 for count in character["loot"].values()):
         rows.append([InlineKeyboardButton(text="💰 Продать весь лут", callback_data="sell_loot")])
-    rows.append(
-        [
-            _buy_potion_button("small", character["potions_small"]),
-            _buy_potion_button("large", character["potions_large"]),
-        ]
-    )
+    # Каждая кнопка зелья — своей строкой, не парой в одной (docs/notes.md):
+    # текст с ценой не помещался при двух кнопках в ряд.
+    rows.append([_buy_potion_button("small", character["potions_small"])])
+    rows.append([_buy_potion_button("large", character["potions_large"])])
     rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_stats")])
     # Только на экране "Меню игрока", не при создании — во время creation
     # ещё нечего обнулять (docs/notes.md, п.12).
