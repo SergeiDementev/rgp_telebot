@@ -114,6 +114,7 @@ def test_start_combat_transitions_to_awaiting_confirmation(db_session_factory, m
     body = response.json()
     assert body["status"] == "awaiting_confirmation"
     assert body["first_role"] in ("player", "enemy")
+    assert body["enemy_type"] == "wolf"  # docs/notes.md, п.40 — бот решает по нему, показывать ли автобой
     assert body["text"]
 
 

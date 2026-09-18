@@ -160,7 +160,9 @@ POST /encounter/search_boss          — docs/notes.md п.36: без броск�
                                         pr.BOSS_LEVEL_REQUIREMENT (бот тоже прячет/блокирует
                                         кнопку сам, но сервер не доверяет клиенту)
 POST /combat/{id}/start              — бросок инициативы + обстоятельства одним вызовом
-                                        (status -> "awaiting_confirmation")
+                                        (status -> "awaiting_confirmation"). Ответ несёт
+                                        enemy_type (docs/notes.md п.40) — бот по нему решает,
+                                        показывать ли кнопку "⚡ Автобой" (нет смысла у босса)
 
 POST /combat/{id}/confirm            — { "decision": "fight" | "flee" } — после обстоятельства
 POST /combat/{id}/turn               — выполнить один ход игрока (+ автоматически ход бота,

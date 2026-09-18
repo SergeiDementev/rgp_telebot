@@ -188,6 +188,7 @@ def start_combat(
         combat_session_id=session.id,
         status=session.status,
         first_role=first_role,
+        enemy_type=session.enemy_type,
         player_strength_modifier=player_modifier,
         enemy_strength_modifier=enemy_modifier,
         text=f"{initiative_text}\n\n{circumstance_text}",

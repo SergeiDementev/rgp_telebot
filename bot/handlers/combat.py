@@ -177,15 +177,19 @@ async def search_boss_encounter(callback: CallbackQuery, api: ApiClient) -> None
 async def start_combat(callback: CallbackQuery, api: ApiClient) -> None:
     session_id = _session_id_from(callback.data)
     response = await api.start_combat(callback.from_user.id, session_id)
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="⚔️ Вступить в бой", callback_data=f"confirm_fight:{session_id}"),
-                InlineKeyboardButton(text="🏃 Отступить", callback_data=f"confirm_flee:{session_id}"),
-            ],
-            [InlineKeyboardButton(text="⚡ Автобой", callback_data=f"confirm_fight_auto:{session_id}")],
+    rows = [
+        [
+            InlineKeyboardButton(text="⚔️ Вступить в бой", callback_data=f"confirm_fight:{session_id}"),
+            InlineKeyboardButton(text="🏃 Отступить", callback_data=f"confirm_flee:{session_id}"),
         ]
-    )
+    ]
+    if response.get("enemy_type") != "boss":
+        # Автобой у финального босса не имеет смысла (docs/notes.md, п.40) —
+        # зельём в нём всё равно нельзя пользоваться, а без ручного контроля
+        # над зельями бой против босса проигрывается вслепую. "Отступить"
+        # остаётся всегда, на случай случайного нажатия или "не готов".
+        rows.append([InlineKeyboardButton(text="⚡ Автобой", callback_data=f"confirm_fight_auto:{session_id}")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
     await callback.message.edit_text(response["text"], reply_markup=keyboard)
     await callback.answer()
 

@@ -16,6 +16,7 @@ class CombatStartResponse(BaseModel):
     combat_session_id: int
     status: str
     first_role: str  # "player" | "enemy"
+    enemy_type: str
     player_strength_modifier: float
     enemy_strength_modifier: float
     text: str

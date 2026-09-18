@@ -113,7 +113,9 @@ async def test_search_boss_encounter_shows_alert_when_level_too_low():
 async def test_start_combat_shows_fight_flee_and_auto_buttons():
     callback = make_callback("start_combat:5")
     api = AsyncMock()
-    api.start_combat.return_value = {"combat_session_id": 5, "status": "awaiting_confirmation", "text": "..."}
+    api.start_combat.return_value = {
+        "combat_session_id": 5, "status": "awaiting_confirmation", "enemy_type": "wolf", "text": "..."
+    }
 
     await start_combat(callback, api)
 
@@ -121,6 +123,22 @@ async def test_start_combat_shows_fight_flee_and_auto_buttons():
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert callback_datas == ["confirm_fight:5", "confirm_flee:5", "confirm_fight_auto:5"]
+
+
+async def test_start_combat_against_boss_hides_auto_button():
+    # docs/notes.md, п.40 — автобой у финального босса не имеет смысла
+    # (зельём в нём всё равно нельзя пользоваться), "Отступить" остаётся.
+    callback = make_callback("start_combat:5")
+    api = AsyncMock()
+    api.start_combat.return_value = {
+        "combat_session_id": 5, "status": "awaiting_confirmation", "enemy_type": "boss", "text": "..."
+    }
+
+    await start_combat(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["confirm_fight:5", "confirm_flee:5"]
 
 
 async def test_confirm_fight_shows_attack_button_when_player_goes_first():
