@@ -12,6 +12,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.client import ApiClient, ApiError
+from bot.handlers.character import boss_button
 from bot.utils import safe_edit_text
 
 router = Router()
@@ -72,13 +73,19 @@ def _flee_choice_keyboard(session_id: int, *, mode: str = "manual") -> InlineKey
     )
 
 
-def _post_battle_keyboard() -> InlineKeyboardMarkup:
+def _post_battle_keyboard(character_level: int) -> InlineKeyboardMarkup:
+    """`character_level` — из `CombatTurnResponse.character_level` (docs/
+    notes.md, п.37) или напрямую из `get_character` (refresh_after_battle) —
+    чтобы кнопка финального босса (см. bot/handlers/character.py::boss_
+    button) была здесь активна/заперта тем же условием, что и на главном
+    экране, без лишнего похода в API."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_after_battle")],
             [InlineKeyboardButton(text="🔍 Искать противника", callback_data="search_encounter")],
             [InlineKeyboardButton(text="👤 Меню игрока", callback_data="open_allocation")],
             [InlineKeyboardButton(text="📜 Правила", callback_data="show_rules")],
+            [boss_button(character_level)],
         ]
     )
 
@@ -107,7 +114,7 @@ def _next_step_markup(session_id: int, response: dict, *, mode: str = "manual") 
     if response["status"] == "finished":
         if response.get("enemy_type") == "boss" and response.get("result") == "victory":
             return _boss_victory_keyboard()
-        return _post_battle_keyboard()
+        return _post_battle_keyboard(response["character_level"])
     if response["status"] == "awaiting_flee_decision":
         return _flee_choice_keyboard(session_id, mode=mode)
     rows = [[_turn_button(session_id, response.get("current_turn"))]]
@@ -220,7 +227,7 @@ async def confirm_fight_auto(callback: CallbackQuery, api: ApiClient) -> None:
 async def confirm_flee(callback: CallbackQuery, api: ApiClient) -> None:
     session_id = _session_id_from(callback.data)
     response = await api.confirm_combat(callback.from_user.id, session_id, "flee")
-    await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard())
+    await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard(response["character_level"]))
     await callback.answer()
 
 
@@ -253,7 +260,7 @@ async def use_potion(callback: CallbackQuery, api: ApiClient) -> None:
 async def flee_decision_flee(callback: CallbackQuery, api: ApiClient) -> None:
     session_id = _session_id_from(callback.data)
     response = await api.flee_decision(callback.from_user.id, session_id, "flee")
-    await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard())
+    await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard(response["character_level"]))
     await callback.answer()
 
 
@@ -287,5 +294,5 @@ async def refresh_after_battle(callback: CallbackQuery, api: ApiClient) -> None:
     lines = [f"❤️ HP: {character['hp_current']:.0f}/{character['hp_max']:.0f}"]
     if character["hp_seconds_to_full"] > 0:
         lines.append(f"⏳ Полное восстановление через: ~{character['hp_seconds_to_full']:.0f} сек.")
-    await safe_edit_text(callback.message, "\n".join(lines), reply_markup=_post_battle_keyboard())
+    await safe_edit_text(callback.message, "\n".join(lines), reply_markup=_post_battle_keyboard(character["level"]))
     await callback.answer()

@@ -281,7 +281,7 @@ async def test_confirm_fight_auto_shows_only_the_final_result():
     api.take_turn.side_effect = [
         {"status": "active", "current_turn": "enemy", "text": "Ход 1"},
         {"status": "active", "current_turn": "player", "text": "Ход 2"},
-        {"status": "finished", "result": "victory", "text": "Ты победил!"},
+        {"status": "finished", "result": "victory", "character_level": 3, "text": "Ты победил!"},
     ]
 
     await confirm_fight_auto(callback, api)
@@ -322,7 +322,7 @@ async def test_flee_decision_continue_auto_resumes_silently_to_the_end():
     callback = make_callback("flee_decision_continue_auto:5")
     api = AsyncMock()
     api.flee_decision.return_value = {"status": "active", "current_turn": "enemy", "text": "..."}
-    api.take_turn.return_value = {"status": "finished", "result": "victory", "text": "Ты победил!"}
+    api.take_turn.return_value = {"status": "finished", "result": "victory", "character_level": 3, "text": "Ты победил!"}
 
     await flee_decision_continue_auto(callback, api)
 
@@ -337,7 +337,9 @@ async def test_flee_decision_continue_auto_resumes_silently_to_the_end():
 async def test_confirm_flee_shows_post_battle_buttons():
     callback = make_callback("confirm_flee:5")
     api = AsyncMock()
-    api.confirm_combat.return_value = {"status": "finished", "result": "player_fled", "text": "🏃 Тебе удалось уйти."}
+    api.confirm_combat.return_value = {
+        "status": "finished", "result": "player_fled", "character_level": 3, "text": "🏃 Тебе удалось уйти."
+    }
 
     await confirm_flee(callback, api)
 
@@ -348,6 +350,7 @@ async def test_confirm_flee_shows_post_battle_buttons():
     assert "search_encounter" in callback_datas
     assert "open_allocation" in callback_datas
     assert "show_rules" in callback_datas
+    assert "boss_locked" in callback_datas  # docs/notes.md, п.37 — тоже на постбоевой клавиатуре
 
 
 async def test_take_turn_active_shows_turn_button():
@@ -365,13 +368,33 @@ async def test_take_turn_active_shows_turn_button():
 async def test_take_turn_finished_shows_post_battle_buttons():
     callback = make_callback("take_turn:5")
     api = AsyncMock()
-    api.take_turn.return_value = {"status": "finished", "result": "victory", "text": "⚔️ Ты победил!"}
+    api.take_turn.return_value = {
+        "status": "finished", "result": "victory", "character_level": 3, "text": "⚔️ Ты победил!"
+    }
 
     await take_turn(callback, api)
 
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert callback_datas == ["refresh_after_battle", "search_encounter", "open_allocation", "show_rules"]
+    assert callback_datas == [
+        "refresh_after_battle", "search_encounter", "open_allocation", "show_rules", "boss_locked"
+    ]
+
+
+async def test_take_turn_finished_shows_active_boss_button_at_required_level():
+    # docs/notes.md, п.37 — кнопка финального босса на постбоевом экране
+    # активна тем же условием, что и на главном (уровень из CombatTurnResponse).
+    callback = make_callback("take_turn:5")
+    api = AsyncMock()
+    api.take_turn.return_value = {
+        "status": "finished", "result": "victory", "character_level": 9, "text": "⚔️ Ты победил!"
+    }
+
+    await take_turn(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas[-1] == "search_boss_encounter"
 
 
 async def test_take_turn_boss_victory_shows_restart_button_only():
@@ -396,7 +419,7 @@ async def test_take_turn_boss_defeat_shows_normal_post_battle_buttons():
     callback = make_callback("take_turn:5")
     api = AsyncMock()
     api.take_turn.return_value = {
-        "status": "finished", "result": "defeat", "enemy_type": "boss", "text": "💀 Ты пал..."
+        "status": "finished", "result": "defeat", "enemy_type": "boss", "character_level": 9, "text": "💀 Ты пал..."
     }
 
     await take_turn(callback, api)
@@ -424,7 +447,9 @@ async def test_take_turn_awaiting_flee_decision_shows_flee_buttons():
 async def test_flee_decision_flee_shows_post_battle_buttons():
     callback = make_callback("flee_decision_flee:5")
     api = AsyncMock()
-    api.flee_decision.return_value = {"status": "finished", "result": "defeat", "text": "💀 Ты пал..."}
+    api.flee_decision.return_value = {
+        "status": "finished", "result": "defeat", "character_level": 3, "text": "💀 Ты пал..."
+    }
 
     await flee_decision_flee(callback, api)
 
@@ -449,7 +474,7 @@ async def test_flee_decision_continue_resumes_turn_cycle():
 async def test_refresh_after_battle_shows_hp_and_timer():
     callback = make_callback("refresh_after_battle")
     api = AsyncMock()
-    api.get_character.return_value = {"hp_current": 15.0, "hp_max": 50.0, "hp_seconds_to_full": 35.0}
+    api.get_character.return_value = {"hp_current": 15.0, "hp_max": 50.0, "hp_seconds_to_full": 35.0, "level": 3}
 
     await refresh_after_battle(callback, api)
 
@@ -463,7 +488,7 @@ async def test_refresh_after_battle_shows_hp_and_timer():
 async def test_refresh_after_battle_omits_timer_when_hp_full():
     callback = make_callback("refresh_after_battle")
     api = AsyncMock()
-    api.get_character.return_value = {"hp_current": 50.0, "hp_max": 50.0, "hp_seconds_to_full": 0}
+    api.get_character.return_value = {"hp_current": 50.0, "hp_max": 50.0, "hp_seconds_to_full": 0, "level": 3}
 
     await refresh_after_battle(callback, api)
 

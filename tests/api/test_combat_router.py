@@ -190,6 +190,7 @@ def test_turn_victory_with_no_loot_omits_loot_line(db_session_factory, monkeypat
     body = response.json()
     assert body["result"] == "victory"
     assert "🎁 Добыча" not in body["text"]
+    assert "😕 Упс, не повезло с добычей..." in body["text"]  # docs/notes.md — явная строка, не молчание
 
     db = db_session_factory()
     character = db.query(Character).filter(Character.telegram_user_id == 1).first()
@@ -243,6 +244,39 @@ def test_use_potion_rejects_when_already_used_this_battle(db_session_factory, mo
     db = db_session_factory()
     character = db.query(Character).filter(Character.telegram_user_id == 1).first()
     assert character.potions_small == 2  # не потрачено
+    db.close()
+
+
+def test_use_potion_against_boss_has_no_per_battle_limit(db_session_factory, monkeypatch):
+    # docs/notes.md, п.39 — у финального босса нет ограничения "раз за бой"
+    # на зелья (unlimited_potions в content/enemies.json), в отличие от
+    # обычных противников (п.33). Инвентарь всё равно тратится по-настоящему.
+    _insert_character(
+        db_session_factory, level=9, strength=10, agility=5, luck=2, hp_current=10.0, potions_small=2
+    )
+    client = make_client(db_session_factory)
+
+    session_id = _start_session_against_boss(client, monkeypatch, extra_rolls=[])
+
+    first = client.post(f"/combat/{session_id}/use_potion", json={"size": "small"}, headers=HEADERS)
+    body = first.json()
+    assert first.status_code == 200
+    assert body["potion_used_this_battle"] is False  # лимита нет — флаг не взводится
+    assert body["current_turn"] == "enemy"
+
+    # Ход босса — промах, чтобы ход снова вернулся игроку.
+    _patch_rolls(monkeypatch, [10, 1, 1])  # double-strike нет, атака=1 -> промах, уворот неважен
+    resolved = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
+    assert resolved.json()["current_turn"] == "player"
+
+    second = client.post(f"/combat/{session_id}/use_potion", json={"size": "small"}, headers=HEADERS)
+    body2 = second.json()
+    assert second.status_code == 200  # не "already_used", несмотря на то что зелье уже пилось
+    assert body2["potion_used_this_battle"] is False
+
+    db = db_session_factory()
+    character = db.query(Character).filter(Character.telegram_user_id == 1).first()
+    assert character.potions_small == 0  # реальный лимит — только инвентарь
     db.close()
 
 

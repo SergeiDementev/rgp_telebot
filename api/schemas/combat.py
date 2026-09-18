@@ -39,6 +39,7 @@ class CombatTurnResponse(BaseModel):
     result: Optional[str] = None
     current_turn: Optional[str] = None
     enemy_type: str
+    character_level: int
     text: str
     potions_small: int
     potions_large: int

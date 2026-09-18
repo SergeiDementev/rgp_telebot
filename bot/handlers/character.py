@@ -76,13 +76,15 @@ def render_stats_screen(character: dict) -> str:
     )
 
 
-def _boss_button(character: dict) -> InlineKeyboardButton:
-    """Кнопка финального босса — всегда в основном меню, последней, но
-    активна только с BOSS_LEVEL_REQUIREMENT уровня (docs/notes.md, п.36).
-    До этого уровня текст самой кнопки объясняет условие — нажатие всё
-    равно возможно (Telegram не даёт по-настоящему disabled-кнопки), но
-    ведёт на отдельный колбэк с алертом, не в бой."""
-    if character["level"] >= BOSS_LEVEL_REQUIREMENT:
+def boss_button(level: int) -> InlineKeyboardButton:
+    """Кнопка финального босса — последней и на основном экране статов, и на
+    постбоевой клавиатуре (docs/notes.md, пп.36-37), но активна только с
+    BOSS_LEVEL_REQUIREMENT уровня. До этого уровня текст самой кнопки
+    объясняет условие — нажатие всё равно возможно (Telegram не даёт
+    по-настоящему disabled-кнопки), но ведёт на отдельный колбэк с алертом,
+    не в бой. Публичная (без ведущего "_") — переиспользуется из
+    bot/handlers/combat.py, не только здесь."""
+    if level >= BOSS_LEVEL_REQUIREMENT:
         return InlineKeyboardButton(text="⚔️ Финальный босс", callback_data="search_boss_encounter")
     return InlineKeyboardButton(
         text=f"🔒 Финальный босс (с {BOSS_LEVEL_REQUIREMENT} уровня)", callback_data="boss_locked"
@@ -96,7 +98,7 @@ def stats_screen_keyboard(character: dict) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🔍 Искать противника", callback_data="search_encounter")],
             [InlineKeyboardButton(text=MENU_SCREEN_TITLE, callback_data="open_allocation")],
             [InlineKeyboardButton(text="📜 Правила", callback_data="show_rules")],
-            [_boss_button(character)],
+            [boss_button(character["level"])],
         ]
     )
 

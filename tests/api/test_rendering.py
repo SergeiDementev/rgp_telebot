@@ -185,13 +185,16 @@ def test_render_flee_attempt_enemy_caught_and_killed():
     assert "Добиваешь" in text
 
 
-def test_render_battle_end_victory():
+def test_render_battle_end_victory_without_loot_shows_no_luck_line():
+    # Лут не гарантирован (core.economy.resolve_loot_drop может выкатить
+    # "nothing") — явная строка вместо молчания (docs/notes.md).
     text = r.render_battle_end(
         "wolf", "victory", reward=5, victory_points_total=23, hp_current=40, hp_max=60, hp_seconds_to_full=20
     )
     assert text == (
         "⚔️ Бой окончен! Ты победил Волка.\n"
         "🏆 +5 победных очков (всего: 23)\n"
+        "😕 Упс, не повезло с добычей...\n"
         "\n"
         "❤️ HP: 40/60\n"
         "⏳ Полное восстановление через: ~20 сек."
@@ -219,6 +222,9 @@ def test_render_battle_end_defeat_no_reward_line():
     )
     assert "🏆" not in text
     assert text.startswith("💀 Ты пал в бою с Кабаном...")
+    # "Не повезло с добычей" — только про исход "victory", на поражении лут
+    # в принципе не кидался (см. api/routers/combat.py::_finish_battle).
+    assert "не повезло" not in text
 
 
 def test_render_battle_end_player_fled():

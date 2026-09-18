@@ -287,8 +287,15 @@ def render_battle_end(
     lines = [header]
     if reward_line:
         lines.append(reward_line)
-    if loot_dropped:
-        lines.append(f"🎁 Добыча: {LOOT_ITEM_NAMES_RU.get(loot_dropped, loot_dropped)}")
+    if result == "victory":
+        if loot_dropped:
+            lines.append(f"🎁 Добыча: {LOOT_ITEM_NAMES_RU.get(loot_dropped, loot_dropped)}")
+        else:
+            # Лут — не гарантирован (core.economy.resolve_loot_drop может
+            # выкатить "nothing"), явная строка вместо молчания — иначе
+            # игрок не может отличить "лута не было в принципе" от того,
+            # что о нём просто забыли показать (docs/notes.md).
+            lines.append("😕 Упс, не повезло с добычей...")
     lines.append("")
     lines.append(f"❤️ HP: {hp_current:.0f}/{hp_max:.0f}")
     if hp_seconds_to_full > 0:

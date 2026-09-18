@@ -109,11 +109,19 @@ def _use_potion(session: CombatSession, character: Character, size: str, db: Ses
     противнику, как и обычный удар (§9 шаг 7). Лимит — общий на оба
     размера, раз за бой (player_potion_used_this_battle — то же поле, что
     и в п.32, семантика лимита не изменилась, изменился только триггер).
-    core.economy.calculate_heal_amount переиспользуется как есть."""
+    core.economy.calculate_heal_amount переиспользуется как есть.
+
+    Исключение — противник с unlimited_potions (сейчас только босс,
+    content/enemies.json, docs/notes.md п.39): флаг лимита не выставляется
+    вообще, тем же принципом, что и can_flee у побега — единственный
+    источник правды, не нужно ничего "маскировать" на выходе в
+    _turn_response/use_potion, они читают то же поле как есть."""
     hp_max = pr.calculate_hp_max(character.vitality)
     heal = ec.calculate_heal_amount(hp_max, size)
     session.character_hp_snapshot = min(session.character_hp_snapshot + heal, hp_max)
-    session.player_potion_used_this_battle = True
+    enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
+    if not enemy_stats.get("unlimited_potions", False):
+        session.player_potion_used_this_battle = True
     if size == "large":
         character.potions_large -= 1
     else:
@@ -216,10 +224,13 @@ def _hp_status_text(session: CombatSession, character: Character, enemy_stats: d
 def _turn_response(session: CombatSession, character: Character, text: str) -> CombatTurnResponse:
     """Снимок инвентаря зелий игрока (docs/notes.md, п.33) — бот решает по
     нему, показывать ли кнопку "Выпить зелье" на следующем ходу, без
-    отдельного вызова get_character на каждом шаге."""
+    отдельного вызова get_character на каждом шаге. character_level (п.37) —
+    тем же принципом, чтобы постбоевая клавиатура знала, показывать ли
+    кнопку финального босса активной, без лишнего запроса."""
     return CombatTurnResponse(
         combat_session_id=session.id, status=session.status, result=session.result,
-        current_turn=session.current_turn, enemy_type=session.enemy_type, text=text,
+        current_turn=session.current_turn, enemy_type=session.enemy_type,
+        character_level=character.level, text=text,
         potions_small=character.potions_small, potions_large=character.potions_large,
         potion_used_this_battle=session.player_potion_used_this_battle,
     )
