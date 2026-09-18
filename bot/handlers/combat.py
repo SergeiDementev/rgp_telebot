@@ -93,14 +93,15 @@ def _post_battle_keyboard(character_level: int) -> InlineKeyboardMarkup:
 def _boss_victory_keyboard() -> InlineKeyboardMarkup:
     """Победа над финальным боссом — конец игры (docs/notes.md, п.36), не
     обычный постбоевой экран: единственный выход — обнулить персонажа и
-    начать заново. Кнопка нарочно ведёт на тот же callback_data
-    "reset_confirm", что и подтверждение "🗑 Обнулить персонажа"
-    (bot/handlers/start.py) — тот хендлер уже делает ровно то, что нужно
-    здесь (удалить + пересоздать + показать экран создания), без
-    дополнительного диалога "точно?": само нажатие уже осознанный выбор,
-    других кнопок на этом экране нет."""
+    начать заново. Кнопка нарочно ведёт на тот же хендлер "reset_confirm:*",
+    что и подтверждение "🗑 Обнулить персонажа" (bot/handlers/start.py) — тот
+    уже делает ровно то, что нужно здесь (архивировать + пересоздать +
+    показать экран создания, docs/notes.md п.41), без дополнительного
+    диалога "точно?": само нажатие уже осознанный выбор, других кнопок на
+    этом экране нет. Причина архивации в самом callback_data —
+    "boss_victory", не "manual_reset" (для аналитики на сервере)."""
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="🔄 Начать заново", callback_data="reset_confirm")]]
+        inline_keyboard=[[InlineKeyboardButton(text="🔄 Начать заново", callback_data="reset_confirm:boss_victory")]]
     )
 
 

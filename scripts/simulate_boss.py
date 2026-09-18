@@ -7,15 +7,18 @@ mechanics.py и core/progression.py не меняются — импортиру
 scripts/simulate_combat.py и simulate_combat_economy.py тоже не трогаются,
 только импортируются (`sc`/`sce`) — единственное скопированное место, как и
 в simulate_combat_economy.py, это control-flow цикла ходов, на этот раз
-чтобы поддержать сценарий "без лимита зелий за бой" (специальное правило
-только для калибровки, не часть реальной механики).
+чтобы поддержать отсутствие лимита "зелье раз за бой" в бою с боссом.
 
 Два сценария теста (single-mode стиль — много боёв на фиксированных статах,
 как scripts/simulate_combat.py --mode single):
-  а) "Без подготовки" — 0 зелий, обычный лимит (1 за бой). Целевой winrate 0-5%.
-  б) "С полным запасом" — 5 малых + 3 больших зелья, БЕЗ лимита "1 за бой"
-     (только в этом сценарии) — пьёт каждый ход, пока триггер и инвентарь
-     не пуст. Целевой winrate 40-70%.
+  а) "Без подготовки" — 0 зелий. Целевой winrate 0-5%.
+  б) "С полным запасом" — 5 малых + 3 больших зелья. Целевой winrate 40-70%.
+Оба сценария (как и любой бой с боссом) без лимита "1 зелье за бой" —
+это не черновое допущение калибровки, а реальное правило игры (docs/
+notes.md, п.39: у финального босса этого лимита нет вообще, ограничивает
+только инвентарь). Промежуточные точки между этими двумя крайними
+запасами (частичный инвентарь) — scripts/simulate_boss_partial_stock.py,
+переиспользует функции отсюда как есть.
 
 Статы игрока для теста — не выдуманы, а взяты из реальной прогрессии:
 compute_typical_level_9_10_stats() гоняет sc.simulate_progression_session
@@ -109,17 +112,17 @@ def compute_typical_level_9_10_stats(seeds=PROBE_SEEDS, policy: str = "priority_
 
 # ---------------------------------------------------------------------------
 # Один бой против босса — копия sce.simulate_single_fight_economy с одним
-# отличием: опциональный снятый лимит "зелье раз за бой" (только для
-# сценария "с полным запасом").
+# отличием: снятый лимит "зелье раз за бой" — реальное правило боя с
+# боссом (docs/notes.md, п.39), не черновое допущение калибровки.
 # ---------------------------------------------------------------------------
 
 
 def _maybe_drink_potion_unlimited(attacker: dict) -> None:
-    """Как sce._maybe_drink_potion, но БЕЗ лимита "раз за бой" — специальное
-    правило только для сценария калибровки "с полным запасом" (задача прямо
-    просит снять лимит для этого теста, это не часть реальной механики).
-    Переиспользует core.economy.choose_potion_to_drink/calculate_heal_amount
-    как есть, не дублирует условия триггера/приоритета/процента лечения."""
+    """Как sce._maybe_drink_potion, но БЕЗ лимита "раз за бой" — у финального
+    босса этого лимита нет вообще (docs/notes.md, п.39), ограничивает
+    только реальный инвентарь. Переиспользует core.economy.choose_potion_
+    to_drink/calculate_heal_amount как есть, не дублирует условия
+    триггера/приоритета/процента лечения."""
     if not ec.is_hp_at_or_below_heal_threshold(attacker["hp"], attacker["hp_max"]):
         return
     potion = ec.choose_potion_to_drink(attacker["potions_small"], attacker["potions_large"])
@@ -127,8 +130,10 @@ def _maybe_drink_potion_unlimited(attacker: dict) -> None:
         return
     if potion == "large":
         attacker["potions_large"] -= 1
+        attacker["potions_large_used"] += 1
     else:
         attacker["potions_small"] -= 1
+        attacker["potions_small_used"] += 1
     attacker["hp"] = min(attacker["hp"] + ec.calculate_heal_amount(attacker["hp_max"], potion), attacker["hp_max"])
     attacker["potions_used_count"] += 1
 
@@ -155,6 +160,8 @@ def simulate_single_fight_vs_boss(
     player["potions_large"] = potions_large
     player["potion_used_this_battle"] = False
     player["potions_used_count"] = 0
+    player["potions_small_used"] = 0
+    player["potions_large_used"] = 0
 
     while True:
         player_roll = rng.randint(1, 10)
@@ -217,6 +224,8 @@ def simulate_single_fight_vs_boss(
                         circumstance_outcome, circumstance_roller, flee_offers,
                     )
                     fight_result["potions_used_count"] = player["potions_used_count"]
+                    fight_result["potions_small_used"] = player["potions_small_used"]
+                    fight_result["potions_large_used"] = player["potions_large_used"]
                     return fight_result
 
         ds_faces = cm.calculate_double_strike_success_faces(attacker["luck"], sc.DOUBLE_STRIKE_K)
@@ -243,6 +252,8 @@ def simulate_single_fight_vs_boss(
                     circumstance_outcome, circumstance_roller, flee_offers,
                 )
                 fight_result["potions_used_count"] = player["potions_used_count"]
+                fight_result["potions_small_used"] = player["potions_small_used"]
+                fight_result["potions_large_used"] = player["potions_large_used"]
                 return fight_result
 
         turns_taken += 1

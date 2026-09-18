@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from bot.client import ApiError
+from bot.handlers.character import BOSS_LEVEL_REQUIREMENT
 from bot.handlers.combat import (
     confirm_fight,
     confirm_fight_auto,
@@ -405,7 +406,7 @@ async def test_take_turn_finished_shows_active_boss_button_at_required_level():
     callback = make_callback("take_turn:5")
     api = AsyncMock()
     api.take_turn.return_value = {
-        "status": "finished", "result": "victory", "character_level": 9, "text": "⚔️ Ты победил!"
+        "status": "finished", "result": "victory", "character_level": BOSS_LEVEL_REQUIREMENT, "text": "⚔️ Ты победил!"
     }
 
     await take_turn(callback, api)
@@ -416,9 +417,10 @@ async def test_take_turn_finished_shows_active_boss_button_at_required_level():
 
 
 async def test_take_turn_boss_victory_shows_restart_button_only():
-    # docs/notes.md, п.36 — победа над боссом заканчивает игру: вместо
+    # docs/notes.md, п.36/41 — победа над боссом заканчивает игру: вместо
     # обычной постбоевой клавиатуры единственная кнопка "Начать заново",
-    # переиспользующая callback_data "reset_confirm" (bot/handlers/start.py).
+    # переиспользующая хендлер "reset_confirm:*" (bot/handlers/start.py) с
+    # причиной "boss_victory" — для аналитики на сервере.
     callback = make_callback("take_turn:5")
     api = AsyncMock()
     api.take_turn.return_value = {
@@ -429,7 +431,7 @@ async def test_take_turn_boss_victory_shows_restart_button_only():
 
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert callback_datas == ["reset_confirm"]
+    assert callback_datas == ["reset_confirm:boss_victory"]
 
 
 async def test_take_turn_boss_defeat_shows_normal_post_battle_buttons():

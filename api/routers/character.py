@@ -6,8 +6,9 @@ core/ -> сохранить -> вернуть JSON (backend_plan.md §6). Ник
 """
 
 from datetime import datetime, timezone
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_db, require_api_key
@@ -22,7 +23,7 @@ from api.schemas.character import (
 )
 from core import economy as ec
 from core import progression as pr
-from db.models import Character, CombatSession, StatAllocationLog
+from db.models import Character, StatAllocationLog
 
 router = APIRouter(prefix="/character", tags=["character"], dependencies=[Depends(require_api_key)])
 
@@ -67,7 +68,11 @@ def _to_character_out(character: Character) -> CharacterOut:
 
 @router.post("", response_model=CharacterOut, status_code=status.HTTP_201_CREATED)
 def create_character(payload: CharacterCreate, db: Session = Depends(get_db)) -> CharacterOut:
-    existing = db.query(Character).filter(Character.telegram_user_id == payload.telegram_user_id).first()
+    existing = (
+        db.query(Character)
+        .filter(Character.telegram_user_id == payload.telegram_user_id, Character.is_active.is_(True))
+        .first()
+    )
     if existing is not None:
         # §1 gameplay_loop_mvp.md: повторный /start не пересоздаёт персонажа.
         return _to_character_out(existing)
@@ -85,6 +90,7 @@ def create_character(payload: CharacterCreate, db: Session = Depends(get_db)) ->
         vitality=BASE_STATS["vitality"],
         hp_current=hp_max,
         last_hp_update_at=_now(),
+        is_active=True,
         gold=0,
         loot={},
         potions_small=0,
@@ -98,26 +104,44 @@ def create_character(payload: CharacterCreate, db: Session = Depends(get_db)) ->
 
 @router.get("/{telegram_user_id}", response_model=CharacterOut)
 def get_character(telegram_user_id: int, db: Session = Depends(get_db)) -> CharacterOut:
-    character = db.query(Character).filter(Character.telegram_user_id == telegram_user_id).first()
+    character = (
+        db.query(Character)
+        .filter(Character.telegram_user_id == telegram_user_id, Character.is_active.is_(True))
+        .first()
+    )
     if character is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
     return _to_character_out(character)
 
 
 @router.delete("/{telegram_user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_character(telegram_user_id: int, db: Session = Depends(get_db)) -> None:
-    """Обнулить персонажа — в основном для тестирования (docs/notes.md), но
-    без ограничения на окружение. Удаляет и все его CombatSession/
-    StatAllocationLog — прямого каскада на уровне БД нет (db/models.py),
-    делаем явно в правильном порядке (дочерние таблицы, потом сам
-    персонаж), иначе осиротевшие строки останутся в БД."""
-    character = db.query(Character).filter(Character.telegram_user_id == telegram_user_id).first()
+def reset_character(
+    telegram_user_id: int,
+    reason: Literal["manual_reset", "boss_victory"] = Query(...),
+    db: Session = Depends(get_db),
+) -> None:
+    """"Обнулить персонажа" — раньше действительно удаляло строку и каскадом
+    CombatSession/StatAllocationLog (docs/notes.md); теперь архивирует
+    (docs/notes.md, п.41) — вся история прохождения нужна для аналитики
+    (scripts/export_playtest_stats.py) и должна пережить сброс/победу над
+    боссом. Название эндпоинта/HTTP-метод не меняли (DELETE
+    /character/{telegram_user_id}) — с точки зрения бота ничего не
+    изменилось, семантика "сбросить и начать заново" та же самая.
+
+    `reason` — почему архивирован, для аналитики (не влияет на сам сброс):
+    "manual_reset" — /reset или "🗑 Обнулить персонажа"; "boss_victory" —
+    "🔄 Начать заново" после победы над финальным боссом."""
+    character = (
+        db.query(Character)
+        .filter(Character.telegram_user_id == telegram_user_id, Character.is_active.is_(True))
+        .first()
+    )
     if character is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
 
-    db.query(CombatSession).filter(CombatSession.character_id == character.id).delete()
-    db.query(StatAllocationLog).filter(StatAllocationLog.character_id == character.id).delete()
-    db.delete(character)
+    character.is_active = False
+    character.archived_at = _now()
+    character.archived_reason = reason
     db.commit()
 
 

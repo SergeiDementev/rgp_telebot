@@ -1,4 +1,4 @@
-"""SQLAlchemy-модели — по backend_plan.md §4, с двумя уточнениями:
+"""SQLAlchemy-модели — по backend_plan.md §4, с тремя уточнениями:
 
 - `flee_opportunity_used` разведён на `player_flee_right_used` /
   `enemy_flee_right_used`: право на побег принадлежит стороне, а не сессии
@@ -7,6 +7,13 @@
 - `enemy_hp_max` не хранится в сессии — статы моба (включая HP_max)
   статичны и читаются из `content/enemies.json` по `enemy_type`, хранить их
   копию в каждой сессии было бы дублированием статичных данных.
+- `Character` никогда не удаляется физически (docs/notes.md, п.41) — "сброс"
+  архивирует строку (`is_active=False`), у одного `telegram_user_id` со
+  временем накапливается много строк (одна активная, остальные — история
+  прошлых прохождений для аналитики). Поэтому `telegram_user_id` больше не
+  `UNIQUE` на уровне БД — уникальность "одна активная на пользователя"
+  обеспечивается на уровне приложения (тот же принцип, что уже применяется
+  к "один активный CombatSession на персонажа").
 """
 
 from datetime import datetime, timezone
@@ -28,7 +35,7 @@ class Character(Base):
     __tablename__ = "characters"
 
     id = Column(Integer, primary_key=True)
-    telegram_user_id = Column(Integer, unique=True, nullable=False, index=True)
+    telegram_user_id = Column(Integer, nullable=False, index=True)
     nickname = Column(String, nullable=False)
     level = Column(Integer, nullable=False, default=1)
     victory_points = Column(Integer, nullable=False, default=0)
@@ -40,6 +47,14 @@ class Character(Base):
     hp_current = Column(Float, nullable=False)
     last_hp_update_at = Column(DateTime, nullable=False, default=_utcnow)
     created_at = Column(DateTime, nullable=False, default=_utcnow)
+
+    # Архивация вместо удаления (docs/notes.md, п.41) — is_active=False
+    # помечает законченное прохождение (ручной сброс или победа над боссом),
+    # его CombatSession/StatAllocationLog остаются в БД навсегда для
+    # аналитики (scripts/export_playtest_stats.py --character-id N).
+    is_active = Column(Boolean, nullable=False, default=True)
+    archived_at = Column(DateTime, nullable=True)
+    archived_reason = Column(String, nullable=True)  # "manual_reset" | "boss_victory"
 
     # Экономика (docs/notes.md, п.30) — цены/капы в core/economy.py, не здесь.
     gold = Column(Integer, nullable=False, default=0)

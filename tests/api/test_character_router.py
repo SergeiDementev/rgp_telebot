@@ -243,7 +243,11 @@ def test_buy_potion_character_not_found_returns_404(db_session_factory):
     assert response.status_code == 404
 
 
-def test_delete_character_removes_character_and_combat_sessions(db_session_factory):
+def test_reset_character_archives_without_deleting_history(db_session_factory):
+    # docs/notes.md, п.41 — "сброс" раньше удалял персонажа и каскадом всю
+    # его историю (CombatSession/StatAllocationLog), теперь архивирует:
+    # для аналитики (scripts/export_playtest_stats.py) история должна
+    # пережить сброс.
     client = make_client(db_session_factory)
     created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
     client.post(f"/character/{created['id']}/allocate_point", json={"stat": "strength"})
@@ -262,21 +266,75 @@ def test_delete_character_removes_character_and_combat_sessions(db_session_facto
     db.commit()
     db.close()
 
-    response = client.delete("/character/1")
+    response = client.delete("/character/1", params={"reason": "manual_reset"})
     assert response.status_code == 204
 
+    # Архивный персонаж больше не "текущий" — обычное чтение его не находит.
     assert client.get("/character/1").status_code == 404
 
     db = db_session_factory()
-    assert db.query(CombatSession).filter(CombatSession.character_id == created["id"]).count() == 0
-    assert db.query(StatAllocationLog).filter(StatAllocationLog.character_id == created["id"]).count() == 0
+    archived = db.get(Character, created["id"])
+    assert archived is not None  # строка не удалена
+    assert archived.is_active is False
+    assert archived.archived_at is not None
+    assert archived.archived_reason == "manual_reset"
+    assert db.query(CombatSession).filter(CombatSession.character_id == created["id"]).count() == 1
+    assert db.query(StatAllocationLog).filter(StatAllocationLog.character_id == created["id"]).count() == 1
     db.close()
 
 
-def test_delete_character_not_found_returns_404(db_session_factory):
+def test_reset_character_with_boss_victory_reason(db_session_factory):
     client = make_client(db_session_factory)
-    response = client.delete("/character/999")
+    created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+
+    response = client.delete("/character/1", params={"reason": "boss_victory"})
+    assert response.status_code == 204
+
+    db = db_session_factory()
+    archived = db.get(Character, created["id"])
+    assert archived.archived_reason == "boss_victory"
+    db.close()
+
+
+def test_reset_character_requires_reason_query_param(db_session_factory):
+    client = make_client(db_session_factory)
+    client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"})
+
+    response = client.delete("/character/1")
+    assert response.status_code == 422
+
+
+def test_reset_character_rejects_unknown_reason(db_session_factory):
+    client = make_client(db_session_factory)
+    client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"})
+
+    response = client.delete("/character/1", params={"reason": "something_else"})
+    assert response.status_code == 422
+
+
+def test_reset_character_not_found_returns_404(db_session_factory):
+    client = make_client(db_session_factory)
+    response = client.delete("/character/999", params={"reason": "manual_reset"})
     assert response.status_code == 404
+
+
+def test_create_character_after_reset_starts_fresh_row(db_session_factory):
+    # telegram_user_id больше не UNIQUE (docs/notes.md, п.41) — после сброса
+    # у одного пользователя накапливается несколько строк Character:
+    # архивная (со всей историей) и новая активная.
+    client = make_client(db_session_factory)
+    first = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+    client.post(f"/character/{first['id']}/allocate_point", json={"stat": "strength"})
+
+    client.delete("/character/1", params={"reason": "manual_reset"})
+    second = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+
+    assert second["id"] != first["id"]
+    assert second["strength"] == 3  # базовые статы, не унаследованные от прокачки первого
+
+    db = db_session_factory()
+    assert db.query(Character).filter(Character.telegram_user_id == 1).count() == 2
+    db.close()
 
 
 def test_require_api_key_without_override(db_session_factory):

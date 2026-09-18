@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from api.dependencies import get_db, require_api_key
 from api.routers.encounter import router as encounter_router
+from core import progression as pr
 from db.models import Character
 from tests.api.conftest import override_get_db
 
@@ -188,8 +189,8 @@ def test_start_combat_twice_returns_409(db_session_factory, monkeypatch):
 
 
 def test_search_boss_encounter_creates_session_at_required_level(db_session_factory):
-    # docs/notes.md, п.36 — доступ с pr.BOSS_LEVEL_REQUIREMENT (9) уровня.
-    _insert_character(db_session_factory, level=9)
+    # docs/notes.md, п.36 — доступ с pr.BOSS_LEVEL_REQUIREMENT уровня.
+    _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT)
     client = make_client(db_session_factory)
 
     response = client.post("/encounter/search_boss", headers=HEADERS)
@@ -201,7 +202,7 @@ def test_search_boss_encounter_creates_session_at_required_level(db_session_fact
 
 
 def test_search_boss_encounter_below_required_level_returns_403(db_session_factory):
-    _insert_character(db_session_factory, level=8)
+    _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT - 1)
     client = make_client(db_session_factory)
 
     response = client.post("/encounter/search_boss", headers=HEADERS)
@@ -210,7 +211,7 @@ def test_search_boss_encounter_below_required_level_returns_403(db_session_facto
 
 
 def test_search_boss_encounter_rejects_second_active_session(db_session_factory):
-    _insert_character(db_session_factory, level=9)
+    _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT)
     client = make_client(db_session_factory)
 
     first = client.post("/encounter/search_boss", headers=HEADERS)
@@ -224,7 +225,7 @@ def test_search_boss_encounter_does_not_roll_dice(db_session_factory, monkeypatc
     def _fail_randint(*_args, **_kwargs):
         raise AssertionError("search_boss_encounter must not roll dice")
 
-    _insert_character(db_session_factory, level=9)
+    _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT)
     client = make_client(db_session_factory)
     monkeypatch.setattr("api.routers.encounter.random.randint", _fail_randint)
 

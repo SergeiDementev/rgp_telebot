@@ -115,7 +115,7 @@ async def test_cmd_reset_asks_for_confirmation():
     assert args[0] == RESET_CONFIRM_TEXT
     markup = kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert "reset_confirm" in callback_datas
+    assert "reset_confirm:manual_reset" in callback_datas
     assert "reset_cancel" in callback_datas
 
 
@@ -132,7 +132,7 @@ async def test_reset_request_edits_message_with_confirmation():
     assert args[0] == RESET_CONFIRM_TEXT
     markup = kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert "reset_confirm" in callback_datas
+    assert "reset_confirm:manual_reset" in callback_datas
     assert "reset_cancel" in callback_datas
     callback.answer.assert_awaited_once()
 
@@ -141,6 +141,7 @@ async def test_reset_confirm_deletes_character_and_shows_creation_screen():
     # Без приветственного текста и без лишнего клика "Начать игру" — сразу
     # экран создания героя (docs/notes.md).
     callback = make_callback(full_name="Hero")
+    callback.data = "reset_confirm:manual_reset"
     api = AsyncMock()
     api.create_character.return_value = {
         "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
@@ -149,13 +150,31 @@ async def test_reset_confirm_deletes_character_and_shows_creation_screen():
 
     await reset_confirm(callback, api)
 
-    api.delete_character.assert_awaited_once_with(callback.from_user.id)
+    api.delete_character.assert_awaited_once_with(callback.from_user.id, reason="manual_reset")
     api.create_character.assert_awaited_once_with(callback.from_user.id, "Hero")
     callback.message.edit_text.assert_awaited_once()
     text = callback.message.edit_text.call_args.args[0]
     assert "Создание героя" in text
     assert WELCOME_TEXT not in text
     callback.answer.assert_awaited_once()
+
+
+async def test_reset_confirm_passes_boss_victory_reason():
+    # docs/notes.md, п.41 — тот же хендлер, что и обычный сброс, но с другой
+    # причиной в callback_data: экран поздравления после победы над боссом
+    # (bot/handlers/combat.py::_boss_victory_keyboard) ведёт сюда с
+    # "reset_confirm:boss_victory", не "manual_reset".
+    callback = make_callback(full_name="Hero")
+    callback.data = "reset_confirm:boss_victory"
+    api = AsyncMock()
+    api.create_character.return_value = {
+        "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
+        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+    }
+
+    await reset_confirm(callback, api)
+
+    api.delete_character.assert_awaited_once_with(callback.from_user.id, reason="boss_victory")
 
 
 async def test_reset_cancel_does_not_touch_character():

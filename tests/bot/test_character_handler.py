@@ -6,6 +6,7 @@ import pytest
 
 from bot.client import ApiError
 from bot.handlers.character import (
+    BOSS_LEVEL_REQUIREMENT,
     allocate_creation,
     allocate_levelup,
     back_to_stats,
@@ -259,20 +260,20 @@ async def test_refresh_stats_shows_stats_screen():
 async def test_back_to_stats_shows_locked_boss_button_below_required_level():
     callback = make_callback("back_to_stats")
     api = AsyncMock()
-    api.get_character.return_value = {**BASE_CHARACTER, "level": 8}
+    api.get_character.return_value = {**BASE_CHARACTER, "level": BOSS_LEVEL_REQUIREMENT - 1}
 
     await back_to_stats(callback, api)
 
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     button = markup.inline_keyboard[-1][0]
     assert button.callback_data == "boss_locked"
-    assert "9" in button.text  # подсказка уровня прямо в тексте кнопки
+    assert str(BOSS_LEVEL_REQUIREMENT) in button.text  # подсказка уровня прямо в тексте кнопки
 
 
 async def test_back_to_stats_shows_active_boss_button_at_required_level():
     callback = make_callback("back_to_stats")
     api = AsyncMock()
-    api.get_character.return_value = {**BASE_CHARACTER, "level": 9}
+    api.get_character.return_value = {**BASE_CHARACTER, "level": BOSS_LEVEL_REQUIREMENT}
 
     await back_to_stats(callback, api)
 

@@ -39,6 +39,8 @@ def _fighter(hp, hp_max, potions_small=0, potions_large=0):
         "potions_small": potions_small,
         "potions_large": potions_large,
         "potions_used_count": 0,
+        "potions_small_used": 0,
+        "potions_large_used": 0,
     }
 
 
@@ -47,11 +49,14 @@ def test_maybe_drink_potion_unlimited_ignores_once_per_battle_limit():
     sb._maybe_drink_potion_unlimited(attacker)
     assert attacker["potions_used_count"] == 1
     assert attacker["potions_large"] == 1
+    assert attacker["potions_large_used"] == 1
+    assert attacker["potions_small_used"] == 0
 
     attacker["hp"] = 10  # снова критично на следующем ходу
     sb._maybe_drink_potion_unlimited(attacker)
     assert attacker["potions_used_count"] == 2  # второй раз за бой — можно, лимита нет
     assert attacker["potions_large"] == 0
+    assert attacker["potions_large_used"] == 2
 
 
 def test_maybe_drink_potion_unlimited_does_nothing_above_threshold():
@@ -78,6 +83,7 @@ def test_simulate_single_fight_vs_boss_runs_without_error():
         )
         assert "result" in result
         assert result["potions_used_count"] >= 0
+        assert result["potions_small_used"] + result["potions_large_used"] == result["potions_used_count"]
 
 
 def test_unlimited_potions_scenario_uses_more_potions_than_limited_scenario():

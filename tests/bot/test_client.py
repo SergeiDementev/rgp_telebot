@@ -93,13 +93,15 @@ async def test_delete_character_handles_204_no_content():
     def handler(request: httpx.Request) -> httpx.Response:
         captured["method"] = request.method
         captured["path"] = request.url.path
+        captured["params"] = dict(request.url.params)
         return httpx.Response(204)  # без тела вообще — как реально шлёт FastAPI на 204
 
     client = make_client(handler)
 
-    result = await client.delete_character(1)
+    result = await client.delete_character(1, reason="manual_reset")
 
     assert captured["method"] == "DELETE"
+    assert captured["params"] == {"reason": "manual_reset"}  # docs/notes.md, п.41 — для аналитики на сервере
     assert captured["path"] == "/character/1"
     assert result is None
 

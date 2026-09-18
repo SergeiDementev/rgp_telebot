@@ -56,11 +56,12 @@ class ApiClient:
         *,
         telegram_user_id: Optional[int] = None,
         json: Optional[dict] = None,
+        params: Optional[dict] = None,
     ) -> dict:
         headers = {}
         if telegram_user_id is not None:
             headers["X-Telegram-User-Id"] = str(telegram_user_id)
-        response = await self._client.request(method, path, json=json, headers=headers)
+        response = await self._client.request(method, path, json=json, params=params, headers=headers)
         if response.status_code >= 400:
             try:
                 detail = response.json().get("detail")
@@ -94,8 +95,11 @@ class ApiClient:
             "POST", f"/character/{character_id}/buy_potion", json={"size": size}
         )
 
-    async def delete_character(self, telegram_user_id: int) -> None:
-        await self._request("DELETE", f"/character/{telegram_user_id}")
+    async def delete_character(self, telegram_user_id: int, reason: str) -> None:
+        """`reason` — "manual_reset" | "boss_victory" (docs/notes.md, п.41):
+        персонаж не удаляется физически, а архивируется (is_active=False) —
+        причина нужна серверу для аналитики, не влияет на сам сброс."""
+        await self._request("DELETE", f"/character/{telegram_user_id}", params={"reason": reason})
 
     # --- encounter / combat ---
 

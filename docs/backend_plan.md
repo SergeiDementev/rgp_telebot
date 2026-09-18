@@ -58,8 +58,18 @@ project/
 ├── scripts/                  # готово
 │   ├── simulate_combat.py         # консольный симулятор боёв для калибровки (см. §8, этап 2)
 │   ├── simulate_combat_economy.py # + слой экономики (лут/золото/зелья) поверх того же движка
-│   └── simulate_boss.py           # калибровка статов финального босса (docs/notes.md пп.26-29,
-│                                   # статы перенесены в content/enemies.json в п.36)
+│   ├── simulate_boss.py           # калибровка статов финального босса (docs/notes.md пп.26-29,
+│   │                               # статы перенесены в content/enemies.json в п.36)
+│   ├── simulate_boss_partial_stock.py # кривая win rate по промежуточным запасам зелий +
+│   │                                   # расход зелий в проигранных попытках (docs/notes.md п.42)
+│   ├── simulate_boss_recovery_farm.py # время рефарма зелий с нуля после поражения от босса —
+│   │                                   # статы заморожены на 9-10 уровне (п.43) и, точнее,
+│   │                                   # растут обычной прогрессией (п.44) — оба варианта
+│   ├── simulate_boss_early_unlock.py  # стоит ли открывать босса раньше, с 8 уровня — естественный
+│   │                                   # запас зелий + winrate на статах 8 уровня (docs/notes.md п.45)
+│   └── export_playtest_stats.py   # выгрузка CSV по одному прохождению (--character-id N) —
+│                                   # с п.41 архивные character_id хранятся в БД навсегда,
+│                                   # так что работает для любого прошлого прохождения
 │
 ├── tests/                     # готово — pytest, зеркалит структуру выше
 │   ├── core/
@@ -90,7 +100,10 @@ project/
 ```python
 class Character:
     id: int
-    telegram_user_id: int        # уникальный ключ для идентификации при запросах от бота
+    telegram_user_id: int        # НЕ уникальный (docs/notes.md, п.41) — у пользователя со временем
+                                  # накапливается много строк: одна активная + архивные прошлые
+                                  # прохождения. "Текущий" персонаж — is_active=True, ровно одна
+                                  # строка на пользователя на уровне приложения, не БД
     nickname: str                # берётся из Telegram при создании
     level: int
     victory_points: int          # накопительно, не расходуется — только двигает уровень
@@ -102,6 +115,11 @@ class Character:
     hp_current: float
     last_hp_update_at: datetime   # для ленивого пересчёта регенерации
     created_at: datetime
+
+    # Архивация вместо удаления (docs/notes.md, п.41)
+    is_active: bool = True
+    archived_at: datetime | None = None
+    archived_reason: str | None = None  # "manual_reset" | "boss_victory"
 
     # docs/notes.md п.30 — "Меню игрока": экономика поверх боя
     gold: int = 0                 # копится продажей лута, тратится на зелья
@@ -140,9 +158,13 @@ class CombatSession:
 POST   /character                      — создать персонажа (nickname из Telegram, стартовые статы)
 GET    /character/{telegram_user_id}   — текущее состояние (HP пересчитывается на лету при чтении)
 POST   /character/{id}/allocate_point  — потратить одно очко прокачки: {"stat": "strength"}
-DELETE /character/{telegram_user_id}   — обнулить персонажа целиком (удаляет и его CombatSession);
-                                          в основном для тестирования (docs/notes.md, п.12), через
-                                          подтверждение на стороне бота, не по одному нажатию
+DELETE /character/{telegram_user_id}   — "обнулить" персонажа: НЕ удаляет строку и её CombatSession/
+                                          StatAllocationLog (docs/notes.md, п.41 — раньше удаляло,
+                                          из-за этого терялась вся история прохождения). Архивирует
+                                          (is_active=False), требует ?reason=manual_reset|boss_victory
+                                          (для аналитики). Через подтверждение на стороне бота, не по
+                                          одному нажатию (кроме экрана победы над боссом — там кнопка
+                                          "Начать заново" уже сама по себе осознанное решение)
 
 POST   /character/{id}/sell_loot       — docs/notes.md п.30: продать весь лут разом, начислить
                                           gold по ценам из core/economy.py; инвентарь лута обнуляется

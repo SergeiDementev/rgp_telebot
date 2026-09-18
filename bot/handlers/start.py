@@ -35,7 +35,7 @@ def _reset_confirm_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🗑 Да, удалить", callback_data="reset_confirm"),
+                InlineKeyboardButton(text="🗑 Да, удалить", callback_data="reset_confirm:manual_reset"),
                 InlineKeyboardButton(text="Отмена", callback_data="reset_cancel"),
             ]
         ]
@@ -91,13 +91,20 @@ async def reset_request(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(F.data == "reset_confirm")
+@router.callback_query(F.data.startswith("reset_confirm:"))
 async def reset_confirm(callback: CallbackQuery, api: ApiClient) -> None:
-    """Сразу после удаления создаём нового персонажа и показываем экран
-    создания — без приветственного текста (он уже был показан при первом
-    /start, повторно не нужен, docs/notes.md) и без лишнего клика "Начать
-    игру": намерение начать заново уже подтверждено кнопкой "Да, удалить"."""
-    await api.delete_character(callback.from_user.id)
+    """Сразу после архивации (docs/notes.md, п.41 — раньше было "удаление")
+    создаём нового персонажа и показываем экран создания — без
+    приветственного текста (он уже был показан при первом /start, повторно
+    не нужен, docs/notes.md) и без лишнего клика "Начать игру": намерение
+    начать заново уже подтверждено кнопкой "Да, удалить"/"Начать заново".
+
+    Причина в самом callback_data ("manual_reset" — эта кнопка, "boss_
+    victory" — экран поздравления после босса, bot/handlers/combat.py::
+    _boss_victory_keyboard) — только для аналитики на сервере, поведение
+    бота от неё не зависит."""
+    reason = callback.data.split(":", 1)[1]
+    await api.delete_character(callback.from_user.id, reason=reason)
     character = await api.create_character(callback.from_user.id, callback.from_user.full_name)
     await callback.message.edit_text(
         render_allocation_screen(character, title="🧙 Создание героя", mode="creation"),

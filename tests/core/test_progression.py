@@ -221,10 +221,12 @@ def test_calculate_victory_reward_draft_values(enemy_type, expected_reward):
     assert pr.calculate_victory_reward(enemy_type) == expected_reward
 
 
-def test_boss_level_requirement_is_nine():
-    # docs/notes.md, п.36 — статы босса откалиброваны под 9-10 уровень
-    # (scripts/simulate_boss.py), доступ открывается не раньше.
-    assert pr.BOSS_LEVEL_REQUIREMENT == 9
+def test_boss_level_requirement_is_eight():
+    # docs/notes.md, п.46 — временно снижен с 9 до 8 по прямой просьбе для
+    # живого плейтеста, несмотря на калибровку (п.45): scripts/simulate_
+    # boss_early_unlock.py показал на 8 уровне winrate ~0% даже с полным
+    # запасом зелий. Решение по итогам плейтеста — оставить 8 или вернуть 9.
+    assert pr.BOSS_LEVEL_REQUIREMENT == 8
 
 
 @pytest.mark.parametrize("enemy_type,expected_reward", [("mouse", 1), ("wolf", 5), ("boar", 15)])
