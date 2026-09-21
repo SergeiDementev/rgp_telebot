@@ -6,7 +6,6 @@ import pytest
 
 from bot.client import ApiError
 from bot.handlers.character import (
-    BOSS_LEVEL_REQUIREMENT,
     allocate_creation,
     allocate_levelup,
     back_to_stats,
@@ -257,23 +256,12 @@ async def test_refresh_stats_shows_stats_screen():
     assert markup.inline_keyboard[0][0].callback_data == "refresh_stats"
 
 
-async def test_back_to_stats_shows_locked_boss_button_below_required_level():
+async def test_back_to_stats_shows_active_boss_button_at_level_one():
+    # docs/notes.md, п.58 — кнопка активна на любом уровне, порог проверяет
+    # сервер позже, на "⚔️ Бросить вызов".
     callback = make_callback("back_to_stats")
     api = AsyncMock()
-    api.get_character.return_value = {**BASE_CHARACTER, "level": BOSS_LEVEL_REQUIREMENT - 1}
-
-    await back_to_stats(callback, api)
-
-    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
-    button = markup.inline_keyboard[-1][0]
-    assert button.callback_data == "boss_locked"
-    assert str(BOSS_LEVEL_REQUIREMENT) in button.text  # подсказка уровня прямо в тексте кнопки
-
-
-async def test_back_to_stats_shows_active_boss_button_at_required_level():
-    callback = make_callback("back_to_stats")
-    api = AsyncMock()
-    api.get_character.return_value = {**BASE_CHARACTER, "level": BOSS_LEVEL_REQUIREMENT}
+    api.get_character.return_value = {**BASE_CHARACTER, "level": 1}
 
     await back_to_stats(callback, api)
 
@@ -281,18 +269,6 @@ async def test_back_to_stats_shows_active_boss_button_at_required_level():
     button = markup.inline_keyboard[-1][0]
     assert button.callback_data == "search_boss_encounter"
     assert "🔒" not in button.text
-
-
-async def test_boss_locked_shows_alert_without_editing_message():
-    from bot.handlers.character import boss_locked
-
-    callback = make_callback("boss_locked")
-
-    await boss_locked(callback)
-
-    callback.message.edit_text.assert_not_called()
-    callback.answer.assert_awaited_once()
-    assert callback.answer.call_args.kwargs.get("show_alert") is True
 
 
 async def test_allocate_levelup_spends_point_and_refreshes_screen():
@@ -358,6 +334,6 @@ async def test_finish_creation_shows_stats_screen_with_search_button():
     assert markup.inline_keyboard[0][0].callback_data == "refresh_stats"
     assert markup.inline_keyboard[1][0].callback_data == "search_encounter"
     assert markup.inline_keyboard[-2][0].callback_data == "show_rules"
-    # Кнопка финального босса — всегда последняя (docs/notes.md, п.36),
-    # заперта на свежем 1 уровне.
-    assert markup.inline_keyboard[-1][0].callback_data == "boss_locked"
+    # Кнопка финального босса — всегда последняя и всегда активна
+    # (docs/notes.md, пп.36, 58), даже на свежем 1 уровне.
+    assert markup.inline_keyboard[-1][0].callback_data == "search_boss_encounter"

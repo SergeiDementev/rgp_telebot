@@ -55,14 +55,6 @@ BUY_POTION_ERROR_MESSAGES = {
 
 MENU_SCREEN_TITLE = "👤 Меню игрока"
 
-# Дублирует core/progression.py::BOSS_LEVEL_REQUIREMENT (docs/notes.md,
-# п.36) — тот же паттерн дублирования, что и у цен/капов зелий выше: бот
-# сам решает, показывать ли кнопку активной или "запертой", без похода в API.
-# На плейтесте пробовали снизить до 8 (п.46), зафиксировано обратно на 9
-# по итогам (docs/notes.md, п.53) — синхронно с core/.
-BOSS_LEVEL_REQUIREMENT = 9
-BOSS_LOCKED_ALERT_TEXT = f"Финальный босс станет доступен с {BOSS_LEVEL_REQUIREMENT}-го уровня."
-
 
 def render_stats_screen(character: dict) -> str:
     """§4: переиспользуемый экран статов персонажа."""
@@ -78,19 +70,14 @@ def render_stats_screen(character: dict) -> str:
     )
 
 
-def boss_button(level: int) -> InlineKeyboardButton:
+def boss_button() -> InlineKeyboardButton:
     """Кнопка финального босса — последней и на основном экране статов, и на
-    постбоевой клавиатуре (docs/notes.md, пп.36-37), но активна только с
-    BOSS_LEVEL_REQUIREMENT уровня. До этого уровня текст самой кнопки
-    объясняет условие — нажатие всё равно возможно (Telegram не даёт
-    по-настоящему disabled-кнопки), но ведёт на отдельный колбэк с алертом,
-    не в бой. Публичная (без ведущего "_") — переиспользуется из
-    bot/handlers/combat.py, не только здесь."""
-    if level >= BOSS_LEVEL_REQUIREMENT:
-        return InlineKeyboardButton(text="⚔️ Финальный босс", callback_data="search_boss_encounter")
-    return InlineKeyboardButton(
-        text=f"🔒 Финальный босс (с {BOSS_LEVEL_REQUIREMENT} уровня)", callback_data="boss_locked"
-    )
+    постбоевой клавиатуре (docs/notes.md, пп.36-37). Активна на любом уровне
+    (docs/notes.md, п.58) — ведёт на экран входа в бой с текстом и запасом
+    зелий всегда; порог уровня проверяется сервером позже, на "⚔️ Бросить
+    вызов" (POST /combat/{id}/start), не здесь. Публичная (без ведущего "_")
+    — переиспользуется из bot/handlers/combat.py, не только здесь."""
+    return InlineKeyboardButton(text="⚔️ Финальный босс", callback_data="search_boss_encounter")
 
 
 def stats_screen_keyboard(character: dict) -> InlineKeyboardMarkup:
@@ -100,7 +87,7 @@ def stats_screen_keyboard(character: dict) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🔍 Искать противника", callback_data="search_encounter")],
             [InlineKeyboardButton(text=MENU_SCREEN_TITLE, callback_data="open_allocation")],
             [InlineKeyboardButton(text="📜 Правила", callback_data="show_rules")],
-            [boss_button(character["level"])],
+            [boss_button()],
         ]
     )
 
@@ -261,14 +248,6 @@ async def back_to_stats(callback: CallbackQuery, api: ApiClient) -> None:
     character = await api.get_character(callback.from_user.id)
     await safe_edit_text(callback.message, render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
     await callback.answer()
-
-
-@router.callback_query(F.data == "boss_locked")
-async def boss_locked(callback: CallbackQuery) -> None:
-    """Кнопка "Финальный босс" видна всегда (docs/notes.md, п.36), но ниже
-    BOSS_LEVEL_REQUIREMENT уровня ведёт сюда — Telegram не даёт настоящую
-    disabled-кнопку, поэтому объясняем условие алертом, без похода в API."""
-    await callback.answer(BOSS_LOCKED_ALERT_TEXT, show_alert=True)
 
 
 @router.callback_query(F.data.startswith("allocate:"))

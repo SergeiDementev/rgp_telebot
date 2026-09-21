@@ -152,12 +152,16 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
     attacker_role = session.current_turn
 
     if attacker_role == "player":
+        # Из боя с финальным боссом нельзя сбежать вообще, ни игроку, ни ему
+        # самому (docs/notes.md, п.36/п.57) — player_can_flee в content/
+        # enemies.json, симметричный флаг к can_flee у стороны enemy ниже.
+        if not enemy_stats.get("player_can_flee", True):
+            return None
         right_used = session.player_flee_right_used
         current_hp, max_hp, luck = session.character_hp_snapshot, pr.calculate_hp_max(character.vitality), character.luck
     else:
         # Финальный босс бьётся до конца (docs/notes.md, п.36) — can_flee в
-        # content/enemies.json, не хардкод по названию: право игрока сбежать
-        # эта проверка не затрагивает вообще, она только про сторону enemy.
+        # content/enemies.json, не хардкод по названию.
         if not enemy_stats.get("can_flee", True):
             return None
         right_used = session.enemy_flee_right_used
@@ -243,11 +247,15 @@ def _render_resume_text(session: CombatSession, character: Character) -> str:
 
     if session.status == "awaiting_confirmation":
         initiative_entry = next(e for e in session.turn_log if e["type"] == "initiative")
-        circumstance_entry = next(e for e in session.turn_log if e["type"] == "circumstance")
         initiative_text = rendering.render_initiative(
             session.enemy_type, initiative_entry["player_roll"], initiative_entry["enemy_roll"],
             initiative_entry["first_role"],
         )
+        # Босс без обстоятельства (docs/notes.md, п.56 — has_circumstance=false
+        # в content/enemies.json) — нет и записи в turn_log, реконструировать нечего.
+        circumstance_entry = next((e for e in session.turn_log if e["type"] == "circumstance"), None)
+        if circumstance_entry is None:
+            return initiative_text
         circumstance_text = rendering.render_circumstance(
             session.enemy_type, circumstance_entry["roll"], circumstance_entry["outcome"],
             circumstance_entry["roller_role"],
@@ -274,13 +282,10 @@ def _render_resume_text(session: CombatSession, character: Character) -> str:
 def _turn_response(session: CombatSession, character: Character, text: str) -> CombatTurnResponse:
     """Снимок инвентаря зелий игрока (docs/notes.md, п.33) — бот решает по
     нему, показывать ли кнопку "Выпить зелье" на следующем ходу, без
-    отдельного вызова get_character на каждом шаге. character_level (п.37) —
-    тем же принципом, чтобы постбоевая клавиатура знала, показывать ли
-    кнопку финального босса активной, без лишнего запроса."""
+    отдельного вызова get_character на каждом шаге."""
     return CombatTurnResponse(
         combat_session_id=session.id, status=session.status, result=session.result,
-        current_turn=session.current_turn, enemy_type=session.enemy_type,
-        character_level=character.level, text=text,
+        current_turn=session.current_turn, enemy_type=session.enemy_type, text=text,
         potions_small=character.potions_small, potions_large=character.potions_large,
         potion_used_this_battle=session.player_potion_used_this_battle,
     )
@@ -394,17 +399,24 @@ def confirm_combat(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=f"unexpected session status: {session.status!r}"
         )
+    enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
 
     if payload.decision == "fight":
         session.status = "active"
-        enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
         hp_status = _hp_status_text(session, character, enemy_stats)
         db.commit()
         db.refresh(session)
         return _turn_response(session, character, f"{hp_status}\n\n⚔️ Ты вступаешь в бой!")
 
+    # Финальный босс — без пути назад после инициативы вообще (docs/notes.md,
+    # п.57, player_can_flee=false в content/enemies.json): кнопка "Отступить"
+    # у бота для него и так не показывается (_confirmation_keyboard), это —
+    # защита от гонки/устаревшей клавиатуры, тот же принцип, что и везде
+    # здесь ("клиенту не доверяем").
+    if not enemy_stats.get("player_can_flee", True):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="flee_not_allowed")
+
     # §9 шаг 3б / §7: отказ -> безответный удар противника без защиты.
-    enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
     pursuer_strength = enemy_stats["strength"] * session.strength_modifier_enemy
     attack_roll = random.randint(1, 10)
     flee = cm.resolve_flee_attempt(pursuer_strength, attack_roll, session.character_hp_snapshot)

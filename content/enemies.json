@@ -5,7 +5,9 @@
     "agility": 2,
     "luck": 1,
     "can_flee": true,
-    "unlimited_potions": false
+    "player_can_flee": true,
+    "unlimited_potions": false,
+    "has_circumstance": true
   },
   "wolf": {
     "hp_max": 50,
@@ -13,7 +15,9 @@
     "agility": 6,
     "luck": 2,
     "can_flee": true,
-    "unlimited_potions": false
+    "player_can_flee": true,
+    "unlimited_potions": false,
+    "has_circumstance": true
   },
   "boar": {
     "hp_max": 70,
@@ -21,7 +25,9 @@
     "agility": 6,
     "luck": 2,
     "can_flee": true,
-    "unlimited_potions": false
+    "player_can_flee": true,
+    "unlimited_potions": false,
+    "has_circumstance": true
   },
   "boss": {
     "hp_max": 150,
@@ -29,6 +35,8 @@
     "agility": 9,
     "luck": 4,
     "can_flee": false,
-    "unlimited_potions": true
+    "player_can_flee": false,
+    "unlimited_potions": true,
+    "has_circumstance": false
   }
 }

@@ -53,7 +53,8 @@ project/
 │                              # само приложение при старте её больше не трогает
 │
 ├── content/                  # статичные игровые данные — готово (этап 2)
-│   └── enemies.json          # статы мышь/волк/кабан/boss + can_flee (п.36)/unlimited_potions (п.39) по каждому
+│   └── enemies.json          # статы мышь/волк/кабан/boss + can_flee/player_can_flee (пп.36, 57),
+│                              #   unlimited_potions (п.39), has_circumstance (п.56) по каждому
 │
 ├── scripts/                  # готово
 │   ├── simulate_combat.py         # консольный симулятор боёв для калибровки (см. §8, этап 2)
@@ -178,15 +179,22 @@ POST /encounter/search               — бросок d10 (50/30/20), созда
                                         (status="awaiting_initiative")
 POST /encounter/search_boss          — docs/notes.md п.36: без броска — целенаправленная встреча
                                         с финальным боссом (enemy_type="boss"), не через ростер.
-                                        403 detail="level_too_low", если character.level ниже
-                                        pr.BOSS_LEVEL_REQUIREMENT (бот тоже прячет/блокирует
-                                        кнопку сам, но сервер не доверяет клиенту)
+                                        Доступна на любом уровне (docs/notes.md п.58) — порог
+                                        проверяется дальше, на /combat/{id}/start
 POST /combat/{id}/start              — бросок инициативы + обстоятельства одним вызовом
                                         (status -> "awaiting_confirmation"). Ответ несёт
                                         enemy_type (docs/notes.md п.40) — бот по нему решает,
-                                        показывать ли кнопку "⚡ Автобой" (нет смысла у босса)
+                                        показывать ли кнопку "⚡ Автобой" (нет смысла у босса).
+                                        Для enemy_type="boss" — до броска инициативы проверяет
+                                        character.level >= pr.BOSS_LEVEL_REQUIREMENT, иначе 403
+                                        detail="level_too_low" (docs/notes.md п.58; бот кнопку не
+                                        прячет — она теперь всегда активна, но сервер не доверяет
+                                        клиенту, тот же принцип, что и везде)
 
-POST /combat/{id}/confirm            — { "decision": "fight" | "flee" } — после обстоятельства
+POST /combat/{id}/confirm            — { "decision": "fight" | "flee" } — после обстоятельства.
+                                        "flee" -> 400 "flee_not_allowed" против боя, где
+                                        player_can_flee=false (сейчас только boss, docs/notes.md
+                                        п.57) — из него нельзя отступить ни в каком виде
 POST /combat/{id}/turn               — { "power_attack": bool = false } — выполнить один ход
                                         игрока (+ автоматически ход бота, если следующая очередь
                                         его). power_attack (docs/combat_mechanics.md §3a) —
@@ -217,7 +225,7 @@ DELETE /combat/{id}                  — docs/notes.md п.51: отменить �
                                         физически, не архивируется как исход боя
 ```
 
-`CombatTurnResponse` (ответы `/confirm`, `/turn`, `/flee_decision`, `/use_potion`, `/resume`) несёт снимок инвентаря зелий игрока (`potions_small`, `potions_large`, `potion_used_this_battle`) — бот решает по нему, показывать ли кнопки "🧪 Малое"/"🧪 Большое" на следующем ходу, без отдельного `GET /character` на каждом шаге. Также несёт `enemy_type` (docs/notes.md п.36) — бот по нему (вместе с `result == "victory"`) определяет победу именно над боссом и показывает экран поздравления вместо обычной постбоевой клавиатуры, тоже без лишнего запроса. И `character_level` (docs/notes.md п.37) — тем же принципом, чтобы постбоевая клавиатура знала, показывать ли кнопку "Финальный босс" активной.
+`CombatTurnResponse` (ответы `/confirm`, `/turn`, `/flee_decision`, `/use_potion`, `/resume`) несёт снимок инвентаря зелий игрока (`potions_small`, `potions_large`, `potion_used_this_battle`) — бот решает по нему, показывать ли кнопки "🧪 Малое"/"🧪 Большое" на следующем ходу, без отдельного `GET /character` на каждом шаге. Также несёт `enemy_type` (docs/notes.md п.36) — бот по нему (вместе с `result == "victory"`) определяет победу именно над боссом и показывает экран поздравления вместо обычной постбоевой клавиатуры, тоже без лишнего запроса. Поле `character_level` (добавлено docs/notes.md п.37, удалено п.58) в схеме больше нет — кнопка "Финальный босс" теперь активна всегда, уровень ей для этого не нужен.
 
 `EncounterSearchResponse` (ответы `/encounter/search` и `/encounter/search_boss`) несёт `potions_small`/`potions_large` (docs/notes.md, п.51) — тем же принципом снимка в ответе: бот показывает запас зелий на экране входа в бой с боссом без отдельного `GET /character`.
 

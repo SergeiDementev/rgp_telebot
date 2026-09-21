@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from bot.client import ApiError
-from bot.handlers.character import BOSS_LEVEL_REQUIREMENT
 from bot.handlers.combat import (
     build_resume_keyboard,
     build_resume_text,
@@ -112,17 +111,17 @@ async def test_search_boss_encounter_shows_alert_on_existing_session():
     assert callback.answer.call_args.kwargs.get("show_alert") is True
 
 
-async def test_search_boss_encounter_shows_alert_when_level_too_low():
-    # Защита от гонки — сервер тоже проверяет уровень (docs/notes.md, п.36),
-    # даже если кнопка на главном экране уже должна была быть заперта.
-    callback = make_callback("search_boss_encounter")
+async def test_start_combat_against_boss_shows_alert_when_level_too_low():
+    # docs/notes.md, п.58 — уровневый гейт перенесён на "⚔️ Бросить вызов"
+    # (start_combat), search_boss_encounter больше не может вернуть 403.
+    callback = make_callback("start_combat:5")
     api = AsyncMock()
-    api.search_boss_encounter.side_effect = ApiError(403, "level_too_low")
+    api.start_combat.side_effect = ApiError(403, "level_too_low")
 
-    await search_boss_encounter(callback, api)
+    await start_combat(callback, api)
 
     callback.message.edit_text.assert_not_called()
-    callback.answer.assert_awaited_once_with("Финальный босс пока недоступен.", show_alert=True)
+    callback.answer.assert_awaited_once_with("Финальный босс пока недоступен на этом уровне.", show_alert=True)
 
 
 async def test_start_combat_shows_fight_flee_and_auto_buttons():
@@ -140,9 +139,10 @@ async def test_start_combat_shows_fight_flee_and_auto_buttons():
     assert callback_datas == ["confirm_fight:5", "confirm_flee:5", "confirm_fight_auto:5"]
 
 
-async def test_start_combat_against_boss_hides_auto_button():
-    # docs/notes.md, п.40 — автобой у финального босса не имеет смысла
-    # (зельём в нём всё равно нельзя пользоваться), "Отступить" остаётся.
+async def test_start_combat_against_boss_hides_auto_and_flee_buttons():
+    # docs/notes.md, пп.40/57 — ни автобоя (зельём в нём всё равно нельзя
+    # пользоваться), ни "Отступить" (из боя с боссом нельзя сбежать) —
+    # только "Вступить в бой", единственная кнопка.
     callback = make_callback("start_combat:5")
     api = AsyncMock()
     api.start_combat.return_value = {
@@ -153,7 +153,7 @@ async def test_start_combat_against_boss_hides_auto_button():
 
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert callback_datas == ["confirm_fight:5", "confirm_flee:5"]
+    assert callback_datas == ["confirm_fight:5"]
 
 
 async def test_confirm_fight_shows_attack_button_when_player_goes_first():
@@ -367,7 +367,7 @@ async def test_confirm_fight_auto_shows_only_the_final_result():
     api.take_turn.side_effect = [
         {"status": "active", "current_turn": "enemy", "text": "Ход 1"},
         {"status": "active", "current_turn": "player", "text": "Ход 2"},
-        {"status": "finished", "result": "victory", "character_level": 3, "text": "Ты победил!"},
+        {"status": "finished", "result": "victory", "text": "Ты победил!"},
     ]
 
     await confirm_fight_auto(callback, api)
@@ -408,7 +408,7 @@ async def test_flee_decision_continue_auto_resumes_silently_to_the_end():
     callback = make_callback("flee_decision_continue_auto:5")
     api = AsyncMock()
     api.flee_decision.return_value = {"status": "active", "current_turn": "enemy", "text": "..."}
-    api.take_turn.return_value = {"status": "finished", "result": "victory", "character_level": 3, "text": "Ты победил!"}
+    api.take_turn.return_value = {"status": "finished", "result": "victory", "text": "Ты победил!"}
 
     await flee_decision_continue_auto(callback, api)
 
@@ -424,7 +424,7 @@ async def test_confirm_flee_shows_post_battle_buttons():
     callback = make_callback("confirm_flee:5")
     api = AsyncMock()
     api.confirm_combat.return_value = {
-        "status": "finished", "result": "player_fled", "character_level": 3, "text": "🏃 Тебе удалось уйти."
+        "status": "finished", "result": "player_fled", "text": "🏃 Тебе удалось уйти."
     }
 
     await confirm_flee(callback, api)
@@ -436,7 +436,20 @@ async def test_confirm_flee_shows_post_battle_buttons():
     assert "search_encounter" in callback_datas
     assert "open_allocation" in callback_datas
     assert "show_rules" in callback_datas
-    assert "boss_locked" in callback_datas  # docs/notes.md, п.37 — тоже на постбоевой клавиатуре
+    assert "search_boss_encounter" in callback_datas  # docs/notes.md, пп.37, 58 — тоже на постбоевой клавиатуре
+
+
+async def test_confirm_flee_not_allowed_shows_alert_without_editing_message():
+    # docs/notes.md, п.57 — у бота этой кнопки для босса и так нет, но на
+    # случай гонки/устаревшей клавиатуры сервер отвечает 400, а не 200.
+    callback = make_callback("confirm_flee:5")
+    api = AsyncMock()
+    api.confirm_combat.side_effect = ApiError(400, "flee_not_allowed")
+
+    await confirm_flee(callback, api)
+
+    callback.message.edit_text.assert_not_called()
+    callback.answer.assert_awaited_once_with("Из боя с этим противником нельзя отступить.", show_alert=True)
 
 
 async def test_take_turn_active_shows_turn_button():
@@ -452,35 +465,19 @@ async def test_take_turn_active_shows_turn_button():
 
 
 async def test_take_turn_finished_shows_post_battle_buttons():
+    # docs/notes.md, п.58 — кнопка финального босса на постбоевом экране
+    # всегда активна, независимо от уровня.
     callback = make_callback("take_turn:5")
     api = AsyncMock()
-    api.take_turn.return_value = {
-        "status": "finished", "result": "victory", "character_level": 3, "text": "⚔️ Ты победил!"
-    }
+    api.take_turn.return_value = {"status": "finished", "result": "victory", "text": "⚔️ Ты победил!"}
 
     await take_turn(callback, api)
 
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert callback_datas == [
-        "refresh_after_battle", "search_encounter", "open_allocation", "show_rules", "boss_locked"
+        "refresh_after_battle", "search_encounter", "open_allocation", "show_rules", "search_boss_encounter"
     ]
-
-
-async def test_take_turn_finished_shows_active_boss_button_at_required_level():
-    # docs/notes.md, п.37 — кнопка финального босса на постбоевом экране
-    # активна тем же условием, что и на главном (уровень из CombatTurnResponse).
-    callback = make_callback("take_turn:5")
-    api = AsyncMock()
-    api.take_turn.return_value = {
-        "status": "finished", "result": "victory", "character_level": BOSS_LEVEL_REQUIREMENT, "text": "⚔️ Ты победил!"
-    }
-
-    await take_turn(callback, api)
-
-    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
-    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert callback_datas[-1] == "search_boss_encounter"
 
 
 async def test_take_turn_boss_victory_shows_restart_button_only():
@@ -506,7 +503,7 @@ async def test_take_turn_boss_defeat_shows_normal_post_battle_buttons():
     callback = make_callback("take_turn:5")
     api = AsyncMock()
     api.take_turn.return_value = {
-        "status": "finished", "result": "defeat", "enemy_type": "boss", "character_level": 9, "text": "💀 Ты пал..."
+        "status": "finished", "result": "defeat", "enemy_type": "boss", "text": "💀 Ты пал..."
     }
 
     await take_turn(callback, api)
@@ -535,7 +532,7 @@ async def test_flee_decision_flee_shows_post_battle_buttons():
     callback = make_callback("flee_decision_flee:5")
     api = AsyncMock()
     api.flee_decision.return_value = {
-        "status": "finished", "result": "defeat", "character_level": 3, "text": "💀 Ты пал..."
+        "status": "finished", "result": "defeat", "text": "💀 Ты пал..."
     }
 
     await flee_decision_flee(callback, api)
@@ -597,11 +594,11 @@ async def test_build_resume_keyboard_awaiting_confirmation_shows_auto_button():
     assert callback_datas == ["confirm_fight:5", "confirm_flee:5", "confirm_fight_auto:5"]
 
 
-async def test_build_resume_keyboard_awaiting_confirmation_hides_auto_button_for_boss():
+async def test_build_resume_keyboard_awaiting_confirmation_hides_auto_and_flee_buttons_for_boss():
     resume = {"status": "awaiting_confirmation", "enemy_type": "boss"}
     markup = build_resume_keyboard(5, resume)
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert callback_datas == ["confirm_fight:5", "confirm_flee:5"]
+    assert callback_datas == ["confirm_fight:5"]
 
 
 async def test_build_resume_keyboard_active_shows_turn_and_potion_buttons():

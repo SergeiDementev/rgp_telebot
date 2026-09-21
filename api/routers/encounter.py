@@ -122,12 +122,10 @@ def search_boss_encounter(
     db: Session = Depends(get_db),
 ) -> EncounterSearchResponse:
     """Целенаправленная встреча с финальным боссом (docs/notes.md, п.36) —
-    не через случайный ростер §6: кнопка на главном экране, доступна с
-    pr.BOSS_LEVEL_REQUIREMENT уровня. Бот прячет/блокирует кнопку раньше
-    этого уровня сам, но проверка здесь обязательна — клиенту в этом не
-    доверяем (тот же принцип, что и везде в этом роутере)."""
-    if character.level < pr.BOSS_LEVEL_REQUIREMENT:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="level_too_low")
+    не через случайный ростер §6: кнопка на главном экране, видна и активна
+    на любом уровне (docs/notes.md, п.58 — раньше была заперта ниже
+    pr.BOSS_LEVEL_REQUIREMENT, порог перенесён на POST /combat/{id}/start).
+    Этот экран — только текст+запас зелий, ничего не решает."""
     _require_no_active_session(character, db)
     return _start_encounter_session(
         character, db, "boss",
@@ -151,6 +149,14 @@ def start_combat(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=f"unexpected session status: {session.status!r}"
         )
+    # Порог уровня для босса (docs/notes.md, пп.36, 58) — именно здесь, не на
+    # search_boss_encounter: та кнопка/экран теперь доступны всегда (см. её
+    # докстринг), но реально "бросить вызов" всё ещё нельзя ниже
+    # pr.BOSS_LEVEL_REQUIREMENT. Проверка до броска инициативы — низкоуровневый
+    # игрок не тратит бросок на бой, который всё равно не начнётся; сессия
+    # остаётся в "awaiting_initiative", "⬅️ Назад" по-прежнему работает.
+    if session.enemy_type == "boss" and character.level < pr.BOSS_LEVEL_REQUIREMENT:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="level_too_low")
 
     while True:
         player_roll = random.randint(1, 10)
@@ -160,11 +166,24 @@ def start_combat(
             break
     first_role = "player" if initiative == "first" else "enemy"
 
-    circumstance_roll = random.randint(1, 10)
-    circumstance_outcome = cm.resolve_circumstance_outcome(circumstance_roll)
-    multiplier = _circumstance_multiplier(circumstance_outcome)
-    roller_role = first_role  # §8: кидает победитель инициативы
+    # Финальный босс без обстоятельства (docs/notes.md, п.56) —
+    # has_circumstance в content/enemies.json, тот же паттерн данных, что и
+    # у can_flee/unlimited_potions: бой с ним не должен зависеть от случайного
+    # buff/debuff, только от статов и решений игрока. Ни бросок, ни запись в
+    # turn_log в этом случае не происходят вообще — не "выпало none", а
+    # обстоятельства в этом бою структурно нет.
+    enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
+    has_circumstance = enemy_stats.get("has_circumstance", True)
 
+    circumstance_roll = None
+    circumstance_outcome = None
+    roller_role = None
+    if has_circumstance:
+        circumstance_roll = random.randint(1, 10)
+        circumstance_outcome = cm.resolve_circumstance_outcome(circumstance_roll)
+        roller_role = first_role  # §8: кидает победитель инициативы
+
+    multiplier = _circumstance_multiplier(circumstance_outcome)
     player_modifier = multiplier if roller_role == "player" else 1.0
     enemy_modifier = multiplier if roller_role == "enemy" else 1.0
 
@@ -176,15 +195,21 @@ def start_combat(
     session.strength_modifier_enemy = enemy_modifier
     session.turn_log = session.turn_log + [
         {"type": "initiative", "player_roll": player_roll, "enemy_roll": enemy_roll, "first_role": first_role},
-        {"type": "circumstance", "roll": circumstance_roll, "outcome": circumstance_outcome, "roller_role": roller_role},
+        *(
+            [{"type": "circumstance", "roll": circumstance_roll, "outcome": circumstance_outcome, "roller_role": roller_role}]
+            if has_circumstance else []
+        ),
     ]
     db.commit()
     db.refresh(session)
 
     initiative_text = rendering.render_initiative(session.enemy_type, player_roll, enemy_roll, first_role)
-    circumstance_text = rendering.render_circumstance(
-        session.enemy_type, circumstance_roll, circumstance_outcome, roller_role
-    )
+    text = initiative_text
+    if has_circumstance:
+        circumstance_text = rendering.render_circumstance(
+            session.enemy_type, circumstance_roll, circumstance_outcome, roller_role
+        )
+        text = f"{initiative_text}\n\n{circumstance_text}"
 
     return CombatStartResponse(
         combat_session_id=session.id,
@@ -193,5 +218,5 @@ def start_combat(
         enemy_type=session.enemy_type,
         player_strength_modifier=player_modifier,
         enemy_strength_modifier=enemy_modifier,
-        text=f"{initiative_text}\n\n{circumstance_text}",
+        text=text,
     )

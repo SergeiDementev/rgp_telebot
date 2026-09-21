@@ -89,19 +89,17 @@ def _flee_choice_keyboard(session_id: int, *, mode: str = "manual") -> InlineKey
     )
 
 
-def _post_battle_keyboard(character_level: int) -> InlineKeyboardMarkup:
-    """`character_level` — из `CombatTurnResponse.character_level` (docs/
-    notes.md, п.37) или напрямую из `get_character` (refresh_after_battle) —
-    чтобы кнопка финального босса (см. bot/handlers/character.py::boss_
-    button) была здесь активна/заперта тем же условием, что и на главном
-    экране, без лишнего похода в API."""
+def _post_battle_keyboard() -> InlineKeyboardMarkup:
+    """Кнопка финального босса (см. bot/handlers/character.py::boss_button)
+    активна на любом уровне (docs/notes.md, п.58) — уровень сюда больше не
+    нужен."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_after_battle")],
             [InlineKeyboardButton(text="🔍 Искать противника", callback_data="search_encounter")],
             [InlineKeyboardButton(text="👤 Меню игрока", callback_data="open_allocation")],
             [InlineKeyboardButton(text="📜 Правила", callback_data="show_rules")],
-            [boss_button(character_level)],
+            [boss_button()],
         ]
     )
 
@@ -155,19 +153,25 @@ def _boss_challenge_keyboard(session_id: int) -> InlineKeyboardMarkup:
 
 
 def _confirmation_keyboard(session_id: int, enemy_type: str) -> InlineKeyboardMarkup:
-    rows = [
-        [
-            InlineKeyboardButton(text="⚔️ Вступить в бой", callback_data=f"confirm_fight:{session_id}"),
-            InlineKeyboardButton(text="🏃 Отступить", callback_data=f"confirm_flee:{session_id}"),
+    """Финальный босс — без пути назад после инициативы вообще (docs/notes.md,
+    п.57): ни "🏃 Отступить" (из боя с ним нельзя сбежать, ни игроку, ни ему
+    самому), ни "⚡ Автобой" (п.40 — зельём вслепую всё равно нельзя
+    пользоваться). Единственный безрисковый выход — "⬅️ Назад" до инициативы
+    (п.51, _boss_challenge_keyboard); нажал "⚔️ Бросить вызов" — бьёшься
+    до конца."""
+    if enemy_type == "boss":
+        return InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="⚔️ Вступить в бой", callback_data=f"confirm_fight:{session_id}")]]
+        )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⚔️ Вступить в бой", callback_data=f"confirm_fight:{session_id}"),
+                InlineKeyboardButton(text="🏃 Отступить", callback_data=f"confirm_flee:{session_id}"),
+            ],
+            [InlineKeyboardButton(text="⚡ Автобой", callback_data=f"confirm_fight_auto:{session_id}")],
         ]
-    ]
-    if enemy_type != "boss":
-        # Автобой у финального босса не имеет смысла (docs/notes.md, п.40) —
-        # зельём в нём всё равно нельзя пользоваться, а без ручного контроля
-        # над зельями бой против босса проигрывается вслепую. "Отступить"
-        # остаётся всегда, на случай случайного нажатия или "не готов".
-        rows.append([InlineKeyboardButton(text="⚡ Автобой", callback_data=f"confirm_fight_auto:{session_id}")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    )
 
 
 def build_resume_text(resume: dict) -> str:
@@ -210,7 +214,7 @@ def _next_step_markup(session_id: int, response: dict, *, mode: str = "manual") 
     if response["status"] == "finished":
         if response.get("enemy_type") == "boss" and response.get("result") == "victory":
             return _boss_victory_keyboard()
-        return _post_battle_keyboard(response["character_level"])
+        return _post_battle_keyboard()
     if response["status"] == "awaiting_flee_decision":
         return _flee_choice_keyboard(session_id, mode=mode)
     rows = [_attack_phase_buttons(session_id, response.get("current_turn"))]
@@ -241,15 +245,12 @@ async def search_encounter(callback: CallbackQuery, api: ApiClient) -> None:
 async def search_boss_encounter(callback: CallbackQuery, api: ApiClient) -> None:
     """Целенаправленная встреча с финальным боссом (docs/notes.md, п.36) —
     кнопка на главном экране (bot/handlers/character.py::stats_screen_
-    keyboard), а не через "Искать противника". Уровневый гейт бот уже
-    проверил при показе кнопки (см. boss_locked), но сервер проверяет его
-    тоже — на случай гонки (сообщение с кнопкой могло устареть)."""
+    keyboard), а не через "Искать противника". Доступна на любом уровне
+    (docs/notes.md, п.58) — уровневый гейт теперь на "⚔️ Бросить вызов"
+    (см. start_combat), не здесь."""
     try:
         response = await api.search_boss_encounter(callback.from_user.id)
     except ApiError as error:
-        if error.status_code == 403:
-            await callback.answer("Финальный босс пока недоступен.", show_alert=True)
-            return
         if error.status_code != 409:
             raise
         await callback.answer("У тебя уже есть незавершённый бой — сначала заверши его.", show_alert=True)
@@ -286,8 +287,18 @@ async def cancel_encounter(callback: CallbackQuery, api: ApiClient) -> None:
 
 @router.callback_query(F.data.startswith("start_combat:"))
 async def start_combat(callback: CallbackQuery, api: ApiClient) -> None:
+    """docs/notes.md, п.58 — уровневый порог для босса проверяется именно
+    здесь (не на search_boss_encounter): сессия остаётся в
+    "awaiting_initiative" при отказе, "⬅️ Назад" на предыдущем экране
+    по-прежнему работает."""
     session_id = _session_id_from(callback.data)
-    response = await api.start_combat(callback.from_user.id, session_id)
+    try:
+        response = await api.start_combat(callback.from_user.id, session_id)
+    except ApiError as error:
+        if error.status_code != 403:
+            raise
+        await callback.answer("Финальный босс пока недоступен на этом уровне.", show_alert=True)
+        return
     keyboard = _confirmation_keyboard(session_id, response.get("enemy_type"))
     await callback.message.edit_text(response["text"], reply_markup=keyboard)
     await callback.answer()
@@ -329,8 +340,16 @@ async def confirm_fight_auto(callback: CallbackQuery, api: ApiClient) -> None:
 @router.callback_query(F.data.startswith("confirm_flee:"))
 async def confirm_flee(callback: CallbackQuery, api: ApiClient) -> None:
     session_id = _session_id_from(callback.data)
-    response = await api.confirm_combat(callback.from_user.id, session_id, "flee")
-    await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard(response["character_level"]))
+    try:
+        response = await api.confirm_combat(callback.from_user.id, session_id, "flee")
+    except ApiError as error:
+        if error.detail != "flee_not_allowed":
+            raise
+        # Гонка/устаревшая клавиатура — у бота эта кнопка для босса и так не
+        # показывается (docs/notes.md, п.57), сервер отклонил на всякий случай.
+        await callback.answer("Из боя с этим противником нельзя отступить.", show_alert=True)
+        return
+    await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard())
     await callback.answer()
 
 
@@ -373,7 +392,7 @@ async def use_potion(callback: CallbackQuery, api: ApiClient) -> None:
 async def flee_decision_flee(callback: CallbackQuery, api: ApiClient) -> None:
     session_id = _session_id_from(callback.data)
     response = await api.flee_decision(callback.from_user.id, session_id, "flee")
-    await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard(response["character_level"]))
+    await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard())
     await callback.answer()
 
 
@@ -407,5 +426,5 @@ async def refresh_after_battle(callback: CallbackQuery, api: ApiClient) -> None:
     lines = [f"❤️ HP: {character['hp_current']:.0f}/{character['hp_max']:.0f}"]
     if character["hp_seconds_to_full"] > 0:
         lines.append(f"⏳ Полное восстановление через: ~{character['hp_seconds_to_full']:.0f} сек.")
-    await safe_edit_text(callback.message, "\n".join(lines), reply_markup=_post_battle_keyboard(character["level"]))
+    await safe_edit_text(callback.message, "\n".join(lines), reply_markup=_post_battle_keyboard())
     await callback.answer()

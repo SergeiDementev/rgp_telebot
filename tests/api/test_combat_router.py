@@ -74,8 +74,10 @@ def _start_session_against_mouse(client, monkeypatch, extra_rolls, headers=HEADE
 
 def _start_session_against_boss(client, monkeypatch, extra_rolls, headers=HEADERS):
     """search_boss (без броска, docs/notes.md п.36) -> start (игрок первый,
-    обстоятельства нет) -> confirm(fight), затем extra_rolls для /turn."""
-    _patch_rolls(monkeypatch, [7, 4, 5, *extra_rolls])  # 7>4->игрок первый, 5->none
+    без обстоятельства вообще — has_circumstance=false, docs/notes.md п.56,
+    ни один бросок на это не тратится) -> confirm(fight), затем extra_rolls
+    для /turn."""
+    _patch_rolls(monkeypatch, [7, 4, *extra_rolls])  # 7>4 -> игрок первый
     session_id = client.post("/encounter/search_boss", headers=headers).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=headers)
     client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=headers)
@@ -567,6 +569,63 @@ def test_boss_enemy_side_never_triggers_flee_gate(db_session_factory, monkeypatc
     db.close()
 
 
+def test_boss_player_side_never_triggers_flee_gate(db_session_factory, monkeypatch):
+    # docs/notes.md, п.57 — player_can_flee=false в content/enemies.json:
+    # игрок тоже никогда не получает предложение сбежать от босса, даже при
+    # HP далеко ниже порога 25%.
+    character_id = _insert_character(db_session_factory, level=9, strength=1, agility=1, luck=1000, hp_current=10.0)
+    client = make_client(db_session_factory)
+
+    db = db_session_factory()
+    session = CombatSession(
+        character_id=character_id,
+        enemy_type="boss",
+        enemy_hp_current=150.0,
+        character_hp_snapshot=10.0,  # 10/60 — далеко ниже 25%-порога
+        current_turn="player",
+        status="active",
+        turn_log=[],
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    session_id = session.id
+    db.close()
+
+    _patch_rolls(monkeypatch, [10, 1, 1])  # double-strike нет, атака=1 -> промах (исход не важен)
+    response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
+    body = response.json()
+    assert response.status_code == 200
+    assert "побег" not in body["text"].lower()
+    assert "уйти" not in body["text"].lower()
+
+    db = db_session_factory()
+    refreshed = db.get(CombatSession, session_id)
+    assert refreshed.player_flee_right_used is False  # право даже не тронуто
+    db.close()
+
+
+def test_confirm_flee_against_boss_returns_400(db_session_factory, monkeypatch):
+    # docs/notes.md, п.57 — из боя с боссом нельзя отступить вообще, даже
+    # сразу после инициативы (кнопки у бота для него и так нет — это
+    # серверная защита от гонки/устаревшей клавиатуры).
+    _insert_character(db_session_factory, level=9)
+    client = make_client(db_session_factory)
+
+    _patch_rolls(monkeypatch, [7, 4])  # только инициатива — обстоятельства у босса нет (п.56)
+    session_id = client.post("/encounter/search_boss", headers=HEADERS).json()["combat_session_id"]
+    client.post(f"/combat/{session_id}/start", headers=HEADERS)
+
+    response = client.post(f"/combat/{session_id}/confirm", json={"decision": "flee"}, headers=HEADERS)
+    assert response.status_code == 400
+    assert response.json()["detail"] == "flee_not_allowed"
+
+    db = db_session_factory()
+    session = db.get(CombatSession, session_id)
+    assert session.status == "awaiting_confirmation"  # ничего не изменилось
+    db.close()
+
+
 def test_flee_gate_flee_decision_ends_battle(db_session_factory, monkeypatch):
     _insert_character(db_session_factory, strength=10, agility=10, luck=1000, hp_current=10.0)
     client = make_client(db_session_factory)
@@ -661,6 +720,26 @@ def test_resume_combat_session_awaiting_confirmation_reconstructs_initiative_and
     assert body["status"] == "awaiting_confirmation"
     assert "Инициатива" in body["text"]
     assert "Обстоятельство" in body["text"]
+
+
+def test_resume_combat_session_awaiting_confirmation_boss_has_no_circumstance(
+    db_session_factory, monkeypatch
+):
+    # docs/notes.md, п.56 — у босса нет записи "circumstance" в turn_log
+    # вообще (has_circumstance=false), реконструкция не должна на неё падать.
+    _insert_character(db_session_factory, level=9)
+    client = make_client(db_session_factory)
+
+    _patch_rolls(monkeypatch, [7, 4])  # только инициатива, игрок первый
+    session_id = client.post("/encounter/search_boss", headers=HEADERS).json()["combat_session_id"]
+    client.post(f"/combat/{session_id}/start", headers=HEADERS)
+
+    response = client.get(f"/combat/{session_id}/resume", headers=HEADERS)
+    body = response.json()
+    assert response.status_code == 200
+    assert body["status"] == "awaiting_confirmation"
+    assert "Инициатива" in body["text"]
+    assert "Обстоятельство" not in body["text"]
 
 
 def test_resume_combat_session_active_shows_hp_status(db_session_factory, monkeypatch):
