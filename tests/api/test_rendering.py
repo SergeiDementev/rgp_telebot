@@ -279,9 +279,10 @@ def test_render_boss_encounter_mentions_boss():
     assert text
 
 
-def test_render_boss_victory_shows_reward_and_no_hp_line():
-    text = r.render_boss_victory(reward=100, victory_points_total=250)
+def test_render_boss_victory_has_no_reward_or_hp_line():
+    # п.54 — победа над боссом не даёт награды, экран — просто поздравление.
+    text = r.render_boss_victory()
     assert "Лесного Короля" in text
-    assert "🏆 +100 победных очков (всего: 250)" in text
+    assert "🏆" not in text
     assert "❤️ HP" not in text
     assert "⏳" not in text

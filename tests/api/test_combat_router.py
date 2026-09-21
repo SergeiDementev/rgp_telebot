@@ -456,9 +456,11 @@ def test_flee_gate_burns_right_even_when_roll_fails(db_session_factory, monkeypa
 
 
 def test_turn_victory_against_boss_shows_congratulations_and_no_loot(db_session_factory, monkeypatch):
-    # docs/notes.md, п.36 — победа над боссом рендерится отдельным экраном
-    # поздравления (render_boss_victory), не обычным render_battle_end: без
-    # строки HP/таймера регена и без лута (LOOT_TABLE["boss"] = "nothing").
+    # docs/notes.md, п.36/п.54 — победа над боссом рендерится отдельным
+    # экраном поздравления (render_boss_victory), не обычным render_battle_
+    # end: без строки HP/таймера регена, без лута (LOOT_TABLE["boss"] =
+    # "nothing") и без награды победными очками — это конец игры, очки
+    # персонажу, который всё равно сейчас обнулится, не нужны.
     _insert_character(db_session_factory, level=9, strength=1000, agility=10, luck=2)
     client = make_client(db_session_factory)
 
@@ -476,10 +478,12 @@ def test_turn_victory_against_boss_shows_congratulations_and_no_loot(db_session_
     assert "Лесного Короля" in body["text"]
     assert "🎁 Добыча" not in body["text"]
     assert "❤️ HP" not in body["text"]  # экран поздравления, не обычный итог боя
+    assert "🏆" not in body["text"]  # без строки победных очков
 
     db = db_session_factory()
     character = db.query(Character).filter(Character.telegram_user_id == 1).first()
-    assert character.victory_points == 100  # VICTORY_REWARD_DEFAULTS["boss"]
+    assert character.victory_points == 0  # п.54: победа над боссом не даёт очков
+    assert character.level == 9  # тоже не растёт — никакой прокачки за конец игры
     assert character.loot == {}
     db.close()
 

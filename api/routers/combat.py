@@ -65,7 +65,17 @@ def _finish_battle(session: CombatSession, character: Character, result: str, db
     Лут (docs/notes.md, п.30) — независимый бросок ПОСЛЕ исхода, только при
     victory, как и в симуляторе/core.economy.resolve_loot_drop: накапливается
     в character.loot (не авто-продаётся) — продажа отдельным нажатием
-    "Продать весь лут" на экране "Меню игрока"."""
+    "Продать весь лут" на экране "Меню игрока".
+
+    Победа над финальным боссом (docs/notes.md, п.36/п.54) — конец игры, не
+    обычный исход: своя ранняя ветка, без награды/уровней/лута/синхронизации
+    HP вообще — ничего из этого не нужно, персонаж дальше только обнуляется
+    нажатием "Начать заново"."""
+    if session.enemy_type == "boss" and result == "victory":
+        session.status = "finished"
+        session.result = result
+        return rendering.render_boss_victory()
+
     reward = pr.calculate_battle_reward(result, session.enemy_type)
     old_points = character.victory_points
     character.victory_points += reward
@@ -85,12 +95,6 @@ def _finish_battle(session: CombatSession, character: Character, result: str, db
         if loot_name != "nothing":
             loot_dropped = loot_name
             character.loot = {**character.loot, loot_name: character.loot.get(loot_name, 0) + 1}
-
-    # Победа над финальным боссом — конец игры (docs/notes.md, п.36), не
-    # обычный экран боя: своё поздравление вместо render_battle_end, без
-    # HP/таймера регена (дальше только "Начать заново").
-    if session.enemy_type == "boss" and result == "victory":
-        return rendering.render_boss_victory(reward, character.victory_points)
 
     hp_max = pr.calculate_hp_max(character.vitality)
     seconds_to_full = pr.time_to_full_hp(character.hp_current, hp_max)
