@@ -4,6 +4,9 @@
 Подписи кнопок "Атаковать"/"Защищаться" — косметика на стороне бота: обе
 дёргают один и тот же POST /combat/{id}/turn (см. api/routers/combat.py) и
 различаются только текстом, выбранным по `current_turn` из ответа сервера.
+"💥 Мощный удар" (docs/combat_mechanics.md §3a) — тот же /turn с
+power_attack=true в теле запроса, отдельная кнопка рядом с "Атаковать",
+только на ходу игрока.
 """
 
 from typing import Optional
@@ -34,10 +37,17 @@ USE_POTION_ERROR_MESSAGES = {
 }
 
 
-def _turn_button(session_id: int, current_turn: Optional[str]) -> InlineKeyboardButton:
+def _attack_phase_buttons(session_id: int, current_turn: Optional[str]) -> list[InlineKeyboardButton]:
+    """Кнопка(и) хода игрока. На ходу противника — только "Защищаться" (та
+    же кнопка запускает /turn, подпись косметическая). На ходу игрока —
+    выбор между обычной атакой и "💥 Мощный удар" (docs/combat_mechanics.md
+    §3a) — доступен всегда, в любом бою, включая босса, без лимита."""
     if current_turn == "enemy":
-        return InlineKeyboardButton(text="🛡️ Защищаться", callback_data=f"take_turn:{session_id}")
-    return InlineKeyboardButton(text="🎲 Атаковать", callback_data=f"take_turn:{session_id}")
+        return [InlineKeyboardButton(text="🛡️ Защищаться", callback_data=f"take_turn:{session_id}")]
+    return [
+        InlineKeyboardButton(text="🎲 Атаковать", callback_data=f"take_turn:{session_id}"),
+        InlineKeyboardButton(text="💥 Мощный удар", callback_data=f"take_turn_power:{session_id}"),
+    ]
 
 
 def _potion_buttons(session_id: int, response: dict) -> list[InlineKeyboardButton]:
@@ -203,7 +213,7 @@ def _next_step_markup(session_id: int, response: dict, *, mode: str = "manual") 
         return _post_battle_keyboard(response["character_level"])
     if response["status"] == "awaiting_flee_decision":
         return _flee_choice_keyboard(session_id, mode=mode)
-    rows = [[_turn_button(session_id, response.get("current_turn"))]]
+    rows = [_attack_phase_buttons(session_id, response.get("current_turn"))]
     potion_buttons = _potion_buttons(session_id, response)
     if potion_buttons:
         rows.append(potion_buttons)
@@ -324,12 +334,22 @@ async def confirm_flee(callback: CallbackQuery, api: ApiClient) -> None:
     await callback.answer()
 
 
+async def _take_turn(callback: CallbackQuery, api: ApiClient, session_id: int, *, power_attack: bool) -> None:
+    response = await api.take_turn(callback.from_user.id, session_id, power_attack=power_attack)
+    await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("take_turn:"))
 async def take_turn(callback: CallbackQuery, api: ApiClient) -> None:
     session_id = _session_id_from(callback.data)
-    response = await api.take_turn(callback.from_user.id, session_id)
-    await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
-    await callback.answer()
+    await _take_turn(callback, api, session_id, power_attack=False)
+
+
+@router.callback_query(F.data.startswith("take_turn_power:"))
+async def take_turn_power(callback: CallbackQuery, api: ApiClient) -> None:
+    session_id = _session_id_from(callback.data)
+    await _take_turn(callback, api, session_id, power_attack=True)
 
 
 @router.callback_query(F.data.startswith("use_potion:"))

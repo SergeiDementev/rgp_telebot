@@ -135,6 +135,45 @@ def test_render_compact_strike_dodged_uses_feminine_verb_for_mouse():
     assert "Мышь уворачивается: 3 → увернулась!" in text
 
 
+def test_render_strike_power_attack_hit_uses_own_label_and_multiplier_note():
+    # docs/combat_mechanics.md §3a — своя подпись/эмодзи и пометка "урон ×1.3!".
+    text = r.render_strike(
+        "wolf", "player", attack_roll=7, attack_percent=70, dodge_roll=5, dodged=False, damage=91,
+        power_attack=True,
+    )
+    assert text == (
+        "💥 Мощный удар: 7 → 70% силы, урон ×1.3!\n"
+        "🛡️ Волк уворачивается: 5 → не вышло!\n"
+        "💥 Ты наносишь 91 урона."
+    )
+
+
+def test_render_strike_power_attack_miss():
+    text = r.render_strike(
+        "wolf", "player", attack_roll=4, attack_percent=None, dodge_roll=None, dodged=None, damage=0,
+        power_attack=True,
+    )
+    assert text == "💥 Мощный удар: 4 → промах!"
+
+
+def test_render_strike_power_attack_only_affects_player_side():
+    # Мобы мощным ударом не пользуются (docs/combat_mechanics.md §3a) —
+    # флаг на стороне enemy не должен ничего менять в отображении.
+    text = r.render_strike(
+        "wolf", "enemy", attack_roll=6, attack_percent=60, dodge_roll=8, dodged=True, damage=0,
+        power_attack=True,
+    )
+    assert text.startswith("🗡️ Атака волка: 6 → 60% силы.")
+
+
+def test_render_compact_strike_power_attack_hit():
+    text = r.render_compact_strike(
+        "wolf", "player", 1, attack_roll=9, attack_percent=90, dodge_roll=3, dodged=False, damage=117,
+        power_attack=True,
+    )
+    assert text == "💥 Мощный удар 1: 9 → 90% силы, урон ×1.3! 🛡️ Волк уворачивается: 3 → не вышло! 💥 117 урона."
+
+
 def test_render_flee_opportunity_triggered_player():
     text = r.render_flee_opportunity_check("wolf", "player", current_hp=18, max_hp=85, luck_roll=7, triggered=True)
     assert text == "⚠️ Твоё HP критически низкое! (18/85)\n🍀 Твоя проверка удачи на побег: 7 → есть шанс уйти живым!"

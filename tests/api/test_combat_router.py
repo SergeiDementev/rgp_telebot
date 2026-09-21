@@ -198,6 +198,47 @@ def test_turn_victory_with_no_loot_omits_loot_line(db_session_factory, monkeypat
     db.close()
 
 
+def test_turn_power_attack_applies_multiplier_and_wider_miss(db_session_factory, monkeypatch):
+    # docs/combat_mechanics.md §3a — POST /combat/{id}/turn с power_attack=true:
+    # промах до грани 4, урон ×1.3 на попадании. strength=30, roll=7 -> 70%
+    # силы -> round(30*0.7*1.3) = 27 (не round(30*0.7)=21, как у обычной атаки).
+    _insert_character(db_session_factory, strength=30, agility=5, luck=2)
+    client = make_client(db_session_factory)
+
+    # 7 -> encounter=волк (mouse faces 1-6, wolf faces 7-9 на 1 уровне),
+    # 7>4 -> игрок первый, 5 -> обстоятельства нет, затем ход: 5 -> двойного
+    # удара нет, 7 -> атака 70%, 5 -> уворот волка (agility=6) не сработал.
+    _patch_rolls(monkeypatch, [7, 7, 4, 5, 5, 7, 5])
+    session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
+    client.post(f"/combat/{session_id}/start", headers=HEADERS)
+    client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
+
+    response = client.post(f"/combat/{session_id}/turn", json={"power_attack": True}, headers=HEADERS)
+    body = response.json()
+    assert response.status_code == 200
+    assert body["status"] == "active"  # волк переживает: 50 hp - 27 урона = 23
+    assert "💥 Мощный удар: 7 → 70% силы, урон ×1.3!" in body["text"]
+    assert "💥 Ты наносишь 27 урона." in body["text"]
+
+
+def test_turn_without_power_attack_defaults_to_normal_attack(db_session_factory, monkeypatch):
+    # Тот же бросок/статы, что и в power-attack тесте выше, но без флага
+    # (и без тела запроса вообще — старое поведение) — обычная атака,
+    # без множителя: round(30*0.7) = 21, не 27.
+    _insert_character(db_session_factory, strength=30, agility=5, luck=2)
+    client = make_client(db_session_factory)
+
+    _patch_rolls(monkeypatch, [7, 7, 4, 5, 5, 7, 5])
+    session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
+    client.post(f"/combat/{session_id}/start", headers=HEADERS)
+    client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
+
+    response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
+    body = response.json()
+    assert "🗡️ Твоя атака: 7 → 70% силы." in body["text"]
+    assert "💥 Ты наносишь 21 урона." in body["text"]
+
+
 def test_use_potion_heals_ends_turn_and_passes_to_enemy(db_session_factory, monkeypatch):
     # docs/notes.md, п.33 — зелье явное действие игрока кнопкой, не
     # автоматика (отменяет п.32): заменяет атаку в этот ход, сразу передаёт

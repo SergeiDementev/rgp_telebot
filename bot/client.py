@@ -122,9 +122,12 @@ class ApiClient:
             json={"decision": decision},
         )
 
-    async def take_turn(self, telegram_user_id: int, combat_session_id: int) -> dict:
+    async def take_turn(self, telegram_user_id: int, combat_session_id: int, power_attack: bool = False) -> dict:
         return await self._request(
-            "POST", f"/combat/{combat_session_id}/turn", telegram_user_id=telegram_user_id
+            "POST",
+            f"/combat/{combat_session_id}/turn",
+            telegram_user_id=telegram_user_id,
+            json={"power_attack": power_attack},
         )
 
     async def flee_decision(self, telegram_user_id: int, combat_session_id: int, decision: str) -> dict:

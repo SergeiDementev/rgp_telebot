@@ -30,6 +30,7 @@ from api.schemas.combat import (
     CombatTurnResponse,
     ConfirmRequest,
     FleeDecisionRequest,
+    TurnRequest,
     UsePotionRequest,
 )
 from core import combat_mechanics as cm
@@ -285,11 +286,19 @@ def _turn_response(session: CombatSession, character: Character, text: str) -> C
     )
 
 
-def _resolve_attacker_turn(session: CombatSession, character: Character, db: Session) -> str:
-    """§5+§9 шаги 5-6: проверка двойного удара + 1-2 удара для session.current_turn."""
+def _resolve_attacker_turn(
+    session: CombatSession, character: Character, db: Session, power_attack: bool = False
+) -> str:
+    """§5+§9 шаги 5-6: проверка двойного удара + 1-2 удара для session.current_turn.
+
+    power_attack (docs/combat_mechanics.md §3a) — выбор игрока, передаётся
+    сюда как есть из запроса, но реально применяется только когда атакующая
+    сторона в этом ходу — игрок (см. ниже); бот всегда бьёт обычной атакой,
+    как и должно быть по механике."""
     enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
     attacker_role = session.current_turn
     defender_role = "enemy" if attacker_role == "player" else "player"
+    power_attack = power_attack and attacker_role == "player"
 
     if attacker_role == "player":
         attacker_strength = character.strength * session.strength_modifier_player
@@ -321,6 +330,7 @@ def _resolve_attacker_turn(session: CombatSession, character: Character, db: Ses
             dodge_roll=dodge_roll,
             dodge_max_faces=DODGE_MAX_FACES,
             dodge_k=DODGE_K,
+            power_attack=power_attack,
         )
 
         if defender_role == "enemy":
@@ -335,6 +345,7 @@ def _resolve_attacker_turn(session: CombatSession, character: Character, db: Ses
                 rendering.render_compact_strike(
                     session.enemy_type, attacker_role, strike_number, attack_roll,
                     strike.attack_percent, dodge_roll, strike.dodged, strike.damage,
+                    power_attack=power_attack,
                 )
             )
         else:
@@ -342,6 +353,7 @@ def _resolve_attacker_turn(session: CombatSession, character: Character, db: Ses
                 rendering.render_strike(
                     session.enemy_type, attacker_role, attack_roll,
                     strike.attack_percent, dodge_roll, strike.dodged, strike.damage,
+                    power_attack=power_attack,
                 )
             )
         log_entries.append(
@@ -349,6 +361,7 @@ def _resolve_attacker_turn(session: CombatSession, character: Character, db: Ses
                 "type": "strike", "side": attacker_role, "strike_number": strike_number,
                 "attack_roll": attack_roll, "attack_percent": strike.attack_percent,
                 "dodge_roll": dodge_roll, "dodged": strike.dodged, "damage": strike.damage,
+                "power_attack": power_attack,
             }
         )
 
@@ -415,9 +428,13 @@ def confirm_combat(
 @router.post("/combat/{combat_session_id}/turn", response_model=CombatTurnResponse)
 def take_turn(
     combat_session_id: int,
+    payload: TurnRequest = TurnRequest(),
     character: Character = Depends(get_current_character),
     db: Session = Depends(get_db),
 ) -> CombatTurnResponse:
+    """payload.power_attack (docs/combat_mechanics.md §3a) — по умолчанию
+    False, тело запроса необязательно (бот отправляет его всегда, но
+    старые/прочие клиенты без тела не ломаются)."""
     session = _load_owned_session(db, combat_session_id, character)
     if session.status != "active":
         raise HTTPException(
@@ -428,7 +445,7 @@ def take_turn(
     if gate is not None and not gate["proceed"]:
         return _turn_response(session, character, gate["text"])
 
-    turn_text = _resolve_attacker_turn(session, character, db)
+    turn_text = _resolve_attacker_turn(session, character, db, power_attack=payload.power_attack)
     if gate is not None:
         turn_text = f"{gate['text']}\n\n{turn_text}"
 

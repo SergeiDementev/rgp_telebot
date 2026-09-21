@@ -21,6 +21,7 @@ from bot.handlers.combat import (
     search_encounter,
     start_combat,
     take_turn,
+    take_turn_power,
     use_potion,
 )
 
@@ -169,6 +170,59 @@ async def test_confirm_fight_shows_attack_button_when_player_goes_first():
     button = markup.inline_keyboard[0][0]
     assert button.text == "🎲 Атаковать"
     assert button.callback_data == "take_turn:5"
+
+
+async def test_confirm_fight_shows_power_attack_button_next_to_attack():
+    # docs/combat_mechanics.md §3a — доступен на любом ходу игрока, в любом
+    # бою, сразу с первого хода, без каких-либо условий.
+    callback = make_callback("confirm_fight:5")
+    api = AsyncMock()
+    api.confirm_combat.return_value = {
+        "status": "active", "result": None, "current_turn": "player", "text": "⚔️ Ты вступаешь в бой!"
+    }
+
+    await confirm_fight(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    row = markup.inline_keyboard[0]
+    assert row[1].text == "💥 Мощный удар"
+    assert row[1].callback_data == "take_turn_power:5"
+
+
+async def test_confirm_fight_no_power_attack_button_on_defend_turn():
+    # На ходу противника показывается только "Защищаться" — мощный удар
+    # доступен исключительно на ходу атаки игрока.
+    callback = make_callback("confirm_fight:5")
+    api = AsyncMock()
+    api.confirm_combat.return_value = {
+        "status": "active", "result": None, "current_turn": "enemy", "text": "..."
+    }
+
+    await confirm_fight(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["take_turn:5"]
+
+
+async def test_take_turn_power_sends_power_attack_flag():
+    callback = make_callback("take_turn_power:5")
+    api = AsyncMock()
+    api.take_turn.return_value = {"status": "active", "current_turn": "enemy", "text": "..."}
+
+    await take_turn_power(callback, api)
+
+    api.take_turn.assert_awaited_once_with(1, 5, power_attack=True)
+
+
+async def test_take_turn_sends_no_power_attack_flag():
+    callback = make_callback("take_turn:5")
+    api = AsyncMock()
+    api.take_turn.return_value = {"status": "active", "current_turn": "enemy", "text": "..."}
+
+    await take_turn(callback, api)
+
+    api.take_turn.assert_awaited_once_with(1, 5, power_attack=False)
 
 
 async def test_confirm_fight_shows_no_potion_buttons_when_none_owned():
@@ -557,7 +611,7 @@ async def test_build_resume_keyboard_active_shows_turn_and_potion_buttons():
     }
     markup = build_resume_keyboard(5, resume)
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert callback_datas == ["take_turn:5", "use_potion:5:small"]
+    assert callback_datas == ["take_turn:5", "take_turn_power:5", "use_potion:5:small"]
 
 
 async def test_build_resume_keyboard_awaiting_flee_decision():

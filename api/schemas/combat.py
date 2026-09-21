@@ -32,6 +32,10 @@ class FleeDecisionRequest(BaseModel):
     decision: Literal["flee", "continue"]
 
 
+class TurnRequest(BaseModel):
+    power_attack: bool = False
+
+
 class UsePotionRequest(BaseModel):
     size: Literal["small", "large"]
 

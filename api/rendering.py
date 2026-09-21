@@ -126,20 +126,30 @@ def render_strike(
     dodge_roll,
     dodged,
     damage: float,
+    power_attack: bool = False,
 ) -> str:
-    """Полная (многострочная) форма одного удара — вне двойного удара."""
+    """Полная (многострочная) форма одного удара — вне двойного удара.
+
+    power_attack (docs/combat_mechanics.md §3a) — только у игрока (мобы им
+    не пользуются, см. api/routers/combat.py::_resolve_attacker_turn), меняет
+    только строку атаки (эмодзи/подпись/пометка "урон ×1.3!") — уворот и
+    урон уже посчитаны вызывающим кодом с учётом множителя, здесь только
+    отображение."""
     names = ENEMY_NAMES[enemy_type]
     if side_role == "player":
-        attack_label, dodge_label, damage_verb = "Твоя атака", f"{names['nom_cap']} уворачивается", "Ты наносишь"
+        dodge_label, damage_verb = f"{names['nom_cap']} уворачивается", "Ты наносишь"
         dodge_verb = names["dodge_verb"]
+        attack_label = "💥 Мощный удар" if power_attack else "🗡️ Твоя атака"
     else:
-        attack_label, dodge_label, damage_verb = f"Атака {names['gen_low']}", "Твой уворот", f"{names['nom_cap']} наносит"
+        attack_label, dodge_label, damage_verb = f"🗡️ Атака {names['gen_low']}", "Твой уворот", f"{names['nom_cap']} наносит"
         dodge_verb = "увернулся"
+        power_attack = False  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
 
     if attack_percent is None:
-        return f"🗡️ {attack_label}: {attack_roll} → промах!"
+        return f"{attack_label}: {attack_roll} → промах!"
 
-    lines = [f"🗡️ {attack_label}: {attack_roll} → {attack_percent}% силы."]
+    percent_part = f"{attack_percent}% силы, урон ×1.3!" if power_attack else f"{attack_percent}% силы."
+    lines = [f"{attack_label}: {attack_roll} → {percent_part}"]
     if dodged:
         lines.append(f"🛡️ {dodge_label}: {dodge_roll} → {dodge_verb}!")
         lines.append("✅ Урон полностью пропущен.")
@@ -158,18 +168,25 @@ def render_compact_strike(
     dodge_roll,
     dodged,
     damage: float,
+    power_attack: bool = False,
 ) -> str:
-    """Компактная (однострочная) форма удара — используется внутри двойного удара."""
+    """Компактная (однострочная) форма удара — используется внутри двойного
+    удара. power_attack — см. render_strike, тот же принцип (только игрок,
+    только подпись/эмодзи/пометка множителя)."""
     names = ENEMY_NAMES[enemy_type]
     if side_role == "player":
         dodge_label, dodge_verb = f"{names['nom_cap']} уворачивается", names["dodge_verb"]
+        strike_label = "💥 Мощный удар" if power_attack else "🗡️ Удар"
     else:
         dodge_label, dodge_verb = "Ты уворачиваешься", "увернулся"
+        strike_label = "🗡️ Удар"
+        power_attack = False  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
 
     if attack_percent is None:
-        return f"🗡️ Удар {strike_number}: {attack_roll} → промах."
+        return f"{strike_label} {strike_number}: {attack_roll} → промах."
 
-    parts = [f"🗡️ Удар {strike_number}: {attack_roll} → {attack_percent}% силы."]
+    percent_part = f"{attack_percent}% силы, урон ×1.3!" if power_attack else f"{attack_percent}% силы."
+    parts = [f"{strike_label} {strike_number}: {attack_roll} → {percent_part}"]
     if dodged:
         parts.append(f"🛡️ {dodge_label}: {dodge_roll} → {dodge_verb}!")
     else:

@@ -87,7 +87,7 @@ async def test_cmd_start_resumes_active_battle_instead_of_stats_screen():
     args, kwargs = second_call
     assert args[0] == f"{RESUME_BATTLE_PREFIX}❤️ Ты: 34/50   👹 Волк: 12/50"
     callback_datas = [btn.callback_data for row in kwargs["reply_markup"].inline_keyboard for btn in row]
-    assert callback_datas == ["take_turn:5"]
+    assert callback_datas == ["take_turn:5", "take_turn_power:5"]
 
 
 async def test_cmd_start_reraises_non_404_errors():

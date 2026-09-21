@@ -156,6 +156,16 @@ async def test_take_turn_path_and_header():
 
     assert captured["path"] == "/combat/5/turn"
     assert captured["headers"]["x-telegram-user-id"] == "7"
+    assert captured["json"] == {"power_attack": False}
+
+
+async def test_take_turn_sends_power_attack_flag():
+    handler, captured = _echo_handler(200, {"status": "active", "text": "..."})
+    client = make_client(handler)
+
+    await client.take_turn(telegram_user_id=7, combat_session_id=5, power_attack=True)
+
+    assert captured["json"] == {"power_attack": True}
 
 
 async def test_flee_decision_sends_decision():
