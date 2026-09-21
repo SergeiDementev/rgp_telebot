@@ -75,6 +75,51 @@ def test_get_character_returns_created_character(db_session_factory):
     assert response.json()["nickname"] == "Ally"
 
 
+def test_get_character_active_combat_session_id_is_none_by_default(db_session_factory):
+    client = make_client(db_session_factory)
+    client.post("/character", json={"telegram_user_id": 42, "nickname": "Ally"})
+    response = client.get("/character/42")
+    assert response.json()["active_combat_session_id"] is None
+
+
+def test_get_character_returns_active_combat_session_id_when_battling(db_session_factory):
+    # docs/notes.md, п.48 — бот проверяет это поле при /start, чтобы
+    # восстановить потерянный экран боя вместо обычного меню персонажа.
+    client = make_client(db_session_factory)
+    character_id = client.post("/character", json={"telegram_user_id": 42, "nickname": "Ally"}).json()["id"]
+
+    db = db_session_factory()
+    session = CombatSession(
+        character_id=character_id, enemy_type="mouse", enemy_hp_current=20.0,
+        character_hp_snapshot=50.0, status="active", current_turn="player", turn_log=[],
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    session_id = session.id
+    db.close()
+
+    response = client.get("/character/42")
+    assert response.json()["active_combat_session_id"] == session_id
+
+
+def test_get_character_ignores_finished_combat_sessions(db_session_factory):
+    client = make_client(db_session_factory)
+    character_id = client.post("/character", json={"telegram_user_id": 42, "nickname": "Ally"}).json()["id"]
+
+    db = db_session_factory()
+    session = CombatSession(
+        character_id=character_id, enemy_type="mouse", enemy_hp_current=0.0,
+        character_hp_snapshot=50.0, status="finished", result="victory", current_turn="player", turn_log=[],
+    )
+    db.add(session)
+    db.commit()
+    db.close()
+
+    response = client.get("/character/42")
+    assert response.json()["active_combat_session_id"] is None
+
+
 def test_get_character_regenerates_hp_lazily(db_session_factory):
     client = make_client(db_session_factory)
     client.post("/character", json={"telegram_user_id": 7, "nickname": "Regen"})

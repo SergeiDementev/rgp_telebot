@@ -96,8 +96,14 @@ def potion_cap(size: str) -> int:
     return LARGE_POTION_CAP if size == "large" else SMALL_POTION_CAP
 
 
-def calculate_heal_amount(hp_max: float, size: str) -> float:
-    return hp_max * potion_heal_percent(size) / 100
+def calculate_heal_amount(hp_max: float, size: str) -> int:
+    """Округляется до целого, как и урон в combat_mechanics.py::
+    calculate_damage — HP должен оставаться целым всегда, не только при
+    отображении (docs/notes.md): без округления здесь HP_max, не кратный 4
+    (25%/50% не делятся ровно), давал дробный остаток, который расчёт урона
+    (уже целый) никогда не мог "доокруглить" обратно — он молча копился в
+    hp_current/character_hp_snapshot до конца боя и дальше."""
+    return round(hp_max * potion_heal_percent(size) / 100)
 
 
 def is_hp_at_or_below_heal_threshold(hp: float, hp_max: float) -> bool:

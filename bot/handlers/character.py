@@ -58,8 +58,9 @@ MENU_SCREEN_TITLE = "👤 Меню игрока"
 # Дублирует core/progression.py::BOSS_LEVEL_REQUIREMENT (docs/notes.md,
 # п.36) — тот же паттерн дублирования, что и у цен/капов зелий выше: бот
 # сам решает, показывать ли кнопку активной или "запертой", без похода в API.
-# Временно снижено до 8 для плейтеста (docs/notes.md, п.46) — синхронно с core/.
-BOSS_LEVEL_REQUIREMENT = 8
+# На плейтесте пробовали снизить до 8 (п.46), зафиксировано обратно на 9
+# по итогам (docs/notes.md, п.53) — синхронно с core/.
+BOSS_LEVEL_REQUIREMENT = 9
 BOSS_LOCKED_ALERT_TEXT = f"Финальный босс станет доступен с {BOSS_LEVEL_REQUIREMENT}-го уровня."
 
 

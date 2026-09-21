@@ -147,6 +147,7 @@ def simulate_single_fight_vs_boss(
     potions_large: int,
     unlimited_potions: bool,
     enemy_type: str = "boss",
+    power_attack: bool = False,
 ) -> dict:
     """Копия sce.simulate_single_fight_economy (см. её docstring и docstring
     модуля — почему копия, а не правка оригинала/sce). Формулы по-прежнему
@@ -235,6 +236,7 @@ def simulate_single_fight_vs_boss(
             double_strikes[attacker_role] += 1
 
         for _ in range(num_strikes):
+            # §3a: мощный удар доступен только игроку — босс им не пользуется.
             strike = cm.resolve_strike(
                 attacker_strength=attacker["strength"],
                 defender_agility=defender["agility"],
@@ -242,6 +244,7 @@ def simulate_single_fight_vs_boss(
                 dodge_roll=rng.randint(1, 10),
                 dodge_max_faces=sc.DODGE_MAX_FACES,
                 dodge_k=sc.DODGE_K,
+                power_attack=power_attack and attacker_role == "player",
             )
             defender["hp"] = max(defender["hp"] - strike.damage, 0)
             if defender["hp"] <= 0:
@@ -265,10 +268,13 @@ def simulate_single_fight_vs_boss(
 # ---------------------------------------------------------------------------
 
 
-def run_boss_batch(player_stats, boss_stats, fights, rng, potions_small, potions_large, unlimited_potions) -> list:
+def run_boss_batch(
+    player_stats, boss_stats, fights, rng, potions_small, potions_large, unlimited_potions, power_attack: bool = False
+) -> list:
     return [
         simulate_single_fight_vs_boss(
-            player_stats, boss_stats, "always_fight", rng, potions_small, potions_large, unlimited_potions
+            player_stats, boss_stats, "always_fight", rng, potions_small, potions_large, unlimited_potions,
+            power_attack=power_attack,
         )
         for _ in range(fights)
     ]

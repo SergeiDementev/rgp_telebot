@@ -1,5 +1,7 @@
 """Pydantic-схемы запросов/ответов для роутера character."""
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -27,6 +29,7 @@ class CharacterOut(BaseModel):
     loot: dict[str, int]
     potions_small: int
     potions_large: int
+    active_combat_session_id: Optional[int] = None
 
 
 class AllocatePointRequest(BaseModel):

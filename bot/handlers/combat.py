@@ -12,7 +12,13 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.client import ApiClient, ApiError
-from bot.handlers.character import boss_button
+from bot.handlers.character import (
+    LARGE_POTION_CAP,
+    SMALL_POTION_CAP,
+    boss_button,
+    render_stats_screen,
+    stats_screen_keyboard,
+)
 from bot.utils import safe_edit_text
 
 router = Router()
@@ -105,6 +111,85 @@ def _boss_victory_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def _initiative_prompt_keyboard(session_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⚔️ Определить инициативу", callback_data=f"start_combat:{session_id}")]
+        ]
+    )
+
+
+def _potion_stock_text(potions_small: int, potions_large: int) -> str:
+    return (
+        f"🧪 Твой запас:\n"
+        f"  Малое: {potions_small}/{SMALL_POTION_CAP}\n"
+        f"  Большое: {potions_large}/{LARGE_POTION_CAP}"
+    )
+
+
+def _boss_challenge_keyboard(session_id: int) -> InlineKeyboardMarkup:
+    """Экран входа в бой с боссом (docs/notes.md, п.51) — в отличие от
+    обычной встречи, показывает запас зелий (бой с боссом без лимита "раз
+    за бой", п.39, поэтому важно понимать, сколько их вообще есть) и даёт
+    "⬅️ Назад": до инициативы отступить можно без всякого риска — сама
+    встреча ещё ничего не решила, это не то же самое, что "🏃 Отступить"
+    на экране после инициативы (там уже настоящая попытка побега)."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⚔️ Бросить вызов", callback_data=f"start_combat:{session_id}"),
+                InlineKeyboardButton(text="⬅️ Назад", callback_data=f"cancel_encounter:{session_id}"),
+            ]
+        ]
+    )
+
+
+def _confirmation_keyboard(session_id: int, enemy_type: str) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text="⚔️ Вступить в бой", callback_data=f"confirm_fight:{session_id}"),
+            InlineKeyboardButton(text="🏃 Отступить", callback_data=f"confirm_flee:{session_id}"),
+        ]
+    ]
+    if enemy_type != "boss":
+        # Автобой у финального босса не имеет смысла (docs/notes.md, п.40) —
+        # зельём в нём всё равно нельзя пользоваться, а без ручного контроля
+        # над зельями бой против босса проигрывается вслепую. "Отступить"
+        # остаётся всегда, на случай случайного нажатия или "не готов".
+        rows.append([InlineKeyboardButton(text="⚡ Автобой", callback_data=f"confirm_fight_auto:{session_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_resume_text(resume: dict) -> str:
+    """Текст восстановленного экрана (docs/notes.md, п.48/51) — тот же
+    принцип, что и у клавиатуры ниже: экран с боссом до инициативы должен
+    выглядеть так же, как и при свежем входе (с запасом зелий), не хуже."""
+    text = resume["text"]
+    if resume["status"] == "awaiting_initiative" and resume.get("enemy_type") == "boss":
+        stock = _potion_stock_text(resume.get("potions_small", 0), resume.get("potions_large", 0))
+        text = f"{text}\n\n{stock}"
+    return text
+
+
+def build_resume_keyboard(session_id: int, resume: dict) -> InlineKeyboardMarkup:
+    """Клавиатура для восстановленного экрана боя (docs/notes.md, п.48) —
+    например, после /start с потерянной клавиатурой (игрок удалил чат в
+    Telegram, а CombatSession в БД осталась активной). Ветвится по status
+    теми же клавиатурами, что и обычные хендлеры ниже — просто без нового
+    действия, сюда ведёт /start, а не нажатие кнопки в этом же бою."""
+    status = resume["status"]
+    if status == "awaiting_initiative":
+        if resume.get("enemy_type") == "boss":
+            return _boss_challenge_keyboard(session_id)
+        return _initiative_prompt_keyboard(session_id)
+    if status == "awaiting_confirmation":
+        return _confirmation_keyboard(session_id, resume["enemy_type"])
+    # "active"/"awaiting_flee_decision" (и "finished" защитным дефолтом,
+    # хотя эндпоинт /resume его не отдаёт) — та же логика, что и у обычного
+    # ответа хода, восстановленный экран от них ничем не отличается.
+    return _next_step_markup(session_id, resume)
+
+
 def _next_step_markup(session_id: int, response: dict, *, mode: str = "manual") -> InlineKeyboardMarkup:
     """Выбор клавиатуры по статусу ответа confirm/turn/flee_decision. Ветка
     "status active" ниже — единственное место, строящее кнопку хода, и
@@ -138,12 +223,7 @@ async def search_encounter(callback: CallbackQuery, api: ApiClient) -> None:
         await callback.answer("У тебя уже есть незавершённый бой — сначала заверши его.", show_alert=True)
         return
     session_id = response["combat_session_id"]
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="⚔️ Определить инициативу", callback_data=f"start_combat:{session_id}")]
-        ]
-    )
-    await callback.message.edit_text(response["text"], reply_markup=keyboard)
+    await callback.message.edit_text(response["text"], reply_markup=_initiative_prompt_keyboard(session_id))
     await callback.answer()
 
 
@@ -165,12 +245,32 @@ async def search_boss_encounter(callback: CallbackQuery, api: ApiClient) -> None
         await callback.answer("У тебя уже есть незавершённый бой — сначала заверши его.", show_alert=True)
         return
     session_id = response["combat_session_id"]
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="⚔️ Определить инициативу", callback_data=f"start_combat:{session_id}")]
-        ]
-    )
-    await callback.message.edit_text(response["text"], reply_markup=keyboard)
+    # docs/notes.md, п.51 — запас зелий на экране входа (бой с боссом без
+    # лимита "раз за бой", важно видеть, с чем реально входишь), плюс "⬅️
+    # Назад" — до инициативы отступить можно без всякого риска.
+    stock = _potion_stock_text(response["potions_small"], response["potions_large"])
+    text = f"{response['text']}\n\n{stock}"
+    await callback.message.edit_text(text, reply_markup=_boss_challenge_keyboard(session_id))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("cancel_encounter:"))
+async def cancel_encounter(callback: CallbackQuery, api: ApiClient) -> None:
+    """"⬅️ Назад" на экране входа в бой, до инициативы (docs/notes.md,
+    п.51) — отменяет встречу целиком (ничего ещё не произошло, нечего
+    "доигрывать") и возвращает на главный экран персонажа."""
+    session_id = _session_id_from(callback.data)
+    try:
+        await api.cancel_combat_session(callback.from_user.id, session_id)
+    except ApiError as error:
+        if error.status_code != 409:
+            raise
+        # Гонка — сессия уже не в статусе "до инициативы" (например, бой
+        # уже начат с другого места). Отменять нечего, сообщаем и всё.
+        await callback.answer("Бой уже начался — отменить нельзя.", show_alert=True)
+        return
+    character = await api.get_character(callback.from_user.id)
+    await callback.message.edit_text(render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
     await callback.answer()
 
 
@@ -178,19 +278,7 @@ async def search_boss_encounter(callback: CallbackQuery, api: ApiClient) -> None
 async def start_combat(callback: CallbackQuery, api: ApiClient) -> None:
     session_id = _session_id_from(callback.data)
     response = await api.start_combat(callback.from_user.id, session_id)
-    rows = [
-        [
-            InlineKeyboardButton(text="⚔️ Вступить в бой", callback_data=f"confirm_fight:{session_id}"),
-            InlineKeyboardButton(text="🏃 Отступить", callback_data=f"confirm_flee:{session_id}"),
-        ]
-    ]
-    if response.get("enemy_type") != "boss":
-        # Автобой у финального босса не имеет смысла (docs/notes.md, п.40) —
-        # зельём в нём всё равно нельзя пользоваться, а без ручного контроля
-        # над зельями бой против босса проигрывается вслепую. "Отступить"
-        # остаётся всегда, на случай случайного нажатия или "не готов".
-        rows.append([InlineKeyboardButton(text="⚡ Автобой", callback_data=f"confirm_fight_auto:{session_id}")])
-    keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
+    keyboard = _confirmation_keyboard(session_id, response.get("enemy_type"))
     await callback.message.edit_text(response["text"], reply_markup=keyboard)
     await callback.answer()
 

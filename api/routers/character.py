@@ -23,7 +23,7 @@ from api.schemas.character import (
 )
 from core import economy as ec
 from core import progression as pr
-from db.models import Character, StatAllocationLog
+from db.models import Character, CombatSession, StatAllocationLog
 
 router = APIRouter(prefix="/character", tags=["character"], dependencies=[Depends(require_api_key)])
 
@@ -38,10 +38,15 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _to_character_out(character: Character) -> CharacterOut:
+def _to_character_out(character: Character, active_combat_session_id: int | None = None) -> CharacterOut:
     """§8 gameplay_loop_mvp.md: HP пересчитывается на лету при каждом чтении,
     без записи в БД — сама запись меняется только на реальных игровых событиях
-    (бой, левел-ап), не на простом чтении состояния."""
+    (бой, левел-ап), не на простом чтении состояния.
+
+    `active_combat_session_id` — только для GET /{telegram_user_id} (docs/
+    notes.md, п.48): бот проверяет его при /start, чтобы восстановить
+    потерянный экран боя вместо показа обычного меню персонажа. Остальные
+    вызовы этой функции не ищут активную сессию — не нужно для их ответа."""
     hp_max = pr.calculate_hp_max(character.vitality)
     hp_current = pr.get_current_hp(character.hp_current, hp_max, character.last_hp_update_at, _now())
     return CharacterOut(
@@ -63,6 +68,7 @@ def _to_character_out(character: Character) -> CharacterOut:
         loot=character.loot,
         potions_small=character.potions_small,
         potions_large=character.potions_large,
+        active_combat_session_id=active_combat_session_id,
     )
 
 
@@ -111,7 +117,15 @@ def get_character(telegram_user_id: int, db: Session = Depends(get_db)) -> Chara
     )
     if character is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
-    return _to_character_out(character)
+
+    # docs/notes.md, п.48 — бот проверяет это поле при /start, чтобы
+    # восстановить потерянный экран боя вместо обычного меню персонажа.
+    active_session = (
+        db.query(CombatSession)
+        .filter(CombatSession.character_id == character.id, CombatSession.status != "finished")
+        .first()
+    )
+    return _to_character_out(character, active_combat_session_id=active_session.id if active_session else None)
 
 
 @router.delete("/{telegram_user_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -189,6 +189,36 @@ async def test_get_combat_session_path_and_header():
     assert captured["headers"]["x-telegram-user-id"] == "7"
 
 
+async def test_resume_combat_session_path_and_header():
+    handler, captured = _echo_handler(200, {"status": "active", "text": "..."})
+    client = make_client(handler)
+
+    await client.resume_combat_session(telegram_user_id=7, combat_session_id=5)
+
+    assert captured["method"] == "GET"
+    assert captured["path"] == "/combat/5/resume"
+    assert captured["headers"]["x-telegram-user-id"] == "7"
+
+
+async def test_cancel_combat_session_path_and_header():
+    captured = {}
+
+    def handler(request):
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["headers"] = {k.lower(): v for k, v in request.headers.items()}
+        return httpx.Response(204)
+
+    client = make_client(handler)
+
+    result = await client.cancel_combat_session(telegram_user_id=7, combat_session_id=5)
+
+    assert captured["method"] == "DELETE"
+    assert captured["path"] == "/combat/5"
+    assert captured["headers"]["x-telegram-user-id"] == "7"
+    assert result is None
+
+
 async def test_error_response_raises_api_error_with_detail():
     handler, _ = _echo_handler(404, {"detail": "combat session not found"})
     client = make_client(handler)

@@ -11,6 +11,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from bot.client import ApiClient, ApiError
 from bot.handlers.character import allocation_keyboard, render_allocation_screen, render_stats_screen, stats_screen_keyboard
+from bot.handlers.combat import build_resume_keyboard, build_resume_text
 
 router = Router()
 
@@ -18,6 +19,8 @@ WELCOME_TEXT = (
     "🧙 Добро пожаловать в текстовую RPG!\n\n"
     "Ищи противников, сражайся на кубиках, качай персонажа."
 )
+
+RESUME_BATTLE_PREFIX = "↩️ Продолжаем начатый бой:\n\n"
 
 RESET_CONFIRM_TEXT = (
     "⚠️ Точно обнулить персонажа?\n\n"
@@ -36,7 +39,12 @@ def _reset_confirm_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="🗑 Да, удалить", callback_data="reset_confirm:manual_reset"),
-                InlineKeyboardButton(text="Отмена", callback_data="reset_cancel"),
+                # "Отмена" ведёт на уже существующий "back_to_stats" (bot/
+                # handlers/character.py), не на отдельный текст без кнопок
+                # (docs/notes.md) — иначе отмена была тупиком: "Отменено." без
+                # единой кнопки, продолжить играть можно было только вручную
+                # набрав /start.
+                InlineKeyboardButton(text="Отмена", callback_data="back_to_stats"),
             ]
         ]
     )
@@ -53,8 +61,24 @@ async def cmd_start(message: Message, api: ApiClient) -> None:
         await message.answer(WELCOME_TEXT, reply_markup=_start_game_keyboard())
         return
 
-    # §1: персонаж уже есть — повторный /start не пересоздаёт его.
+    # §1: персонаж уже есть — повторный /start не пересоздаёт его. Баннер
+    # шлём в любом случае, даже при восстановлении боя ниже — то же самое
+    # первое сообщение, что игрок всегда видит на /start.
     await message.answer(WELCOME_TEXT)
+
+    # docs/notes.md, п.48 — незавершённый бой не теряется, если сообщение с
+    # его клавиатурой пропало (например, игрок удалил чат в Telegram):
+    # CombatSession в БД остаётся активной, /start восстанавливает экран
+    # вместо обычного меню персонажа.
+    active_session_id = character.get("active_combat_session_id")
+    if active_session_id is not None:
+        resume = await api.resume_combat_session(message.from_user.id, active_session_id)
+        await message.answer(
+            f"{RESUME_BATTLE_PREFIX}{build_resume_text(resume)}",
+            reply_markup=build_resume_keyboard(active_session_id, resume),
+        )
+        return
+
     await message.answer(render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
 
 
@@ -111,9 +135,3 @@ async def reset_confirm(callback: CallbackQuery, api: ApiClient) -> None:
         reply_markup=allocation_keyboard(character, mode="creation"),
     )
     await callback.answer("Персонаж обнулён")
-
-
-@router.callback_query(F.data == "reset_cancel")
-async def reset_cancel(callback: CallbackQuery) -> None:
-    await callback.message.edit_text("Отменено.")
-    await callback.answer()

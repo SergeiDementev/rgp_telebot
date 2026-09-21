@@ -86,6 +86,15 @@ def test_calculate_heal_amount_matches_percent_of_hp_max():
     assert ec.calculate_heal_amount(100, "large") == 50
 
 
+def test_calculate_heal_amount_rounds_to_integer_for_non_divisible_hp_max():
+    # Регрессия (docs/notes.md) — hp_max=70 не делится ровно на 25%/50%
+    # (17.5/35.0), а HP обязан оставаться целым всегда, как и урон
+    # (combat_mechanics.py::calculate_damage), не только при отображении.
+    assert ec.calculate_heal_amount(70, "small") == 18  # round(17.5) -> 18
+    assert isinstance(ec.calculate_heal_amount(70, "small"), int)
+    assert ec.calculate_heal_amount(50, "small") == 12  # round(12.5) -> 12
+
+
 def test_is_hp_at_or_below_heal_threshold():
     assert ec.is_hp_at_or_below_heal_threshold(40, 100) is True
     assert ec.is_hp_at_or_below_heal_threshold(41, 100) is False

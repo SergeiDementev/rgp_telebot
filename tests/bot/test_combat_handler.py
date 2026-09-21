@@ -7,6 +7,9 @@ import pytest
 from bot.client import ApiError
 from bot.handlers.character import BOSS_LEVEL_REQUIREMENT
 from bot.handlers.combat import (
+    build_resume_keyboard,
+    build_resume_text,
+    cancel_encounter,
     confirm_fight,
     confirm_fight_auto,
     confirm_flee,
@@ -70,20 +73,30 @@ async def test_search_encounter_reraises_other_errors():
         await search_encounter(callback, api)
 
 
-async def test_search_boss_encounter_shows_initiative_button():
+async def test_search_boss_encounter_shows_potion_stock_and_challenge_buttons():
+    # docs/notes.md, п.51 — экран входа в бой с боссом показывает запас
+    # зелий и даёт "⬅️ Назад" (безрисковая отмена до инициативы), в отличие
+    # от обычной встречи (только "Определить инициативу", без счётчика).
     callback = make_callback("search_boss_encounter")
     api = AsyncMock()
     api.search_boss_encounter.return_value = {
-        "combat_session_id": 9, "enemy_type": "boss", "text": "Ты входишь в чертог Лесного Короля."
+        "combat_session_id": 9, "enemy_type": "boss", "text": "Ты входишь в чертог Лесного Короля.",
+        "potions_small": 2, "potions_large": 1,
     }
 
     await search_boss_encounter(callback, api)
 
     api.search_boss_encounter.assert_awaited_once_with(1)
     text = callback.message.edit_text.call_args.args[0]
-    assert text == "Ты входишь в чертог Лесного Короля."
+    assert text == (
+        "Ты входишь в чертог Лесного Короля.\n\n"
+        "🧪 Твой запас:\n"
+        "  Малое: 2/5\n"
+        "  Большое: 1/3"
+    )
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
-    assert markup.inline_keyboard[0][0].callback_data == "start_combat:9"
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["start_combat:9", "cancel_encounter:9"]
 
 
 async def test_search_boss_encounter_shows_alert_on_existing_session():
@@ -514,3 +527,100 @@ async def test_refresh_after_battle_omits_timer_when_hp_full():
 
     text = callback.message.edit_text.call_args.args[0]
     assert text == "❤️ HP: 50/50"
+
+
+async def test_build_resume_keyboard_awaiting_initiative():
+    resume = {"status": "awaiting_initiative", "enemy_type": "wolf"}
+    markup = build_resume_keyboard(5, resume)
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["start_combat:5"]
+
+
+async def test_build_resume_keyboard_awaiting_confirmation_shows_auto_button():
+    resume = {"status": "awaiting_confirmation", "enemy_type": "wolf"}
+    markup = build_resume_keyboard(5, resume)
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["confirm_fight:5", "confirm_flee:5", "confirm_fight_auto:5"]
+
+
+async def test_build_resume_keyboard_awaiting_confirmation_hides_auto_button_for_boss():
+    resume = {"status": "awaiting_confirmation", "enemy_type": "boss"}
+    markup = build_resume_keyboard(5, resume)
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["confirm_fight:5", "confirm_flee:5"]
+
+
+async def test_build_resume_keyboard_active_shows_turn_and_potion_buttons():
+    resume = {
+        "status": "active", "current_turn": "player", "enemy_type": "wolf",
+        "potions_small": 1, "potions_large": 0, "potion_used_this_battle": False,
+    }
+    markup = build_resume_keyboard(5, resume)
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["take_turn:5", "use_potion:5:small"]
+
+
+async def test_build_resume_keyboard_awaiting_flee_decision():
+    resume = {"status": "awaiting_flee_decision", "enemy_type": "wolf"}
+    markup = build_resume_keyboard(5, resume)
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["flee_decision_flee:5", "flee_decision_continue:5"]
+
+
+async def test_build_resume_keyboard_awaiting_initiative_boss_shows_challenge_and_back():
+    # docs/notes.md, п.51 — восстановленный экран с боссом до инициативы
+    # выглядит так же, как и свежий: запас зелий + "Назад" вместо обычной
+    # "Определить инициативу".
+    resume = {"status": "awaiting_initiative", "enemy_type": "boss"}
+    markup = build_resume_keyboard(5, resume)
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["start_combat:5", "cancel_encounter:5"]
+
+
+async def test_build_resume_text_appends_potion_stock_for_boss_awaiting_initiative():
+    resume = {
+        "status": "awaiting_initiative", "enemy_type": "boss", "text": "Ты входишь в чертог Лесного Короля.",
+        "potions_small": 3, "potions_large": 0,
+    }
+    text = build_resume_text(resume)
+    assert text == (
+        "Ты входишь в чертог Лесного Короля.\n\n"
+        "🧪 Твой запас:\n"
+        "  Малое: 3/5\n"
+        "  Большое: 0/3"
+    )
+
+
+async def test_build_resume_text_unchanged_for_non_boss_awaiting_initiative():
+    resume = {"status": "awaiting_initiative", "enemy_type": "wolf", "text": "Ты наткнулся на волка."}
+    assert build_resume_text(resume) == "Ты наткнулся на волка."
+
+
+async def test_cancel_encounter_returns_to_stats_screen():
+    callback = make_callback("cancel_encounter:9")
+    api = AsyncMock()
+    api.get_character.return_value = {
+        "nickname": "Hero", "level": 3, "hp_current": 40.0, "hp_max": 60.0,
+        "strength": 5, "agility": 3, "luck": 2, "victory_points": 15, "points_to_next_level": 5,
+    }
+
+    await cancel_encounter(callback, api)
+
+    api.cancel_combat_session.assert_awaited_once_with(1, 9)
+    text = callback.message.edit_text.call_args.args[0]
+    assert "Hero" in text
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "search_encounter" in callback_datas
+    callback.answer.assert_awaited_once()
+
+
+async def test_cancel_encounter_shows_alert_when_already_started():
+    callback = make_callback("cancel_encounter:9")
+    api = AsyncMock()
+    api.cancel_combat_session.side_effect = ApiError(409, "unexpected session status: 'active'")
+
+    await cancel_encounter(callback, api)
+
+    callback.message.edit_text.assert_not_called()
+    callback.answer.assert_awaited_once_with("Бой уже начался — отменить нельзя.", show_alert=True)

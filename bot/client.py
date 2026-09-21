@@ -147,3 +147,18 @@ class ApiClient:
         return await self._request(
             "GET", f"/combat/{combat_session_id}", telegram_user_id=telegram_user_id
         )
+
+    async def resume_combat_session(self, telegram_user_id: int, combat_session_id: int) -> dict:
+        """docs/notes.md, п.48 — восстановление потерянной клавиатуры боя
+        (например, после удаления чата в Telegram); только чтение, ничего
+        не мутирует на сервере."""
+        return await self._request(
+            "GET", f"/combat/{combat_session_id}/resume", telegram_user_id=telegram_user_id
+        )
+
+    async def cancel_combat_session(self, telegram_user_id: int, combat_session_id: int) -> None:
+        """docs/notes.md, п.51 — "⬅️ Назад" на экране входа в бой, до
+        инициативы: отменяет встречу целиком, ничего в бою ещё не произошло."""
+        await self._request(
+            "DELETE", f"/combat/{combat_session_id}", telegram_user_id=telegram_user_id
+        )

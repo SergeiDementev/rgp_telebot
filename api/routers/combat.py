@@ -221,6 +221,51 @@ def _hp_status_text(session: CombatSession, character: Character, enemy_stats: d
     )
 
 
+def _render_resume_text(session: CombatSession, character: Character) -> str:
+    """Реконструирует экран боя по текущему status, когда клавиатура на
+    стороне бота потеряна (docs/notes.md, п.48 — например, игрок удалил
+    чат в Telegram: CombatSession в БД остаётся как есть, бой никуда не
+    делся, просто бот не показывает сообщение с кнопками для него нигде).
+    Только чтение — ничего не бросает заново, восстанавливает текст по уже
+    сохранённым фактам (turn_log/колонки сессии), не по свежим roll'ам."""
+    enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
+
+    if session.status == "awaiting_initiative":
+        encounter_entry = session.turn_log[0]
+        if "roll" in encounter_entry:
+            return rendering.render_encounter(session.enemy_type, encounter_entry["roll"])
+        return rendering.render_boss_encounter()
+
+    if session.status == "awaiting_confirmation":
+        initiative_entry = next(e for e in session.turn_log if e["type"] == "initiative")
+        circumstance_entry = next(e for e in session.turn_log if e["type"] == "circumstance")
+        initiative_text = rendering.render_initiative(
+            session.enemy_type, initiative_entry["player_roll"], initiative_entry["enemy_roll"],
+            initiative_entry["first_role"],
+        )
+        circumstance_text = rendering.render_circumstance(
+            session.enemy_type, circumstance_entry["roll"], circumstance_entry["outcome"],
+            circumstance_entry["roller_role"],
+        )
+        return f"{initiative_text}\n\n{circumstance_text}"
+
+    if session.status == "awaiting_flee_decision":
+        check_entry = next(e for e in reversed(session.turn_log) if e["type"] == "flee_opportunity_check")
+        if check_entry["side"] == "player":
+            current_hp, max_hp = session.character_hp_snapshot, pr.calculate_hp_max(character.vitality)
+        else:
+            current_hp, max_hp = session.enemy_hp_current, enemy_stats["hp_max"]
+        check_text = rendering.render_flee_opportunity_check(
+            session.enemy_type, check_entry["side"], current_hp, max_hp, check_entry["roll"], check_entry["triggered"],
+        )
+        return f"{_hp_status_text(session, character, enemy_stats)}\n\n{check_text}"
+
+    # "active" — обычный случай; любой другой (например, "finished", сюда
+    # не должен попасть — эндпоинт вызывается только для незавершённых
+    # сессий) — тоже просто статус HP, безопасный дефолт.
+    return _hp_status_text(session, character, enemy_stats)
+
+
 def _turn_response(session: CombatSession, character: Character, text: str) -> CombatTurnResponse:
     """Снимок инвентаря зелий игрока (docs/notes.md, п.33) — бот решает по
     нему, показывать ли кнопку "Выпить зелье" на следующем ходу, без
@@ -495,3 +540,46 @@ def get_combat_session(
         enemy_hp_current=session.enemy_hp_current,
         enemy_hp_max=enemy_stats["hp_max"],
     )
+
+
+@router.get("/combat/{combat_session_id}/resume", response_model=CombatTurnResponse)
+def resume_combat_session(
+    combat_session_id: int,
+    character: Character = Depends(get_current_character),
+    db: Session = Depends(get_db),
+) -> CombatTurnResponse:
+    """Восстановление экрана боя, когда клавиатура на стороне бота потеряна
+    (docs/notes.md, п.48) — например, игрок удалил чат в Telegram: сама
+    CombatSession в БД остаётся активной, бой никуда не делся, просто нет
+    сообщения с кнопками, которое вело бы обратно в него. Только чтение —
+    не мутирует состояние сессии, никаких новых бросков. Схема ответа та
+    же, что и у /confirm//turn/flee_decision/use_potion (CombatTurnResponse)
+    — бот переиспользует ту же логику выбора клавиатуры для статусов
+    "active"/"awaiting_flee_decision", что и для обычных ответов хода."""
+    session = _load_owned_session(db, combat_session_id, character)
+    if session.status == "finished":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="combat session already finished")
+    text = _render_resume_text(session, character)
+    return _turn_response(session, character, text)
+
+
+@router.delete("/combat/{combat_session_id}", status_code=status.HTTP_204_NO_CONTENT)
+def cancel_combat_session(
+    combat_session_id: int,
+    character: Character = Depends(get_current_character),
+    db: Session = Depends(get_db),
+) -> None:
+    """Отмена встречи ДО инициативы (docs/notes.md, п.51) — кнопка "⬅️ Назад"
+    на экране входа в бой ("Ты наткнулся на..."/"Ты входишь в чертог
+    Короля"). Разрешено только пока status="awaiting_initiative": до этого
+    момента в бою ничего ещё не произошло — ни одного броска инициативы
+    /обстоятельства, HP персонажа не тронут (снимок в search снят, но не
+    потрачен ни на что) — поэтому просто удаляем сессию физически, не
+    архивируем как исход боя (victory/defeat/...), она им и не была."""
+    session = _load_owned_session(db, combat_session_id, character)
+    if session.status != "awaiting_initiative":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=f"unexpected session status: {session.status!r}"
+        )
+    db.delete(session)
+    db.commit()

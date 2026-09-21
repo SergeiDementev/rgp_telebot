@@ -10,6 +10,8 @@ class EncounterSearchResponse(BaseModel):
     enemy_type: str
     status: str
     text: str
+    potions_small: int
+    potions_large: int
 
 
 class CombatStartResponse(BaseModel):

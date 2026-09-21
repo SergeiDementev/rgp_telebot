@@ -111,7 +111,7 @@ def _wants_to_flee(role: str, policy: str) -> bool:
     return policy == "flee_when_possible"
 
 
-def simulate_single_fight(player_stats: dict, enemy_stats: dict, policy: str, rng) -> dict:
+def simulate_single_fight(player_stats: dict, enemy_stats: dict, policy: str, rng, power_attack: bool = False) -> dict:
     player = _new_fighter(player_stats)
     enemy = _new_fighter(enemy_stats)
 
@@ -181,6 +181,7 @@ def simulate_single_fight(player_stats: dict, enemy_stats: dict, policy: str, rn
 
         # 6. Удар(ы).
         for _ in range(num_strikes):
+            # §3a: мощный удар доступен только игроку — мобы им не пользуются.
             strike = cm.resolve_strike(
                 attacker_strength=attacker["strength"],
                 defender_agility=defender["agility"],
@@ -188,6 +189,7 @@ def simulate_single_fight(player_stats: dict, enemy_stats: dict, policy: str, rn
                 dodge_roll=rng.randint(1, 10),
                 dodge_max_faces=DODGE_MAX_FACES,
                 dodge_k=DODGE_K,
+                power_attack=power_attack and attacker_role == "player",
             )
             defender["hp"] = max(defender["hp"] - strike.damage, 0)
             if defender["hp"] <= 0:
@@ -206,8 +208,10 @@ def simulate_single_fight(player_stats: dict, enemy_stats: dict, policy: str, rn
 # ---------------------------------------------------------------------------
 
 
-def run_batch(enemy_name: str, enemy_stats: dict, player_stats: dict, fights: int, policy: str, rng) -> list:
-    return [simulate_single_fight(player_stats, enemy_stats, policy, rng) for _ in range(fights)]
+def run_batch(
+    enemy_name: str, enemy_stats: dict, player_stats: dict, fights: int, policy: str, rng, power_attack: bool = False
+) -> list:
+    return [simulate_single_fight(player_stats, enemy_stats, policy, rng, power_attack) for _ in range(fights)]
 
 
 def summarize(results: list, enemy_name: str) -> dict:
@@ -249,8 +253,8 @@ def summarize(results: list, enemy_name: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def print_summary(enemy_name: str, fights: int, policy: str, seed, summary: dict) -> None:
-    print(f"\n=== {enemy_name} | fights={fights} | policy={policy} | seed={seed} ===")
+def print_summary(enemy_name: str, fights: int, policy: str, seed, summary: dict, power_attack: bool = False) -> None:
+    print(f"\n=== {enemy_name} | fights={fights} | policy={policy} | power_attack={power_attack} | seed={seed} ===")
     print("Исходы:")
     for outcome in OUTCOMES:
         print(f"  {outcome:<13} {summary['outcome_percent'][outcome]:5.1f}%")
@@ -530,6 +534,11 @@ def parse_args():
     parser.add_argument("--fights", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--policy", choices=["always_fight", "flee_when_possible"], default="always_fight")
+    parser.add_argument(
+        "--power-attack",
+        action="store_true",
+        help="Игрок всегда использует '💥 Мощный удар' (§3a docs/combat_mechanics.md) вместо обычной атаки — для калибровки эффекта.",
+    )
     parser.add_argument("--session-fights", type=int, default=100)
     parser.add_argument(
         "--allocation-policy",
@@ -557,10 +566,10 @@ def run_single_mode(args, rng, timestamp) -> None:
     summaries = {}
     for enemy_name in enemy_names:
         enemy_stats = ENEMY_PRESETS[enemy_name]
-        results = run_batch(enemy_name, enemy_stats, PLAYER_STATS, args.fights, args.policy, rng)
+        results = run_batch(enemy_name, enemy_stats, PLAYER_STATS, args.fights, args.policy, rng, args.power_attack)
         summary = summarize(results, enemy_name)
         summaries[enemy_name] = summary
-        print_summary(enemy_name, args.fights, args.policy, args.seed, summary)
+        print_summary(enemy_name, args.fights, args.policy, args.seed, summary, args.power_attack)
         out_path = save_results(enemy_name, results, timestamp)
         print(f"Сырые результаты сохранены: {out_path}")
 

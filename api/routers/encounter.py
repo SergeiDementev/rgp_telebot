@@ -97,6 +97,8 @@ def _start_encounter_session(
         enemy_type=enemy_type,
         status=session.status,
         text=text,
+        potions_small=character.potions_small,
+        potions_large=character.potions_large,
     )
 
 

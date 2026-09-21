@@ -36,6 +36,8 @@ def _insert_character(db_session_factory, telegram_user_id=1, **overrides) -> in
         vitality=overrides.get("vitality", 3),
         hp_current=overrides.get("hp_current", 50.0),
         last_hp_update_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        potions_small=overrides.get("potions_small", 0),
+        potions_large=overrides.get("potions_large", 0),
     )
     db.add(character)
     db.commit()
@@ -56,6 +58,18 @@ def test_search_encounter_creates_session(db_session_factory):
     assert body["status"] == "awaiting_initiative"
     assert body["combat_session_id"] > 0
     assert body["text"]
+
+
+def test_search_encounter_includes_potion_snapshot(db_session_factory):
+    # docs/notes.md, п.51 — бот показывает запас зелий на экране входа в
+    # бой, без отдельного GET /character.
+    _insert_character(db_session_factory, potions_small=2, potions_large=1)
+    client = make_client(db_session_factory)
+
+    response = client.post("/encounter/search", headers=HEADERS)
+    body = response.json()
+    assert body["potions_small"] == 2
+    assert body["potions_large"] == 1
 
 
 def test_search_encounter_without_character_returns_404(db_session_factory):
@@ -190,7 +204,7 @@ def test_start_combat_twice_returns_409(db_session_factory, monkeypatch):
 
 def test_search_boss_encounter_creates_session_at_required_level(db_session_factory):
     # docs/notes.md, п.36 — доступ с pr.BOSS_LEVEL_REQUIREMENT уровня.
-    _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT)
+    _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT, potions_small=2, potions_large=1)
     client = make_client(db_session_factory)
 
     response = client.post("/encounter/search_boss", headers=HEADERS)
@@ -199,6 +213,9 @@ def test_search_boss_encounter_creates_session_at_required_level(db_session_fact
     assert body["enemy_type"] == "boss"
     assert body["status"] == "awaiting_initiative"
     assert body["text"]
+    # docs/notes.md, п.51 — запас зелий на экране входа в бой с боссом.
+    assert body["potions_small"] == 2
+    assert body["potions_large"] == 1
 
 
 def test_search_boss_encounter_below_required_level_returns_403(db_session_factory):
