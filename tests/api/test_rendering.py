@@ -136,15 +136,15 @@ def test_render_compact_strike_dodged_uses_feminine_verb_for_mouse():
 
 
 def test_render_strike_power_attack_hit_uses_own_label_and_multiplier_note():
-    # docs/combat_mechanics.md §3a — своя подпись/эмодзи и пометка "урон ×1.3!".
+    # docs/combat_mechanics.md §3a — своя подпись/эмодзи и пометка "урон ×1.5!".
     text = r.render_strike(
-        "wolf", "player", attack_roll=7, attack_percent=70, dodge_roll=5, dodged=False, damage=91,
+        "wolf", "player", attack_roll=7, attack_percent=70, dodge_roll=5, dodged=False, damage=105,
         power_attack=True,
     )
     assert text == (
-        "💥 Мощный удар: 7 → 70% силы, урон ×1.3!\n"
+        "💥 Мощный удар: 7 → 70% силы, урон ×1.5!\n"
         "🛡️ Волк уворачивается: 5 → не вышло!\n"
-        "💥 Ты наносишь 91 урона."
+        "💥 Ты наносишь 105 урона."
     )
 
 
@@ -168,10 +168,10 @@ def test_render_strike_power_attack_only_affects_player_side():
 
 def test_render_compact_strike_power_attack_hit():
     text = r.render_compact_strike(
-        "wolf", "player", 1, attack_roll=9, attack_percent=90, dodge_roll=3, dodged=False, damage=117,
+        "wolf", "player", 1, attack_roll=9, attack_percent=90, dodge_roll=3, dodged=False, damage=135,
         power_attack=True,
     )
-    assert text == "💥 Мощный удар 1: 9 → 90% силы, урон ×1.3! 🛡️ Волк уворачивается: 3 → не вышло! 💥 117 урона."
+    assert text == "💥 Мощный удар 1: 9 → 90% силы, урон ×1.5! 🛡️ Волк уворачивается: 3 → не вышло! 💥 135 урона."
 
 
 def test_render_flee_opportunity_triggered_player():

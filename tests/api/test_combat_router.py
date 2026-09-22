@@ -202,8 +202,8 @@ def test_turn_victory_with_no_loot_omits_loot_line(db_session_factory, monkeypat
 
 def test_turn_power_attack_applies_multiplier_and_wider_miss(db_session_factory, monkeypatch):
     # docs/combat_mechanics.md §3a — POST /combat/{id}/turn с power_attack=true:
-    # промах до грани 4, урон ×1.3 на попадании. strength=30, roll=7 -> 70%
-    # силы -> round(30*0.7*1.3) = 27 (не round(30*0.7)=21, как у обычной атаки).
+    # промах до грани 4, урон ×1.5 на попадании. strength=30, roll=7 -> 70%
+    # силы -> round(30*0.7*1.5) = 32 (не round(30*0.7)=21, как у обычной атаки).
     _insert_character(db_session_factory, strength=30, agility=5, luck=2)
     client = make_client(db_session_factory)
 
@@ -218,15 +218,15 @@ def test_turn_power_attack_applies_multiplier_and_wider_miss(db_session_factory,
     response = client.post(f"/combat/{session_id}/turn", json={"power_attack": True}, headers=HEADERS)
     body = response.json()
     assert response.status_code == 200
-    assert body["status"] == "active"  # волк переживает: 50 hp - 27 урона = 23
-    assert "💥 Мощный удар: 7 → 70% силы, урон ×1.3!" in body["text"]
-    assert "💥 Ты наносишь 27 урона." in body["text"]
+    assert body["status"] == "active"  # волк переживает: 50 hp - 32 урона = 18
+    assert "💥 Мощный удар: 7 → 70% силы, урон ×1.5!" in body["text"]
+    assert "💥 Ты наносишь 32 урона." in body["text"]
 
 
 def test_turn_without_power_attack_defaults_to_normal_attack(db_session_factory, monkeypatch):
     # Тот же бросок/статы, что и в power-attack тесте выше, но без флага
     # (и без тела запроса вообще — старое поведение) — обычная атака,
-    # без множителя: round(30*0.7) = 21, не 27.
+    # без множителя: round(30*0.7) = 21, не 32.
     _insert_character(db_session_factory, strength=30, agility=5, luck=2)
     client = make_client(db_session_factory)
 

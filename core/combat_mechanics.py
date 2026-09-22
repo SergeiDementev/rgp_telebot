@@ -23,7 +23,7 @@ ATTACK_SCALING_STEP_PERCENT = 10
 
 # --- §3a Мощный удар (альтернатива атаке, только игрок) ---
 POWER_ATTACK_MISS_MAX_FACE = 4
-POWER_ATTACK_DAMAGE_MULTIPLIER = 1.3
+POWER_ATTACK_DAMAGE_MULTIPLIER = 1.5
 
 # --- Черновые значения для калибровки (§11), используются как дефолты ---
 DODGE_MIN_FACES_DEFAULT = 1

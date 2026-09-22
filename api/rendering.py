@@ -17,6 +17,8 @@ buff, хотя по таблице §8 грани 1-3 — debuff) — здесь
 
 from typing import Optional
 
+from core.combat_mechanics import POWER_ATTACK_DAMAGE_MULTIPLIER
+
 # Дублирует bot/handlers/character.py::LOOT_ITEM_NAMES_RU (docs/notes.md,
 # п.30/31) — бот и api не делят импорты (разные процессы, общаются только
 # по HTTP), а показ добычи в конце боя рендерится здесь же, где и весь
@@ -132,9 +134,10 @@ def render_strike(
 
     power_attack (docs/combat_mechanics.md §3a) — только у игрока (мобы им
     не пользуются, см. api/routers/combat.py::_resolve_attacker_turn), меняет
-    только строку атаки (эмодзи/подпись/пометка "урон ×1.3!") — уворот и
-    урон уже посчитаны вызывающим кодом с учётом множителя, здесь только
-    отображение."""
+    только строку атаки (эмодзи/подпись/пометка множителя урона, значение —
+    core.combat_mechanics.POWER_ATTACK_DAMAGE_MULTIPLIER, не хардкод) —
+    уворот и урон уже посчитаны вызывающим кодом с учётом множителя, здесь
+    только отображение."""
     names = ENEMY_NAMES[enemy_type]
     if side_role == "player":
         dodge_label, damage_verb = f"{names['nom_cap']} уворачивается", "Ты наносишь"
@@ -148,7 +151,9 @@ def render_strike(
     if attack_percent is None:
         return f"{attack_label}: {attack_roll} → промах!"
 
-    percent_part = f"{attack_percent}% силы, урон ×1.3!" if power_attack else f"{attack_percent}% силы."
+    percent_part = (
+        f"{attack_percent}% силы, урон ×{POWER_ATTACK_DAMAGE_MULTIPLIER:g}!" if power_attack else f"{attack_percent}% силы."
+    )
     lines = [f"{attack_label}: {attack_roll} → {percent_part}"]
     if dodged:
         lines.append(f"🛡️ {dodge_label}: {dodge_roll} → {dodge_verb}!")
@@ -185,7 +190,9 @@ def render_compact_strike(
     if attack_percent is None:
         return f"{strike_label} {strike_number}: {attack_roll} → промах."
 
-    percent_part = f"{attack_percent}% силы, урон ×1.3!" if power_attack else f"{attack_percent}% силы."
+    percent_part = (
+        f"{attack_percent}% силы, урон ×{POWER_ATTACK_DAMAGE_MULTIPLIER:g}!" if power_attack else f"{attack_percent}% силы."
+    )
     parts = [f"{strike_label} {strike_number}: {attack_roll} → {percent_part}"]
     if dodged:
         parts.append(f"🛡️ {dodge_label}: {dodge_roll} → {dodge_verb}!")
