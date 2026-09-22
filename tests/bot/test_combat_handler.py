@@ -95,8 +95,13 @@ async def test_search_boss_encounter_shows_potion_stock_and_challenge_buttons():
         "  Большое: 1/3"
     )
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
-    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert callback_datas == ["start_combat:9", "cancel_encounter:9"]
+    # docs/notes.md, п.59 — каждая кнопка на своей строке, "Бросить вызов"
+    # сверху, "Назад" снизу; подпись напоминает порог уровня (подсказка, не
+    # гейт — сервер всё равно проверит его сам на start_combat).
+    assert len(markup.inline_keyboard) == 2
+    assert markup.inline_keyboard[0][0].callback_data == "start_combat:9"
+    assert "9 уровня" in markup.inline_keyboard[0][0].text
+    assert markup.inline_keyboard[1][0].callback_data == "cancel_encounter:9"
 
 
 async def test_search_boss_encounter_shows_alert_on_existing_session():

@@ -16,6 +16,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from bot.client import ApiClient, ApiError
 from bot.handlers.character import (
+    BOSS_LEVEL_REQUIREMENT,
     LARGE_POTION_CAP,
     SMALL_POTION_CAP,
     boss_button,
@@ -141,13 +142,17 @@ def _boss_challenge_keyboard(session_id: int) -> InlineKeyboardMarkup:
     за бой", п.39, поэтому важно понимать, сколько их вообще есть) и даёт
     "⬅️ Назад": до инициативы отступить можно без всякого риска — сама
     встреча ещё ничего не решила, это не то же самое, что "🏃 Отступить"
-    на экране после инициативы (там уже настоящая попытка побега)."""
+    на экране после инициативы (там уже настоящая попытка побега). Порог
+    уровня в подписи "Бросить вызов" — только подсказка (docs/notes.md,
+    п.59), реальную проверку делает сервер на start_combat (п.58). Каждая
+    кнопка на своей строке — "Бросить вызов" сверху, "Назад" снизу."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(text="⚔️ Бросить вызов", callback_data=f"start_combat:{session_id}"),
-                InlineKeyboardButton(text="⬅️ Назад", callback_data=f"cancel_encounter:{session_id}"),
-            ]
+            [InlineKeyboardButton(
+                text=f"⚔️ Бросить вызов (с {BOSS_LEVEL_REQUIREMENT} уровня)",
+                callback_data=f"start_combat:{session_id}",
+            )],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"cancel_encounter:{session_id}")],
         ]
     )
 

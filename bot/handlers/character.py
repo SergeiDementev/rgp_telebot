@@ -55,6 +55,14 @@ BUY_POTION_ERROR_MESSAGES = {
 
 MENU_SCREEN_TITLE = "👤 Меню игрока"
 
+# Дублирует core/progression.py::BOSS_LEVEL_REQUIREMENT (docs/notes.md,
+# п.58) — только для подписи кнопки "⚔️ Бросить вызов" на экране входа в
+# бой с боссом (bot/handlers/combat.py::_boss_challenge_keyboard), реальную
+# проверку уровня делает сервер на POST /combat/{id}/start. Порог сюда не
+# гейтит ничего — рассинхрон дал бы неверную подсказку в тексте кнопки, не
+# сломанную игру.
+BOSS_LEVEL_REQUIREMENT = 9
+
 
 def render_stats_screen(character: dict) -> str:
     """§4: переиспользуемый экран статов персонажа."""
