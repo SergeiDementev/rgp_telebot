@@ -23,7 +23,7 @@ ATTACK_SCALING_STEP_PERCENT = 10
 
 # --- §3a Мощный удар (альтернатива атаке, только игрок) ---
 POWER_ATTACK_MISS_MAX_FACE = 4
-POWER_ATTACK_DAMAGE_MULTIPLIER = 1.3
+POWER_ATTACK_DAMAGE_MULTIPLIER = 1.5
 
 # --- Черновые значения для калибровки (§11), используются как дефолты ---
 DODGE_MIN_FACES_DEFAULT = 1
@@ -65,19 +65,29 @@ def calculate_damage(strength: float, attack_percent: int) -> int:
 def calculate_saturating_success_faces(
     stat: float, max_faces: int, k: float, min_faces: int = 1
 ) -> int:
-    """Кривая насыщения общая для §4 (уворот) и §6 (побег):
+    """Кривая насыщения с жёстким потолком, используется §6 (побег):
     MIN_FACES + round((MAX_FACES − MIN_FACES) × stat / (stat + K)).
-    """
+
+    Раньше обслуживала и §4 (уворот), но та с 2026-09-22 (docs/notes.md,
+    п.60) перешла на отдельную асимптотическую формулу без потолка
+    (см. calculate_dodge_success_faces) — эта функция теперь только для
+    побега, где жёсткий потолок остаётся дизайн-решением."""
     if stat + k <= 0:
         return min_faces
     return min_faces + round((max_faces - min_faces) * stat / (stat + k))
 
 
 def calculate_dodge_success_faces(
-    agility: float, max_faces: int, k: float, min_faces: int = DODGE_MIN_FACES_DEFAULT
+    agility: float, k: float, dice_sides: int = DICE_SIDES, min_faces: int = DODGE_MIN_FACES_DEFAULT
 ) -> int:
-    """§4: количество граней d10, дающих полный уворот."""
-    return calculate_saturating_success_faces(agility, max_faces, k, min_faces)
+    """§4: количество граней d10, дающих полный уворот. Асимптотическая
+    кривая без жёсткого потолка (2026-09-22, docs/notes.md, п.60) — тот же
+    принцип, что у двойного удара (§5): floor(), не round(), чтобы 100% не
+    достигалось ни при каком конечном значении Ловкости, плюс сдвиг
+    +min_faces для гарантированного ненулевого минимума при Ловкости=0."""
+    if agility + k <= 0:
+        return min_faces
+    return min_faces + math.floor((dice_sides - min_faces) * agility / (agility + k))
 
 
 def is_dodge_successful(dodge_roll: int, success_faces: int) -> bool:
@@ -179,7 +189,6 @@ def resolve_strike(
     defender_agility: float,
     attack_roll: int,
     dodge_roll: int,
-    dodge_max_faces: int,
     dodge_k: float,
     dodge_min_faces: int = DODGE_MIN_FACES_DEFAULT,
     power_attack: bool = False,
@@ -199,9 +208,7 @@ def resolve_strike(
             damage=0.0,
         )
 
-    dodge_success_faces = calculate_dodge_success_faces(
-        defender_agility, dodge_max_faces, dodge_k, dodge_min_faces
-    )
+    dodge_success_faces = calculate_dodge_success_faces(defender_agility, dodge_k, min_faces=dodge_min_faces)
     dodged = is_dodge_successful(dodge_roll, dodge_success_faces)
     if dodged:
         damage = 0.0
