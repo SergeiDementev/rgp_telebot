@@ -1,0 +1,55 @@
+# Зеркалит .gitignore + то, что не нужно в образе вообще (docs/scripts/
+# tests не нужны в рантайме, .git/.claude — метаданные инструментов).
+
+.git/
+.claude/
+.github/
+
+# Секреты — передаются через docker-compose env_file/environment, не в образе
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# БД / сгенерированные данные — не нужны в образе
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Логи
+*.log
+
+# Тесты и покрытие
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Не нужны в рантайме
+docs/
+scripts/
+
+# IDE / редакторы
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker-артефакты этого же репо
+Dockerfile
+docker-compose.yml
+.dockerignore

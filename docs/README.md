@@ -73,6 +73,24 @@ python -m bot.main
 python -m pytest tests/
 ```
 
+### Через Docker (альтернатива шагам 1-5 выше — для переноса на сервер)
+
+Всё (api, бот, PostgreSQL) — одним `docker-compose.yml` (docs/notes.md). Шаг 2 (`.env`) всё равно нужен — `TELEGRAM_BOT_TOKEN`/`INTERNAL_API_KEY`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` берутся оттуда; `API_BASE_URL`/`DATABASE_URL` для контейнеров заданы прямо в `docker-compose.yml` (имена сервисов сети compose, не `localhost`).
+
+```
+docker compose up -d --build
+```
+
+Поднимает Postgres, применяет `alembic upgrade head` при каждом старте api-контейнера (идемпотентно) и запускает бэкенд + бота. Бэкенд публикуется на `http://127.0.0.1:8000` (как и при ручном запуске), у бота портов нет — он только исходящий (long-polling).
+
+```
+docker compose ps       # статус/health всех трёх сервисов
+docker compose logs -f  # логи всех сервисов
+docker compose down     # остановить (том rpg_pgdata с данными не удаляется)
+```
+
+Тесты через Docker не гоняются — `pytest` по-прежнему только на хосте (шаг 6 выше), контейнеры этого не касаются.
+
 ---
 
 ## 3. Архитектурные принципы (сквозные, действуют на весь проект)

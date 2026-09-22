@@ -1,0 +1,57 @@
+# Фаза 2 докеризации (docs/notes.md) — поверх уже работающего перехода на
+# PostgreSQL (фаза 1). Секреты (TELEGRAM_BOT_TOKEN/INTERNAL_API_KEY/
+# POSTGRES_*) тянутся из .env через ${...} — compose подхватывает .env из
+# корня автоматически. DATABASE_URL/API_BASE_URL здесь заданы явно под
+# имена сервисов этой сети (db/api), а не взяты из .env буквально — там
+# они про localhost/127.0.0.1, для запуска процессами на хосте.
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - rpg_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build: .
+    image: rpg-tele-bot:latest
+    command: sh -c "alembic upgrade head && exec uvicorn api.main:app --host 0.0.0.0 --port 8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  bot:
+    image: rpg-tele-bot:latest
+    command: python -m bot.main
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      API_BASE_URL: http://api:8000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  rpg_pgdata:
+    external: true
