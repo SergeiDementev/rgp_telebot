@@ -9,8 +9,11 @@ from bot.handlers.character import (
     allocate_creation,
     allocate_levelup,
     back_to_stats,
+    buy_potion,
     finish_creation,
     open_allocation,
+    render_allocation_screen,
+    sell_loot,
     show_rules,
     show_rules_section,
 )
@@ -22,6 +25,7 @@ BASE_CHARACTER = {
     "id": 1, "nickname": "Hero", "level": 1, "victory_points": 0, "points_to_next_level": 8,
     "unspent_stat_points": 5, "strength": 3, "agility": 3, "luck": 1, "vitality": 3,
     "hp_current": 50.0, "hp_max": 50.0,
+    "gold": 0, "loot": {}, "potions_small": 0, "potions_large": 0,
 }
 
 
@@ -77,10 +81,181 @@ async def test_open_allocation_shows_levelup_screen():
     await open_allocation(callback, api)
 
     text = callback.message.edit_text.call_args.args[0]
-    assert "Прокачка характеристик" in text
+    # Без отдельной заголовочной строки — экран начинается сразу с уровня.
+    assert text.startswith("🏅 Уровень:")
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[-2][0].callback_data == "back_to_stats"
     assert markup.inline_keyboard[-1][0].callback_data == "reset_request"
+
+
+async def test_open_allocation_shows_unspent_points_when_pool_not_fully_spent():
+    # Баг-репорт: после "Начать приключение" с недобранным стартовым пулом
+    # строка "Доступно очков прокачки: N" должна быть видна и на "Меню
+    # игрока" (mode="levelup"), не только на экране создания — она гейтится
+    # тем же unspent_stat_points > 0, что и кнопки "+1 <стат>"
+    # (allocation_keyboard), значит не может показывать одно без другого.
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "unspent_stat_points": 2}
+
+    await open_allocation(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert "Доступно очков прокачки: 2" in text
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "allocate:strength" in callback_datas  # кнопки "+1" тоже видны — то же условие
+
+
+async def test_render_allocation_screen_unspent_points_matches_between_modes():
+    # Один и тот же персонаж/unspent_stat_points — счётчик должен совпадать
+    # на экране создания и на "Меню игрока", не расходиться незаметно.
+    character = {**BASE_CHARACTER, "unspent_stat_points": 3}
+    creation_text = render_allocation_screen(character, title="Создание героя", mode="creation")
+    levelup_text = render_allocation_screen(character, title="Меню игрока", mode="levelup")
+    assert "Осталось очков: 3" in creation_text
+    assert "Доступно очков прокачки: 3" in levelup_text
+
+
+async def test_open_allocation_shows_economy_sections_empty_by_default():
+    # docs/notes.md, п.30 — "Меню игрока": золото/лут/зелья добавлены к
+    # прежнему экрану прокачки. У свежего персонажа всё по нулям.
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+
+    await open_allocation(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert "💰 Золото: 0" in text
+    assert "📦 Лут: пока нет" in text
+    assert "🧪 Зелья: пока нет" in text
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "sell_loot" not in callback_datas  # лута нет — кнопка продажи полностью исчезает
+    assert "buy_potion:small" in callback_datas  # кнопки покупки видны всегда
+    assert "buy_potion:large" in callback_datas
+
+
+async def test_open_allocation_shows_loot_and_potions_when_present():
+    character = {
+        **BASE_CHARACTER,
+        "gold": 23,
+        "loot": {"mouse_pelt": 14, "wolf_fang": 3},
+        "potions_small": 2,
+        "potions_large": 1,
+    }
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = character
+
+    await open_allocation(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert "💰 Золото: 23" in text
+    # docs/notes.md — цена в скобках: для нескольких штук это цена×количество.
+    assert "Мышиная шкурка ×14 (28 зол.)" in text  # 2 зол./шт × 14
+    assert "Клык волка ×3 (24 зол.)" in text  # 8 зол./шт × 3
+    assert "Малое ×2" in text
+    assert "Большое ×1" in text
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "sell_loot" in callback_datas  # лут есть — кнопка продажи видна
+
+
+async def test_open_allocation_shows_plain_price_for_single_loot_item():
+    # Один экземпляр — просто цена, без "×1" и без умножения.
+    character = {**BASE_CHARACTER, "loot": {"wolf_pelt": 1}}
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = character
+
+    await open_allocation(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert "Шкура волка (20 зол.)" in text
+    assert "×1" not in text
+
+
+async def test_buy_potion_buttons_show_cap_reached_label_instead_of_price():
+    character = {**BASE_CHARACTER, "potions_small": 5, "potions_large": 3}  # оба на потолке
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = character
+
+    await open_allocation(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    buttons = {btn.callback_data: btn.text for row in markup.inline_keyboard for btn in row}
+    assert "уже максимум" in buttons["buy_potion:small"]
+    assert "уже максимум" in buttons["buy_potion:large"]
+    assert "зол." not in buttons["buy_potion:small"]
+
+
+async def test_buy_potion_buttons_show_price_when_under_cap():
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+
+    await open_allocation(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    buttons = {btn.callback_data: btn.text for row in markup.inline_keyboard for btn in row}
+    assert "8 зол." in buttons["buy_potion:small"]
+    assert "50 зол." in buttons["buy_potion:large"]
+
+
+async def test_sell_loot_calls_api_and_refreshes_menu_screen():
+    callback = make_callback("sell_loot")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "loot": {"mouse_pelt": 14}}
+    api.sell_loot.return_value = {"character": {**BASE_CHARACTER, "gold": 28, "loot": {}}}
+
+    await sell_loot(callback, api)
+
+    api.sell_loot.assert_awaited_once_with(1)
+    text = callback.message.edit_text.call_args.args[0]
+    assert "💰 Золото: 28" in text
+    assert "📦 Лут: пока нет" in text
+    callback.answer.assert_awaited_once()
+
+
+async def test_buy_potion_success_refreshes_menu_screen():
+    callback = make_callback("buy_potion:small")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "gold": 100}
+    api.buy_potion.return_value = {"character": {**BASE_CHARACTER, "gold": 92, "potions_small": 1}}
+
+    await buy_potion(callback, api)
+
+    api.buy_potion.assert_awaited_once_with(1, "small")
+    text = callback.message.edit_text.call_args.args[0]
+    assert "Малое ×1" in text
+    callback.answer.assert_awaited_once()
+
+
+async def test_buy_potion_not_enough_gold_shows_alert_without_editing_message():
+    callback = make_callback("buy_potion:large")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+    api.buy_potion.side_effect = ApiError(400, "not_enough_gold")
+
+    await buy_potion(callback, api)
+
+    callback.message.edit_text.assert_not_called()
+    callback.answer.assert_awaited_once_with("Не хватает золота.", show_alert=True)
+
+
+async def test_buy_potion_cap_reached_shows_distinct_alert():
+    callback = make_callback("buy_potion:large")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+    api.buy_potion.side_effect = ApiError(400, "cap_reached")
+
+    await buy_potion(callback, api)
+
+    callback.message.edit_text.assert_not_called()
+    callback.answer.assert_awaited_once_with("Уже максимум зелий этого размера.", show_alert=True)
 
 
 async def test_back_to_stats_shows_stats_screen():
@@ -109,6 +284,21 @@ async def test_refresh_stats_shows_stats_screen():
     assert "Hero" in text
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[0][0].callback_data == "refresh_stats"
+
+
+async def test_back_to_stats_shows_active_boss_button_at_level_one():
+    # docs/notes.md, п.58 — кнопка активна на любом уровне, порог проверяет
+    # сервер позже, на "⚔️ Бросить вызов".
+    callback = make_callback("back_to_stats")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "level": 1}
+
+    await back_to_stats(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    button = markup.inline_keyboard[-1][0]
+    assert button.callback_data == "search_boss_encounter"
+    assert "🔒" not in button.text
 
 
 async def test_allocate_levelup_spends_point_and_refreshes_screen():
@@ -173,4 +363,7 @@ async def test_finish_creation_shows_stats_screen_with_search_button():
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[0][0].callback_data == "refresh_stats"
     assert markup.inline_keyboard[1][0].callback_data == "search_encounter"
-    assert markup.inline_keyboard[-1][0].callback_data == "show_rules"
+    assert markup.inline_keyboard[-2][0].callback_data == "show_rules"
+    # Кнопка финального босса — всегда последняя и всегда активна
+    # (docs/notes.md, пп.36, 58), даже на свежем 1 уровне.
+    assert markup.inline_keyboard[-1][0].callback_data == "search_boss_encounter"

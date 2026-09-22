@@ -25,8 +25,16 @@ def get_current_character(
 ) -> Character:
     """Персонаж текущего запроса — по telegram_user_id из заголовка, не из тела
     запроса: бот сам знает, кто ему пишет, клиент не может подменить чужого
-    персонажа, просто передав другой id в JSON."""
-    character = db.query(Character).filter(Character.telegram_user_id == x_telegram_user_id).first()
+    персонажа, просто передав другой id в JSON.
+
+    Фильтр по is_active обязателен (docs/notes.md, п.41) — telegram_user_id
+    больше не уникален в БД: у пользователя может быть накоплено сколько
+    угодно архивных персонажей (прошлые прохождения), нужен именно текущий."""
+    character = (
+        db.query(Character)
+        .filter(Character.telegram_user_id == x_telegram_user_id, Character.is_active.is_(True))
+        .first()
+    )
     if character is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
     return character

@@ -26,16 +26,19 @@
 
 ```
 project/
-├── core/                    # чистая игровая логика, без внешних зависимостей — готово
-│   ├── combat_mechanics.py  # см. combat_mechanics.md (circumstance — часть этого файла, не отдельный модуль)
-│   └── progression.py       # формулы уровней, регенерации HP, наград, очков прокачки
+├── core/                    # чистая игровая логика, без внешних зависимостей
+│   ├── combat_mechanics.py  # см. combat_mechanics.md (circumstance — часть этого файла, не отдельный модуль) — готово
+│   ├── progression.py       # формулы уровней, регенерации HP, наград, очков прокачки — готово
+│   └── economy.py           # готово (docs/notes.md п.30): LOOT_TABLE, цены/капы зелий — единый источник
+│                            # для api/ и scripts/simulate_combat_economy.py, не дублируются
 │
 ├── api/                     # FastAPI-приложение — готово (этап 3)
 │   ├── main.py               # сборка приложения, create_all(), /health
 │   ├── routers/
 │   │   ├── character.py     # создание/просмотр персонажа, прокачка
-│   │   ├── encounter.py     # поиск противника + инициатива/обстоятельство (/start)
-│   │   └── combat.py        # confirm/turn/flee_decision/get — цикл ходов боя
+│   │   ├── encounter.py     # поиск противника + инициатива/обстоятельство (/start);
+│   │   │                    # + целенаправленная встреча с боссом (/search_boss, docs/notes.md п.36)
+│   │   └── combat.py        # confirm/turn/flee_decision/use_potion/get — цикл ходов боя
 │   ├── schemas/              # Pydantic-модели запросов/ответов (character.py, combat.py)
 │   ├── rendering.py           # структурированные факты боя → готовый текст для клиента
 │   ├── dependencies.py       # сессия БД, авторизация бота, получение текущего персонажа
@@ -50,10 +53,24 @@ project/
 │                              # само приложение при старте её больше не трогает
 │
 ├── content/                  # статичные игровые данные — готово (этап 2)
-│   └── enemies.json          # статы мышь/волк/кабан
+│   └── enemies.json          # статы мышь/волк/кабан/boss + can_flee/player_can_flee (пп.36, 57),
+│                              #   unlimited_potions (п.39), has_circumstance (п.56) по каждому
 │
 ├── scripts/                  # готово
-│   └── simulate_combat.py    # консольный симулятор боёв для калибровки (см. §8, этап 2)
+│   ├── simulate_combat.py         # консольный симулятор боёв для калибровки (см. §8, этап 2)
+│   ├── simulate_combat_economy.py # + слой экономики (лут/золото/зелья) поверх того же движка
+│   ├── simulate_boss.py           # калибровка статов финального босса (docs/notes.md пп.26-29,
+│   │                               # статы перенесены в content/enemies.json в п.36)
+│   ├── simulate_boss_partial_stock.py # кривая win rate по промежуточным запасам зелий +
+│   │                                   # расход зелий в проигранных попытках (docs/notes.md п.42)
+│   ├── simulate_boss_recovery_farm.py # время рефарма зелий с нуля после поражения от босса —
+│   │                                   # статы заморожены на 9-10 уровне (п.43) и, точнее,
+│   │                                   # растут обычной прогрессией (п.44) — оба варианта
+│   ├── simulate_boss_early_unlock.py  # стоит ли открывать босса раньше, с 8 уровня — естественный
+│   │                                   # запас зелий + winrate на статах 8 уровня (docs/notes.md п.45)
+│   └── export_playtest_stats.py   # выгрузка CSV по одному прохождению (--character-id N) —
+│                                   # с п.41 архивные character_id хранятся в БД навсегда,
+│                                   # так что работает для любого прошлого прохождения
 │
 ├── tests/                     # готово — pytest, зеркалит структуру выше
 │   ├── core/
@@ -70,7 +87,9 @@ project/
     ├── client.py              # асинхронная обёртка над httpx для вызовов api/
     ├── handlers/
     │   ├── start.py           # /start, /rules, создание персонажа
-    │   ├── character.py       # экран статов, прокачка (общий экран для создания и левел-апа)
+    │   ├── character.py       # экран статов, "Меню игрока" (статы/прокачка + золото/лут/зелья,
+    │   │                      # docs/notes.md п.30; общий экран для создания и левел-апа) +
+    │   │                      # кнопка "Финальный босс" на главном экране (п.36)
     │   └── combat.py          # весь боевой цикл — поиск, инициатива, ходы, завершение
     └── main.py                 # сборка Dispatcher, регистрация роутеров, polling
 ```
@@ -82,7 +101,10 @@ project/
 ```python
 class Character:
     id: int
-    telegram_user_id: int        # уникальный ключ для идентификации при запросах от бота
+    telegram_user_id: int        # НЕ уникальный (docs/notes.md, п.41) — у пользователя со временем
+                                  # накапливается много строк: одна активная + архивные прошлые
+                                  # прохождения. "Текущий" персонаж — is_active=True, ровно одна
+                                  # строка на пользователя на уровне приложения, не БД
     nickname: str                # берётся из Telegram при создании
     level: int
     victory_points: int          # накопительно, не расходуется — только двигает уровень
@@ -94,6 +116,19 @@ class Character:
     hp_current: float
     last_hp_update_at: datetime   # для ленивого пересчёта регенерации
     created_at: datetime
+
+    # Архивация вместо удаления (docs/notes.md, п.41)
+    is_active: bool = True
+    archived_at: datetime | None = None
+    archived_reason: str | None = None  # "manual_reset" | "boss_victory"
+
+    # docs/notes.md п.30 — "Меню игрока": экономика поверх боя
+    gold: int = 0                 # копится продажей лута, тратится на зелья
+    loot: JSON                     # {"<item_name>": <count>, ...} — стакается; цены/веса — в core/economy.py,
+                                    # не в БД, здесь только количество у персонажа
+    potions_small: int = 0
+    potions_large: int = 0        # оба капа (SMALL_POTION_CAP=5 / LARGE_POTION_CAP=3) — тоже в core/economy.py,
+                                    # перенесены из допущения симулятора в постоянное правило игры
 
 class CombatSession:
     id: int
@@ -124,25 +159,81 @@ class CombatSession:
 POST   /character                      — создать персонажа (nickname из Telegram, стартовые статы)
 GET    /character/{telegram_user_id}   — текущее состояние (HP пересчитывается на лету при чтении)
 POST   /character/{id}/allocate_point  — потратить одно очко прокачки: {"stat": "strength"}
-DELETE /character/{telegram_user_id}   — обнулить персонажа целиком (удаляет и его CombatSession);
-                                          в основном для тестирования (docs/notes.md, п.12), через
-                                          подтверждение на стороне бота, не по одному нажатию
+DELETE /character/{telegram_user_id}   — "обнулить" персонажа: НЕ удаляет строку и её CombatSession/
+                                          StatAllocationLog (docs/notes.md, п.41 — раньше удаляло,
+                                          из-за этого терялась вся история прохождения). Архивирует
+                                          (is_active=False), требует ?reason=manual_reset|boss_victory
+                                          (для аналитики). Через подтверждение на стороне бота, не по
+                                          одному нажатию (кроме экрана победы над боссом — там кнопка
+                                          "Начать заново" уже сама по себе осознанное решение)
+
+POST   /character/{id}/sell_loot       — docs/notes.md п.30: продать весь лут разом, начислить
+                                          gold по ценам из core/economy.py; инвентарь лута обнуляется
+POST   /character/{id}/buy_potion      — {"size": "small" | "large"} — проверяет gold >= цена
+                                          И потолок капа (core/economy.py) не достигнут; при нарушении
+                                          любого условия — понятная ошибка (4xx с причиной detail =
+                                          "not_enough_gold" | "cap_reached"), не молчаливый no-op —
+                                          бот показывает игроку разный alert по этим двум причинам
 
 POST /encounter/search               — бросок d10 (50/30/20), создание CombatSession
                                         (status="awaiting_initiative")
+POST /encounter/search_boss          — docs/notes.md п.36: без броска — целенаправленная встреча
+                                        с финальным боссом (enemy_type="boss"), не через ростер.
+                                        Доступна на любом уровне (docs/notes.md п.58) — порог
+                                        проверяется дальше, на /combat/{id}/start
 POST /combat/{id}/start              — бросок инициативы + обстоятельства одним вызовом
-                                        (status -> "awaiting_confirmation")
+                                        (status -> "awaiting_confirmation"). Ответ несёт
+                                        enemy_type (docs/notes.md п.40) — бот по нему решает,
+                                        показывать ли кнопку "⚡ Автобой" (нет смысла у босса).
+                                        Для enemy_type="boss" — до броска инициативы проверяет
+                                        character.level >= pr.BOSS_LEVEL_REQUIREMENT, иначе 403
+                                        detail="level_too_low" (docs/notes.md п.58; бот кнопку не
+                                        прячет — она теперь всегда активна, но сервер не доверяет
+                                        клиенту, тот же принцип, что и везде)
 
-POST /combat/{id}/confirm            — { "decision": "fight" | "flee" } — после обстоятельства
-POST /combat/{id}/turn               — выполнить один ход игрока (+ автоматически ход бота,
-                                        если следующая очередь его)
+POST /combat/{id}/confirm            — { "decision": "fight" | "flee" } — после обстоятельства.
+                                        "flee" -> 400 "flee_not_allowed" против боя, где
+                                        player_can_flee=false (сейчас только boss, docs/notes.md
+                                        п.57) — из него нельзя отступить ни в каком виде
+POST /combat/{id}/turn               — { "power_attack": bool = false } — выполнить один ход
+                                        игрока (+ автоматически ход бота, если следующая очередь
+                                        его). power_attack (docs/combat_mechanics.md §3a) —
+                                        применяется только когда атакующая сторона в этом ходу —
+                                        игрок; тело запроса необязательно (по умолчанию false)
 POST /combat/{id}/flee_decision      — { "decision": "flee" | "continue" } — по HP-порогу
-GET  /combat/{id}                    — текущее состояние сессии (восстановление после сбоя бота)
+POST /combat/{id}/use_potion         — docs/notes.md п.33: { "size": "small" | "large" } — явное
+                                        действие игрока кнопкой на его ходу атаки, заменяет удар
+                                        в этот ход (передаёт ход противнику). Лимит — раз за бой,
+                                        общий на оба размера, КРОМЕ противника с unlimited_potions
+                                        (сейчас только boss, docs/notes.md п.39) — там лимита нет,
+                                        ограничивает только реальный инвентарь. 409, если не бой
+                                        не активен/не ход игрока; 400 с detail=
+                                        "already_used"|"not_owned" — бот показывает разное
+                                        сообщение по причине
+GET  /combat/{id}                    — текущее состояние сессии (краткая сводка, не текст)
+GET  /combat/{id}/resume             — docs/notes.md п.48: полное восстановление экрана боя
+                                        (тот же CombatTurnResponse, что и у /turn и т.п., с
+                                        текстом, реконструированным по turn_log) — для случая,
+                                        когда сообщение с клавиатурой на стороне бота потеряно
+                                        (например, игрок удалил чат в Telegram), а CombatSession
+                                        в БД осталась активной. Только чтение, ничего не мутирует;
+                                        409, если сессия уже "finished" (тогда восстанавливать нечего)
+DELETE /combat/{id}                  — docs/notes.md п.51: отменить встречу ДО инициативы —
+                                        кнопка "⬅️ Назад" на экране входа в бой. Разрешено только
+                                        пока status="awaiting_initiative" (409 иначе) — до этого
+                                        момента в бою ничего не произошло, сессия удаляется
+                                        физически, не архивируется как исход боя
 ```
+
+`CombatTurnResponse` (ответы `/confirm`, `/turn`, `/flee_decision`, `/use_potion`, `/resume`) несёт снимок инвентаря зелий игрока (`potions_small`, `potions_large`, `potion_used_this_battle`) — бот решает по нему, показывать ли кнопки "🧪 Малое"/"🧪 Большое" на следующем ходу, без отдельного `GET /character` на каждом шаге. Также несёт `enemy_type` (docs/notes.md п.36) — бот по нему (вместе с `result == "victory"`) определяет победу именно над боссом и показывает экран поздравления вместо обычной постбоевой клавиатуры, тоже без лишнего запроса. Поле `character_level` (добавлено docs/notes.md п.37, удалено п.58) в схеме больше нет — кнопка "Финальный босс" теперь активна всегда, уровень ей для этого не нужен.
+
+`EncounterSearchResponse` (ответы `/encounter/search` и `/encounter/search_boss`) несёт `potions_small`/`potions_large` (docs/notes.md, п.51) — тем же принципом снимка в ответе: бот показывает запас зелий на экране входа в бой с боссом без отдельного `GET /character`.
+
+`CharacterOut` (ответ `GET /character/{id}`) несёт `active_combat_session_id` (docs/notes.md, п.48) — `None`, если у персонажа нет незавершённого боя, иначе id сессии. Бот проверяет это поле на каждом `/start`: если оно не `None`, показывает восстановленный экран боя (`GET /combat/{id}/resume`) вместо обычного меню персонажа.
 
 `/encounter/search` и `/combat/{id}/start` — два отдельных запроса, а не один: в `gameplay_loop_mvp.md` §9 это два отдельных нажатия кнопки ("Искать противника", затем отдельно "Определить инициативу"), а принцип "один HTTP-запрос = один шаг" (§1) требует по запросу на каждое нажатие.
 
-Ни один эндпоинт не принимает от клиента сырых результатов бросков или урона — только идентификаторы и явные решения игрока (fight/flee/continue, какой стат прокачать).
+Ни один эндпоинт не принимает от клиента сырых результатов бросков или урона — только идентификаторы и явные решения игрока (fight/flee/continue, какой стат прокачать, обычная атака или мощный удар).
 
 ---
 

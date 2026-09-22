@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 
 from api.dependencies import get_db, require_api_key
 from api.routers.encounter import router as encounter_router
-from db.models import Character
+from core import progression as pr
+from db.models import Character, CombatSession
 from tests.api.conftest import override_get_db
 
 HEADERS = {"X-Telegram-User-Id": "1"}
@@ -35,6 +36,8 @@ def _insert_character(db_session_factory, telegram_user_id=1, **overrides) -> in
         vitality=overrides.get("vitality", 3),
         hp_current=overrides.get("hp_current", 50.0),
         last_hp_update_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        potions_small=overrides.get("potions_small", 0),
+        potions_large=overrides.get("potions_large", 0),
     )
     db.add(character)
     db.commit()
@@ -55,6 +58,18 @@ def test_search_encounter_creates_session(db_session_factory):
     assert body["status"] == "awaiting_initiative"
     assert body["combat_session_id"] > 0
     assert body["text"]
+
+
+def test_search_encounter_includes_potion_snapshot(db_session_factory):
+    # docs/notes.md, п.51 — бот показывает запас зелий на экране входа в
+    # бой, без отдельного GET /character.
+    _insert_character(db_session_factory, potions_small=2, potions_large=1)
+    client = make_client(db_session_factory)
+
+    response = client.post("/encounter/search", headers=HEADERS)
+    body = response.json()
+    assert body["potions_small"] == 2
+    assert body["potions_large"] == 1
 
 
 def test_search_encounter_without_character_returns_404(db_session_factory):
@@ -114,6 +129,7 @@ def test_start_combat_transitions_to_awaiting_confirmation(db_session_factory, m
     body = response.json()
     assert body["status"] == "awaiting_confirmation"
     assert body["first_role"] in ("player", "enemy")
+    assert body["enemy_type"] == "wolf"  # docs/notes.md, п.40 — бот решает по нему, показывать ли автобой
     assert body["text"]
 
 
@@ -152,6 +168,33 @@ def test_start_combat_rerolls_initiative_tie(db_session_factory, monkeypatch):
     assert body["enemy_strength_modifier"] == 1.0
 
 
+def test_start_combat_against_boss_skips_circumstance(db_session_factory, monkeypatch):
+    # docs/notes.md, п.56 — финальный босс без обстоятельства вообще
+    # (has_circumstance=false в content/enemies.json): ни строки в тексте,
+    # ни лишнего броска, оба модификатора Силы остаются 1.0.
+    _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT)
+    client = make_client(db_session_factory)
+
+    session_id = client.post("/encounter/search_boss", headers=HEADERS).json()["combat_session_id"]
+
+    rolls = iter([7, 4])  # только инициатива — если бы кинули обстоятельство, next(rolls) упал бы на StopIteration
+    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: next(rolls))
+
+    response = client.post(f"/combat/{session_id}/start", headers=HEADERS)
+    body = response.json()
+    assert response.status_code == 200
+    assert body["player_strength_modifier"] == 1.0
+    assert body["enemy_strength_modifier"] == 1.0
+    assert "Обстоятельство" not in body["text"]  # ни "без происшествий", ни buff/debuff — строки нет вообще
+
+    db = db_session_factory()
+    session = db.query(CombatSession).filter(CombatSession.id == session_id).first()
+    assert session.circumstance_outcome is None
+    assert session.circumstance_roller is None
+    assert all(entry["type"] != "circumstance" for entry in session.turn_log)
+    db.close()
+
+
 def test_start_combat_not_found(db_session_factory):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
@@ -184,3 +227,73 @@ def test_start_combat_twice_returns_409(db_session_factory, monkeypatch):
     assert first.status_code == 200
     second = client.post(f"/combat/{session_id}/start", headers=HEADERS)
     assert second.status_code == 409
+
+
+def test_search_boss_encounter_creates_session_at_any_level(db_session_factory):
+    # docs/notes.md, п.58 — экран входа доступен на любом уровне, порог
+    # проверяется позже, на POST /combat/{id}/start.
+    _insert_character(db_session_factory, level=1, potions_small=2, potions_large=1)
+    client = make_client(db_session_factory)
+
+    response = client.post("/encounter/search_boss", headers=HEADERS)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["enemy_type"] == "boss"
+    assert body["status"] == "awaiting_initiative"
+    assert body["text"]
+    # docs/notes.md, п.51 — запас зелий на экране входа в бой с боссом.
+    assert body["potions_small"] == 2
+    assert body["potions_large"] == 1
+
+
+def test_start_combat_against_boss_below_required_level_returns_403(db_session_factory):
+    # docs/notes.md, п.58 — порог уровня перенесён с search_boss_encounter
+    # сюда, на "⚔️ Бросить вызов". Сессия остаётся в awaiting_initiative —
+    # "⬅️ Назад" по-прежнему работает, право не потеряно.
+    _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT - 1)
+    client = make_client(db_session_factory)
+
+    session_id = client.post("/encounter/search_boss", headers=HEADERS).json()["combat_session_id"]
+    response = client.post(f"/combat/{session_id}/start", headers=HEADERS)
+    assert response.status_code == 403
+    assert response.json()["detail"] == "level_too_low"
+
+    db = db_session_factory()
+    session = db.get(CombatSession, session_id)
+    assert session.status == "awaiting_initiative"
+    db.close()
+
+
+def test_start_combat_against_boss_at_required_level_succeeds(db_session_factory, monkeypatch):
+    _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT)
+    client = make_client(db_session_factory)
+
+    session_id = client.post("/encounter/search_boss", headers=HEADERS).json()["combat_session_id"]
+    rolls = iter([7, 4])
+    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: next(rolls))
+    response = client.post(f"/combat/{session_id}/start", headers=HEADERS)
+    assert response.status_code == 200
+    assert response.json()["status"] == "awaiting_confirmation"
+
+
+def test_search_boss_encounter_rejects_second_active_session(db_session_factory):
+    _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT)
+    client = make_client(db_session_factory)
+
+    first = client.post("/encounter/search_boss", headers=HEADERS)
+    assert first.status_code == 200
+    second = client.post("/encounter/search_boss", headers=HEADERS)
+    assert second.status_code == 409
+
+
+def test_search_boss_encounter_does_not_roll_dice(db_session_factory, monkeypatch):
+    # Целенаправленная встреча, не случайный ростер (§6) — никакого броска.
+    def _fail_randint(*_args, **_kwargs):
+        raise AssertionError("search_boss_encounter must not roll dice")
+
+    _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT)
+    client = make_client(db_session_factory)
+    monkeypatch.setattr("api.routers.encounter.random.randint", _fail_randint)
+
+    response = client.post("/encounter/search_boss", headers=HEADERS)
+    assert response.status_code == 200

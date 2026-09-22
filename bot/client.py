@@ -56,11 +56,12 @@ class ApiClient:
         *,
         telegram_user_id: Optional[int] = None,
         json: Optional[dict] = None,
+        params: Optional[dict] = None,
     ) -> dict:
         headers = {}
         if telegram_user_id is not None:
             headers["X-Telegram-User-Id"] = str(telegram_user_id)
-        response = await self._client.request(method, path, json=json, headers=headers)
+        response = await self._client.request(method, path, json=json, params=params, headers=headers)
         if response.status_code >= 400:
             try:
                 detail = response.json().get("detail")
@@ -86,13 +87,27 @@ class ApiClient:
             "POST", f"/character/{character_id}/allocate_point", json={"stat": stat}
         )
 
-    async def delete_character(self, telegram_user_id: int) -> None:
-        await self._request("DELETE", f"/character/{telegram_user_id}")
+    async def sell_loot(self, character_id: int) -> dict:
+        return await self._request("POST", f"/character/{character_id}/sell_loot")
+
+    async def buy_potion(self, character_id: int, size: str) -> dict:
+        return await self._request(
+            "POST", f"/character/{character_id}/buy_potion", json={"size": size}
+        )
+
+    async def delete_character(self, telegram_user_id: int, reason: str) -> None:
+        """`reason` — "manual_reset" | "boss_victory" (docs/notes.md, п.41):
+        персонаж не удаляется физически, а архивируется (is_active=False) —
+        причина нужна серверу для аналитики, не влияет на сам сброс."""
+        await self._request("DELETE", f"/character/{telegram_user_id}", params={"reason": reason})
 
     # --- encounter / combat ---
 
     async def search_encounter(self, telegram_user_id: int) -> dict:
         return await self._request("POST", "/encounter/search", telegram_user_id=telegram_user_id)
+
+    async def search_boss_encounter(self, telegram_user_id: int) -> dict:
+        return await self._request("POST", "/encounter/search_boss", telegram_user_id=telegram_user_id)
 
     async def start_combat(self, telegram_user_id: int, combat_session_id: int) -> dict:
         return await self._request(
@@ -107,9 +122,12 @@ class ApiClient:
             json={"decision": decision},
         )
 
-    async def take_turn(self, telegram_user_id: int, combat_session_id: int) -> dict:
+    async def take_turn(self, telegram_user_id: int, combat_session_id: int, power_attack: bool = False) -> dict:
         return await self._request(
-            "POST", f"/combat/{combat_session_id}/turn", telegram_user_id=telegram_user_id
+            "POST",
+            f"/combat/{combat_session_id}/turn",
+            telegram_user_id=telegram_user_id,
+            json={"power_attack": power_attack},
         )
 
     async def flee_decision(self, telegram_user_id: int, combat_session_id: int, decision: str) -> dict:
@@ -120,7 +138,30 @@ class ApiClient:
             json={"decision": decision},
         )
 
+    async def use_potion(self, telegram_user_id: int, combat_session_id: int, size: str) -> dict:
+        return await self._request(
+            "POST",
+            f"/combat/{combat_session_id}/use_potion",
+            telegram_user_id=telegram_user_id,
+            json={"size": size},
+        )
+
     async def get_combat_session(self, telegram_user_id: int, combat_session_id: int) -> dict:
         return await self._request(
             "GET", f"/combat/{combat_session_id}", telegram_user_id=telegram_user_id
+        )
+
+    async def resume_combat_session(self, telegram_user_id: int, combat_session_id: int) -> dict:
+        """docs/notes.md, п.48 — восстановление потерянной клавиатуры боя
+        (например, после удаления чата в Telegram); только чтение, ничего
+        не мутирует на сервере."""
+        return await self._request(
+            "GET", f"/combat/{combat_session_id}/resume", telegram_user_id=telegram_user_id
+        )
+
+    async def cancel_combat_session(self, telegram_user_id: int, combat_session_id: int) -> None:
+        """docs/notes.md, п.51 — "⬅️ Назад" на экране входа в бой, до
+        инициативы: отменяет встречу целиком, ничего в бою ещё не произошло."""
+        await self._request(
+            "DELETE", f"/combat/{combat_session_id}", telegram_user_id=telegram_user_id
         )

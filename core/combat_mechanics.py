@@ -21,6 +21,10 @@ ATTACK_SCALING_MIN_FACE = 6
 ATTACK_SCALING_MIN_PERCENT = 60
 ATTACK_SCALING_STEP_PERCENT = 10
 
+# --- §3a Мощный удар (альтернатива атаке, только игрок) ---
+POWER_ATTACK_MISS_MAX_FACE = 4
+POWER_ATTACK_DAMAGE_MULTIPLIER = 1.3
+
 # --- Черновые значения для калибровки (§11), используются как дефолты ---
 DODGE_MIN_FACES_DEFAULT = 1
 FLEE_MIN_FACES_DEFAULT = 1
@@ -31,6 +35,16 @@ CIRCUMSTANCE_MODIFIER_PERCENT_DEFAULT = 20
 def resolve_attack_percent(attack_roll: int) -> Optional[int]:
     """§3: процент от Силы по грани атаки, либо None при промахе (1-2)."""
     if attack_roll <= ATTACK_MISS_MAX_FACE:
+        return None
+    if attack_roll <= ATTACK_FIXED_MAX_FACE:
+        return ATTACK_FIXED_PERCENT
+    step = attack_roll - ATTACK_SCALING_MIN_FACE
+    return ATTACK_SCALING_MIN_PERCENT + step * ATTACK_SCALING_STEP_PERCENT
+
+
+def resolve_power_attack_percent(attack_roll: int) -> Optional[int]:
+    """§3a: процент от Силы по грани мощного удара, либо None при промахе (1-4)."""
+    if attack_roll <= POWER_ATTACK_MISS_MAX_FACE:
         return None
     if attack_roll <= ATTACK_FIXED_MAX_FACE:
         return ATTACK_FIXED_PERCENT
@@ -168,9 +182,14 @@ def resolve_strike(
     dodge_max_faces: int,
     dodge_k: float,
     dodge_min_faces: int = DODGE_MIN_FACES_DEFAULT,
+    power_attack: bool = False,
 ) -> StrikeResult:
-    """§3+§4: один удар целиком — атака, при попадании уворот, итоговый урон."""
-    attack_percent = resolve_attack_percent(attack_roll)
+    """§3(+§3a)+§4: один удар целиком — атака (обычная либо мощная), при
+    попадании уворот, итоговый урон. Уворот не различает тип атаки —
+    работает одинаково для мобов, волка/кабана и босса, как и всегда."""
+    attack_percent = (
+        resolve_power_attack_percent(attack_roll) if power_attack else resolve_attack_percent(attack_roll)
+    )
     if attack_percent is None:
         return StrikeResult(
             missed=True,
@@ -184,7 +203,14 @@ def resolve_strike(
         defender_agility, dodge_max_faces, dodge_k, dodge_min_faces
     )
     dodged = is_dodge_successful(dodge_roll, dodge_success_faces)
-    damage = 0.0 if dodged else calculate_damage(attacker_strength, attack_percent)
+    if dodged:
+        damage = 0.0
+    elif power_attack:
+        # §3a: множитель применяется ДО округления, не к уже округлённому
+        # calculate_damage() — иначе округление накапливало бы погрешность.
+        damage = round(attacker_strength * attack_percent / 100 * POWER_ATTACK_DAMAGE_MULTIPLIER)
+    else:
+        damage = calculate_damage(attacker_strength, attack_percent)
     return StrikeResult(
         missed=False,
         attack_percent=attack_percent,

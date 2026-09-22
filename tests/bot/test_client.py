@@ -64,19 +64,44 @@ async def test_allocate_point_sends_stat_in_body():
     assert result["character"]["strength"] == 4
 
 
+async def test_sell_loot_posts_to_correct_path():
+    handler, captured = _echo_handler(200, {"character": {"gold": 30, "loot": {}}})
+    client = make_client(handler)
+
+    result = await client.sell_loot(1)
+
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/character/1/sell_loot"
+    assert captured["json"] is None
+    assert result["character"]["gold"] == 30
+
+
+async def test_buy_potion_sends_size_in_body():
+    handler, captured = _echo_handler(200, {"character": {"potions_small": 1}})
+    client = make_client(handler)
+
+    result = await client.buy_potion(1, "small")
+
+    assert captured["path"] == "/character/1/buy_potion"
+    assert captured["json"] == {"size": "small"}
+    assert result["character"]["potions_small"] == 1
+
+
 async def test_delete_character_handles_204_no_content():
     captured = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["method"] = request.method
         captured["path"] = request.url.path
+        captured["params"] = dict(request.url.params)
         return httpx.Response(204)  # без тела вообще — как реально шлёт FastAPI на 204
 
     client = make_client(handler)
 
-    result = await client.delete_character(1)
+    result = await client.delete_character(1, reason="manual_reset")
 
     assert captured["method"] == "DELETE"
+    assert captured["params"] == {"reason": "manual_reset"}  # docs/notes.md, п.41 — для аналитики на сервере
     assert captured["path"] == "/character/1"
     assert result is None
 
@@ -90,6 +115,17 @@ async def test_search_encounter_sends_telegram_header():
     assert captured["path"] == "/encounter/search"
     assert captured["headers"]["x-telegram-user-id"] == "7"
     assert result["enemy_type"] == "wolf"
+
+
+async def test_search_boss_encounter_sends_telegram_header():
+    handler, captured = _echo_handler(200, {"combat_session_id": 9, "enemy_type": "boss"})
+    client = make_client(handler)
+
+    result = await client.search_boss_encounter(telegram_user_id=7)
+
+    assert captured["path"] == "/encounter/search_boss"
+    assert captured["headers"]["x-telegram-user-id"] == "7"
+    assert result["enemy_type"] == "boss"
 
 
 async def test_start_combat_path_and_header():
@@ -120,6 +156,16 @@ async def test_take_turn_path_and_header():
 
     assert captured["path"] == "/combat/5/turn"
     assert captured["headers"]["x-telegram-user-id"] == "7"
+    assert captured["json"] == {"power_attack": False}
+
+
+async def test_take_turn_sends_power_attack_flag():
+    handler, captured = _echo_handler(200, {"status": "active", "text": "..."})
+    client = make_client(handler)
+
+    await client.take_turn(telegram_user_id=7, combat_session_id=5, power_attack=True)
+
+    assert captured["json"] == {"power_attack": True}
 
 
 async def test_flee_decision_sends_decision():
@@ -132,6 +178,17 @@ async def test_flee_decision_sends_decision():
     assert captured["json"] == {"decision": "continue"}
 
 
+async def test_use_potion_sends_size_and_header():
+    handler, captured = _echo_handler(200, {"status": "active", "current_turn": "enemy"})
+    client = make_client(handler)
+
+    await client.use_potion(telegram_user_id=7, combat_session_id=5, size="large")
+
+    assert captured["path"] == "/combat/5/use_potion"
+    assert captured["json"] == {"size": "large"}
+    assert captured["headers"]["x-telegram-user-id"] == "7"
+
+
 async def test_get_combat_session_path_and_header():
     handler, captured = _echo_handler(200, {"status": "active"})
     client = make_client(handler)
@@ -140,6 +197,36 @@ async def test_get_combat_session_path_and_header():
 
     assert captured["path"] == "/combat/5"
     assert captured["headers"]["x-telegram-user-id"] == "7"
+
+
+async def test_resume_combat_session_path_and_header():
+    handler, captured = _echo_handler(200, {"status": "active", "text": "..."})
+    client = make_client(handler)
+
+    await client.resume_combat_session(telegram_user_id=7, combat_session_id=5)
+
+    assert captured["method"] == "GET"
+    assert captured["path"] == "/combat/5/resume"
+    assert captured["headers"]["x-telegram-user-id"] == "7"
+
+
+async def test_cancel_combat_session_path_and_header():
+    captured = {}
+
+    def handler(request):
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["headers"] = {k.lower(): v for k, v in request.headers.items()}
+        return httpx.Response(204)
+
+    client = make_client(handler)
+
+    result = await client.cancel_combat_session(telegram_user_id=7, combat_session_id=5)
+
+    assert captured["method"] == "DELETE"
+    assert captured["path"] == "/combat/5"
+    assert captured["headers"]["x-telegram-user-id"] == "7"
+    assert result is None
 
 
 async def test_error_response_raises_api_error_with_detail():

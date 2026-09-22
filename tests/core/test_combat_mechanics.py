@@ -32,6 +32,25 @@ def test_resolve_attack_percent_boundaries(attack_roll, expected_percent):
 
 
 @pytest.mark.parametrize(
+    "attack_roll,expected_percent",
+    [
+        (1, None),
+        (2, None),
+        (3, None),
+        (4, None),  # §3a: промах расширен до 1-4 (40%) у мощного удара
+        (5, 50),
+        (6, 60),
+        (7, 70),
+        (8, 80),
+        (9, 90),
+        (10, 100),
+    ],
+)
+def test_resolve_power_attack_percent_boundaries(attack_roll, expected_percent):
+    assert cm.resolve_power_attack_percent(attack_roll) == expected_percent
+
+
+@pytest.mark.parametrize(
     "strength,attack_percent,expected_damage",
     [
         (50, 60, 30),
@@ -207,6 +226,51 @@ def test_resolve_strike_hit_deals_expected_damage():
     assert result.dodge_success_faces == 1  # MIN_FACES даже при Ловкости = 0
     assert result.dodged is False
     assert result.damage == pytest.approx(100.0)
+
+
+def test_resolve_strike_power_attack_miss_extends_to_face_four():
+    # §3a: грань 4 — промах у мощного удара, но не у обычной атаки (§3).
+    result = cm.resolve_strike(
+        attacker_strength=100,
+        defender_agility=0,
+        attack_roll=4,
+        dodge_roll=1,
+        dodge_max_faces=5,
+        dodge_k=10,
+        power_attack=True,
+    )
+    assert result.missed is True
+    assert result.damage == 0.0
+
+
+def test_resolve_strike_power_attack_multiplies_damage_before_rounding():
+    common_kwargs = dict(
+        attacker_strength=100,
+        defender_agility=0,
+        attack_roll=7,  # 70% — непромах и у обычной, и у мощной атаки
+        dodge_roll=2,
+        dodge_max_faces=5,
+        dodge_k=10,
+    )
+    normal = cm.resolve_strike(**common_kwargs, power_attack=False)
+    power = cm.resolve_strike(**common_kwargs, power_attack=True)
+    assert normal.damage == pytest.approx(70.0)
+    assert power.damage == pytest.approx(70.0 * cm.POWER_ATTACK_DAMAGE_MULTIPLIER)
+    assert power.damage == pytest.approx(normal.damage * cm.POWER_ATTACK_DAMAGE_MULTIPLIER)
+
+
+def test_resolve_strike_power_attack_dodged_deals_no_damage():
+    result = cm.resolve_strike(
+        attacker_strength=100,
+        defender_agility=1000,
+        attack_roll=8,
+        dodge_roll=1,
+        dodge_max_faces=5,
+        dodge_k=10,
+        power_attack=True,
+    )
+    assert result.dodged is True
+    assert result.damage == 0.0
 
 
 @pytest.mark.parametrize(

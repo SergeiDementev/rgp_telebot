@@ -15,6 +15,22 @@ buff, хотя по таблице §8 грани 1-3 — debuff) — здесь
 последовательная формулировка на каждый случай, не обе сразу.
 """
 
+from typing import Optional
+
+# Дублирует bot/handlers/character.py::LOOT_ITEM_NAMES_RU (docs/notes.md,
+# п.30/31) — бот и api не делят импорты (разные процессы, общаются только
+# по HTTP), а показ добычи в конце боя рендерится здесь же, где и весь
+# остальной текст боя, поэтому своя копия. Синхронизировать вручную при
+# добавлении новых предметов в core/economy.py::LOOT_TABLE.
+LOOT_ITEM_NAMES_RU = {
+    "mouse_pelt": "Мышиная шкурка",
+    "mouse_tail": "Мышиный хвост",
+    "wolf_fang": "Клык волка",
+    "wolf_pelt": "Шкура волка",
+    "boar_tusk": "Клык кабана",
+    "boar_hide": "Шкура кабана",
+}
+
 ENEMY_NAMES = {
     "mouse": {
         "nom_cap": "Мышь", "nom_low": "мышь",
@@ -45,12 +61,33 @@ ENEMY_NAMES = {
         "alive_adj": "живым",
         "fled_verb": "сбежал",
     },
+    "boss": {
+        "nom_cap": "Лесной Король", "nom_low": "лесной король",
+        "acc_cap": "Лесного Короля", "acc_low": "лесного короля",
+        "gen_low": "лесного короля",
+        "ins_cap": "Лесным Королём",
+        "dodge_verb": "увернулся",
+        "alive_adj": "живым",
+        # Никогда не рендерится по-настоящему — can_flee=false в
+        # content/enemies.json (docs/notes.md, п.36) гарантирует, что бросок
+        # на побег для боевой стороны "enemy" не происходит вообще, но поле
+        # держим ради целостности словаря (та же форма, что и у остальных).
+        "fled_verb": "сбежал",
+    },
 }
 
 
 def render_encounter(enemy_type: str, roll: int) -> str:
     names = ENEMY_NAMES[enemy_type]
     return f"🎲 Бросок: {roll} → {names['nom_cap']}!\n\nТы наткнулся на {names['acc_low']}."
+
+
+def render_boss_encounter() -> str:
+    """Вход в бой с финальным боссом (docs/notes.md, п.36) — не через
+    случайный ростер поиска (§6), поэтому без формата "🎲 Бросок: N → ..." у
+    render_encounter: игрок выбирает эту встречу целенаправленно кнопкой, не
+    кубиком."""
+    return "👑 Ты входишь в чертог Лесного Короля. Отступать некуда — он уже смотрит на тебя."
 
 
 def render_initiative(enemy_type: str, player_roll: int, enemy_roll: int, first_role: str) -> str:
@@ -89,20 +126,30 @@ def render_strike(
     dodge_roll,
     dodged,
     damage: float,
+    power_attack: bool = False,
 ) -> str:
-    """Полная (многострочная) форма одного удара — вне двойного удара."""
+    """Полная (многострочная) форма одного удара — вне двойного удара.
+
+    power_attack (docs/combat_mechanics.md §3a) — только у игрока (мобы им
+    не пользуются, см. api/routers/combat.py::_resolve_attacker_turn), меняет
+    только строку атаки (эмодзи/подпись/пометка "урон ×1.3!") — уворот и
+    урон уже посчитаны вызывающим кодом с учётом множителя, здесь только
+    отображение."""
     names = ENEMY_NAMES[enemy_type]
     if side_role == "player":
-        attack_label, dodge_label, damage_verb = "Твоя атака", f"{names['nom_cap']} уворачивается", "Ты наносишь"
+        dodge_label, damage_verb = f"{names['nom_cap']} уворачивается", "Ты наносишь"
         dodge_verb = names["dodge_verb"]
+        attack_label = "💥 Мощный удар" if power_attack else "🗡️ Твоя атака"
     else:
-        attack_label, dodge_label, damage_verb = f"Атака {names['gen_low']}", "Твой уворот", f"{names['nom_cap']} наносит"
+        attack_label, dodge_label, damage_verb = f"🗡️ Атака {names['gen_low']}", "Твой уворот", f"{names['nom_cap']} наносит"
         dodge_verb = "увернулся"
+        power_attack = False  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
 
     if attack_percent is None:
-        return f"🗡️ {attack_label}: {attack_roll} → промах!"
+        return f"{attack_label}: {attack_roll} → промах!"
 
-    lines = [f"🗡️ {attack_label}: {attack_roll} → {attack_percent}% силы."]
+    percent_part = f"{attack_percent}% силы, урон ×1.3!" if power_attack else f"{attack_percent}% силы."
+    lines = [f"{attack_label}: {attack_roll} → {percent_part}"]
     if dodged:
         lines.append(f"🛡️ {dodge_label}: {dodge_roll} → {dodge_verb}!")
         lines.append("✅ Урон полностью пропущен.")
@@ -121,24 +168,39 @@ def render_compact_strike(
     dodge_roll,
     dodged,
     damage: float,
+    power_attack: bool = False,
 ) -> str:
-    """Компактная (однострочная) форма удара — используется внутри двойного удара."""
+    """Компактная (однострочная) форма удара — используется внутри двойного
+    удара. power_attack — см. render_strike, тот же принцип (только игрок,
+    только подпись/эмодзи/пометка множителя)."""
     names = ENEMY_NAMES[enemy_type]
     if side_role == "player":
         dodge_label, dodge_verb = f"{names['nom_cap']} уворачивается", names["dodge_verb"]
+        strike_label = "💥 Мощный удар" if power_attack else "🗡️ Удар"
     else:
         dodge_label, dodge_verb = "Ты уворачиваешься", "увернулся"
+        strike_label = "🗡️ Удар"
+        power_attack = False  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
 
     if attack_percent is None:
-        return f"🗡️ Удар {strike_number}: {attack_roll} → промах."
+        return f"{strike_label} {strike_number}: {attack_roll} → промах."
 
-    parts = [f"🗡️ Удар {strike_number}: {attack_roll} → {attack_percent}% силы."]
+    percent_part = f"{attack_percent}% силы, урон ×1.3!" if power_attack else f"{attack_percent}% силы."
+    parts = [f"{strike_label} {strike_number}: {attack_roll} → {percent_part}"]
     if dodged:
         parts.append(f"🛡️ {dodge_label}: {dodge_roll} → {dodge_verb}!")
     else:
         parts.append(f"🛡️ {dodge_label}: {dodge_roll} → не вышло!")
         parts.append(f"💥 {damage:.0f} урона.")
     return " ".join(parts)
+
+
+def render_potion_used(size: str, heal: float) -> str:
+    """Автоматическое исцеление зельем в начале хода игрока (docs/notes.md,
+    п.31) — не бросок, поэтому без "🎲"; показывает сам факт и сколько
+    вылечило, тем же принципом прозрачности, что и остальной бой."""
+    label = "Большое" if size == "large" else "Малое"
+    return f"🧪 {label} зелье: +{heal:.0f} HP."
 
 
 def render_hp_status(
@@ -221,6 +283,7 @@ def render_battle_end(
     hp_current: float,
     hp_max: float,
     hp_seconds_to_full: float,
+    loot_dropped: Optional[str] = None,
 ) -> str:
     names = ENEMY_NAMES[enemy_type]
     if result == "victory":
@@ -241,8 +304,26 @@ def render_battle_end(
     lines = [header]
     if reward_line:
         lines.append(reward_line)
+    if result == "victory":
+        if loot_dropped:
+            lines.append(f"🎁 Добыча: {LOOT_ITEM_NAMES_RU.get(loot_dropped, loot_dropped)}")
+        else:
+            # Лут — не гарантирован (core.economy.resolve_loot_drop может
+            # выкатить "nothing"), явная строка вместо молчания — иначе
+            # игрок не может отличить "лута не было в принципе" от того,
+            # что о нём просто забыли показать (docs/notes.md).
+            lines.append("😕 Упс, не повезло с добычей...")
     lines.append("")
     lines.append(f"❤️ HP: {hp_current:.0f}/{hp_max:.0f}")
     if hp_seconds_to_full > 0:
         lines.append(f"⏳ Полное восстановление через: ~{hp_seconds_to_full:.0f} сек.")
     return "\n".join(lines)
+
+
+def render_boss_victory() -> str:
+    """Победа над финальным боссом — конец игры (docs/notes.md, п.36/п.54), не
+    обычный `render_battle_end`: без строки HP/таймера регена и без награды
+    (победные очки за неё не начисляются — персонаж всё равно обнуляется
+    следующим нажатием, очки ему больше не нужны), с отдельным
+    поздравительным заголовком вместо стандартного "Бой окончен!"."""
+    return "🎉 Ты повергнул Лесного Короля!\n\nПриключение окончено. Спасибо, что играл(а)!"

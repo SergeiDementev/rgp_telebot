@@ -10,12 +10,15 @@ class EncounterSearchResponse(BaseModel):
     enemy_type: str
     status: str
     text: str
+    potions_small: int
+    potions_large: int
 
 
 class CombatStartResponse(BaseModel):
     combat_session_id: int
     status: str
     first_role: str  # "player" | "enemy"
+    enemy_type: str
     player_strength_modifier: float
     enemy_strength_modifier: float
     text: str
@@ -29,12 +32,24 @@ class FleeDecisionRequest(BaseModel):
     decision: Literal["flee", "continue"]
 
 
+class TurnRequest(BaseModel):
+    power_attack: bool = False
+
+
+class UsePotionRequest(BaseModel):
+    size: Literal["small", "large"]
+
+
 class CombatTurnResponse(BaseModel):
     combat_session_id: int
     status: str
     result: Optional[str] = None
     current_turn: Optional[str] = None
+    enemy_type: str
     text: str
+    potions_small: int
+    potions_large: int
+    potion_used_this_battle: bool
 
 
 class CombatSessionOut(BaseModel):

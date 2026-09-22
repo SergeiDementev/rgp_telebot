@@ -43,6 +43,14 @@ def test_render_circumstance_uses_genitive_for_mouse():
     assert "Сила мыши" in text
 
 
+def test_render_potion_used_small():
+    assert r.render_potion_used("small", 12.0) == "🧪 Малое зелье: +12 HP."
+
+
+def test_render_potion_used_large():
+    assert r.render_potion_used("large", 25) == "🧪 Большое зелье: +25 HP."
+
+
 def test_render_hp_status():
     # Урон и регенерация теперь всегда целые (core/combat_mechanics.py,
     # core/progression.py — docs/notes.md) — HP, доходящий до рендера, дробным
@@ -127,6 +135,45 @@ def test_render_compact_strike_dodged_uses_feminine_verb_for_mouse():
     assert "Мышь уворачивается: 3 → увернулась!" in text
 
 
+def test_render_strike_power_attack_hit_uses_own_label_and_multiplier_note():
+    # docs/combat_mechanics.md §3a — своя подпись/эмодзи и пометка "урон ×1.3!".
+    text = r.render_strike(
+        "wolf", "player", attack_roll=7, attack_percent=70, dodge_roll=5, dodged=False, damage=91,
+        power_attack=True,
+    )
+    assert text == (
+        "💥 Мощный удар: 7 → 70% силы, урон ×1.3!\n"
+        "🛡️ Волк уворачивается: 5 → не вышло!\n"
+        "💥 Ты наносишь 91 урона."
+    )
+
+
+def test_render_strike_power_attack_miss():
+    text = r.render_strike(
+        "wolf", "player", attack_roll=4, attack_percent=None, dodge_roll=None, dodged=None, damage=0,
+        power_attack=True,
+    )
+    assert text == "💥 Мощный удар: 4 → промах!"
+
+
+def test_render_strike_power_attack_only_affects_player_side():
+    # Мобы мощным ударом не пользуются (docs/combat_mechanics.md §3a) —
+    # флаг на стороне enemy не должен ничего менять в отображении.
+    text = r.render_strike(
+        "wolf", "enemy", attack_roll=6, attack_percent=60, dodge_roll=8, dodged=True, damage=0,
+        power_attack=True,
+    )
+    assert text.startswith("🗡️ Атака волка: 6 → 60% силы.")
+
+
+def test_render_compact_strike_power_attack_hit():
+    text = r.render_compact_strike(
+        "wolf", "player", 1, attack_roll=9, attack_percent=90, dodge_roll=3, dodged=False, damage=117,
+        power_attack=True,
+    )
+    assert text == "💥 Мощный удар 1: 9 → 90% силы, урон ×1.3! 🛡️ Волк уворачивается: 3 → не вышло! 💥 117 урона."
+
+
 def test_render_flee_opportunity_triggered_player():
     text = r.render_flee_opportunity_check("wolf", "player", current_hp=18, max_hp=85, luck_roll=7, triggered=True)
     assert text == "⚠️ Твоё HP критически низкое! (18/85)\n🍀 Твоя проверка удачи на побег: 7 → есть шанс уйти живым!"
@@ -177,13 +224,31 @@ def test_render_flee_attempt_enemy_caught_and_killed():
     assert "Добиваешь" in text
 
 
-def test_render_battle_end_victory():
+def test_render_battle_end_victory_without_loot_shows_no_luck_line():
+    # Лут не гарантирован (core.economy.resolve_loot_drop может выкатить
+    # "nothing") — явная строка вместо молчания (docs/notes.md).
     text = r.render_battle_end(
         "wolf", "victory", reward=5, victory_points_total=23, hp_current=40, hp_max=60, hp_seconds_to_full=20
     )
     assert text == (
         "⚔️ Бой окончен! Ты победил Волка.\n"
         "🏆 +5 победных очков (всего: 23)\n"
+        "😕 Упс, не повезло с добычей...\n"
+        "\n"
+        "❤️ HP: 40/60\n"
+        "⏳ Полное восстановление через: ~20 сек."
+    )
+
+
+def test_render_battle_end_victory_with_loot_shows_loot_line():
+    text = r.render_battle_end(
+        "wolf", "victory", reward=5, victory_points_total=23, hp_current=40, hp_max=60, hp_seconds_to_full=20,
+        loot_dropped="wolf_fang",
+    )
+    assert text == (
+        "⚔️ Бой окончен! Ты победил Волка.\n"
+        "🏆 +5 победных очков (всего: 23)\n"
+        "🎁 Добыча: Клык волка\n"
         "\n"
         "❤️ HP: 40/60\n"
         "⏳ Полное восстановление через: ~20 сек."
@@ -196,6 +261,9 @@ def test_render_battle_end_defeat_no_reward_line():
     )
     assert "🏆" not in text
     assert text.startswith("💀 Ты пал в бою с Кабаном...")
+    # "Не повезло с добычей" — только про исход "victory", на поражении лут
+    # в принципе не кидался (см. api/routers/combat.py::_finish_battle).
+    assert "не повезло" not in text
 
 
 def test_render_battle_end_player_fled():
@@ -232,3 +300,28 @@ def test_render_battle_end_rejects_unknown_result():
         r.render_battle_end(
             "wolf", "draw", reward=0, victory_points_total=0, hp_current=1, hp_max=1, hp_seconds_to_full=0
         )
+
+
+def test_render_battle_end_boss_defeat_uses_boss_declension():
+    # Победа над боссом рендерится отдельно (render_boss_victory), но
+    # поражение/побег всё ещё идут через обычный render_battle_end и должны
+    # использовать полную грамматическую запись "boss" из ENEMY_NAMES.
+    text = r.render_battle_end(
+        "boss", "defeat", reward=0, victory_points_total=0, hp_current=0, hp_max=60, hp_seconds_to_full=60
+    )
+    assert text.startswith("💀 Ты пал в бою с Лесным Королём...")
+
+
+def test_render_boss_encounter_mentions_boss():
+    text = r.render_boss_encounter()
+    assert "Лесно" in text  # "Лесного Короля"/"Лесной Король" в зависимости от формулировки
+    assert text
+
+
+def test_render_boss_victory_has_no_reward_or_hp_line():
+    # п.54 — победа над боссом не даёт награды, экран — просто поздравление.
+    text = r.render_boss_victory()
+    assert "Лесного Короля" in text
+    assert "🏆" not in text
+    assert "❤️ HP" not in text
+    assert "⏳" not in text

@@ -180,21 +180,32 @@ def test_hp_current_is_not_touched_when_vitality_increases():
     [
         (1, (6, 3, 1)),  # 60/30/10
         (2, (6, 3, 1)),
-        (3, (5, 3, 2)),  # 50/30/20
-        (4, (5, 3, 2)),
-        (5, (4, 3, 3)),  # 40/30/30
-        (6, (4, 3, 3)),
-        (7, (2, 3, 5)),  # 20/30/50 — двойной шаг относительно предыдущих переходов
+        (3, (4, 4, 2)),  # 40/40/20 — волк начинает разгон к своему пику (docs/notes.md)
+        (4, (4, 4, 2)),
+        (5, (3, 5, 2)),  # 30/50/20 — пик волка
+        (6, (3, 5, 2)),
+        (7, (2, 3, 5)),  # 20/30/50 — волк спадает обратно к плато 30%, кабан лидирует
         (8, (2, 3, 5)),
         (9, (1, 3, 6)),  # 10/30/60 — зеркально 1-2 уровню
         (10, (1, 3, 6)),
         (11, (1, 3, 6)),  # плато после последнего диапазона
+        (15, (1, 3, 6)),
         (100, (1, 3, 6)),
         (0, (6, 3, 1)),  # некорректный уровень — не должно уйти ниже старта
     ],
 )
 def test_calculate_encounter_faces(level, expected):
     assert pr.calculate_encounter_faces(level) == expected
+
+
+def test_calculate_encounter_faces_wolf_peaks_in_the_middle_of_progression():
+    # docs/notes.md, 2026-09-18 — волк больше не постоянная доля 30%: явный
+    # bell-curve пик на 5-6 уровне (50%), выше, чем на соседних диапазонах.
+    wolf_by_level = {level: pr.calculate_encounter_faces(level)[1] for level in (1, 3, 5, 7, 9)}
+    assert wolf_by_level[5] == 5  # пик — строго больше соседей
+    assert wolf_by_level[5] > wolf_by_level[3]
+    assert wolf_by_level[5] > wolf_by_level[7]
+    assert wolf_by_level[1] == wolf_by_level[7] == wolf_by_level[9] == 3  # плато 30% вне разгона/пика
 
 
 def test_calculate_encounter_faces_always_sums_to_ten():
@@ -214,10 +225,19 @@ def test_calculate_encounter_faces_always_sums_to_ten():
         ("mouse", 1),
         ("wolf", 5),
         ("boar", 15),
+        ("boss", 100),
     ],
 )
 def test_calculate_victory_reward_draft_values(enemy_type, expected_reward):
     assert pr.calculate_victory_reward(enemy_type) == expected_reward
+
+
+def test_boss_level_requirement_is_nine():
+    # docs/notes.md, п.46 — на плейтесте пробовали снизить с 9 до 8, но
+    # scripts/simulate_boss_early_unlock.py (п.45) показал на 8 уровне
+    # winrate ~0% даже с полным запасом зелий. По итогам плейтеста
+    # зафиксировано обратно на 9 (docs/notes.md, п.53).
+    assert pr.BOSS_LEVEL_REQUIREMENT == 9
 
 
 @pytest.mark.parametrize("enemy_type,expected_reward", [("mouse", 1), ("wolf", 5), ("boar", 15)])
