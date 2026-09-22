@@ -12,6 +12,7 @@ from bot.handlers.character import (
     buy_potion,
     finish_creation,
     open_allocation,
+    render_allocation_screen,
     sell_loot,
     show_rules,
     show_rules_section,
@@ -85,6 +86,35 @@ async def test_open_allocation_shows_levelup_screen():
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[-2][0].callback_data == "back_to_stats"
     assert markup.inline_keyboard[-1][0].callback_data == "reset_request"
+
+
+async def test_open_allocation_shows_unspent_points_when_pool_not_fully_spent():
+    # Баг-репорт: после "Начать приключение" с недобранным стартовым пулом
+    # строка "Доступно очков прокачки: N" должна быть видна и на "Меню
+    # игрока" (mode="levelup"), не только на экране создания — она гейтится
+    # тем же unspent_stat_points > 0, что и кнопки "+1 <стат>"
+    # (allocation_keyboard), значит не может показывать одно без другого.
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "unspent_stat_points": 2}
+
+    await open_allocation(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert "Доступно очков прокачки: 2" in text
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "allocate:strength" in callback_datas  # кнопки "+1" тоже видны — то же условие
+
+
+async def test_render_allocation_screen_unspent_points_matches_between_modes():
+    # Один и тот же персонаж/unspent_stat_points — счётчик должен совпадать
+    # на экране создания и на "Меню игрока", не расходиться незаметно.
+    character = {**BASE_CHARACTER, "unspent_stat_points": 3}
+    creation_text = render_allocation_screen(character, title="Создание героя", mode="creation")
+    levelup_text = render_allocation_screen(character, title="Меню игрока", mode="levelup")
+    assert "Осталось очков: 3" in creation_text
+    assert "Доступно очков прокачки: 3" in levelup_text
 
 
 async def test_open_allocation_shows_economy_sections_empty_by_default():
