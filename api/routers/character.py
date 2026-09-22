@@ -33,8 +33,8 @@ STARTING_STAT_POOL = 5
 
 
 def _now() -> datetime:
-    # Naive UTC — см. db/models.py:_utcnow(): SQLite всегда возвращает
-    # naive-datetime, aware здесь привело бы к TypeError при сравнении.
+    # Naive UTC — см. db/models.py:_utcnow(): колонки без timezone=True,
+    # aware здесь привело бы к TypeError при сравнении.
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 

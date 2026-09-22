@@ -36,6 +36,13 @@ pip install -r requirements-dev.txt
 TELEGRAM_BOT_TOKEN=<токен от @BotFather>
 API_BASE_URL=http://127.0.0.1:8000
 INTERNAL_API_KEY=dev-local-key
+DATABASE_URL=postgresql+psycopg2://rpg:rpg@localhost:5432/rpg
+```
+
+`DATABASE_URL` — необязательна: без неё `db/session.py` использует локальный SQLite-файл (`rpg.db`), без какой-либо настройки. Для PostgreSQL нужен запущенный сервер — быстрее всего поднять один контейнер (без docker-compose, это отдельный шаг для развёртывания на сервере):
+
+```
+docker run -d --name rpg-postgres -e POSTGRES_USER=rpg -e POSTGRES_PASSWORD=rpg -e POSTGRES_DB=rpg -p 5432:5432 -v rpg_pgdata:/var/lib/postgresql/data postgres:16
 ```
 
 **3. Применить миграции БД**
@@ -44,7 +51,7 @@ INTERNAL_API_KEY=dev-local-key
 alembic upgrade head
 ```
 
-Создаёт (или доращивает) `rpg.db`. Нужно один раз при первом запуске и заново после каждой новой миграции (`docs/backend_plan.md` §10) — само приложение схему БД больше не создаёт и не трогает.
+Создаёт (или доращивает) схему в БД, на которую указывает `DATABASE_URL` (SQLite или PostgreSQL — миграции одинаковы для обеих, docs/backend_plan.md §10). Нужно один раз при первом запуске и заново после каждой новой миграции — само приложение схему БД больше не создаёт и не трогает.
 
 **4. Запустить бэкенд**
 

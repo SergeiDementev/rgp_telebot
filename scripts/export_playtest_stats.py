@@ -1,5 +1,5 @@
-"""Выгружает статистику боёв и прокачки из rpg.db в CSV для анализа
-(docs/notes.md) — по запросу плейтестера после прохождения до 10 уровня.
+"""Выгружает статистику боёв и прокачки в CSV для анализа (docs/notes.md) —
+по запросу плейтестера после прохождения до 10 уровня.
 
 Один ряд = одна завершённая боевая сессия, в хронологическом порядке.
 Очки победы и уровень "на момент боя" не хранятся в БД как история — они
@@ -7,23 +7,27 @@
 что валидно только если сессии идут непрерывно от создания персонажа без
 сбросов между ними (сейчас так и есть).
 
+По умолчанию читает из БД, на которую указывает DATABASE_URL (db/session.py
+— тот же источник правды, что и у самого приложения, PostgreSQL или SQLite,
+без разницы). --db <путь> — разовое исключение: читать конкретный SQLite-
+файл напрямую (например, архивный rpg.db после перехода на Postgres,
+docs/notes.md) вместо настроенной БД.
+
 Запуск: python -m scripts.export_playtest_stats [--db rpg.db] [--character-id 1]
 """
 
 import argparse
-import csv
-import json
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 from core import progression as pr
+from db.models import CombatSession
+from db.session import SessionLocal
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-
-
-def _parse_dt(value: str) -> datetime:
-    return datetime.fromisoformat(value)
 
 
 def _turn_log_metrics(turn_log: list) -> dict:
@@ -46,21 +50,29 @@ def _turn_log_metrics(turn_log: list) -> dict:
     }
 
 
-def export(db_path: str, character_id: int, out_path: Path) -> int:
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+def _open_session(db_override: str):
+    """--db задан -> отдельный движок на конкретный SQLite-файл (архив).
+    Иначе -> та же SessionLocal, что и у приложения (db/session.py,
+    DATABASE_URL) — один источник правды, не второй способ подключения."""
+    if db_override is None:
+        return SessionLocal()
+    engine = create_engine(f"sqlite:///{db_override}", connect_args={"check_same_thread": False})
+    return sessionmaker(bind=engine)()
 
-    sessions = cur.execute(
-        """
-        SELECT id, enemy_type, result, turn_log, created_at, updated_at
-        FROM combat_sessions
-        WHERE character_id = ? AND status = 'finished'
-        ORDER BY created_at
-        """,
-        (character_id,),
-    ).fetchall()
-    conn.close()
+
+def export(db_override: str, character_id: int, out_path: Path) -> int:
+    import csv
+
+    db = _open_session(db_override)
+    try:
+        sessions = (
+            db.query(CombatSession)
+            .filter(CombatSession.character_id == character_id, CombatSession.status == "finished")
+            .order_by(CombatSession.created_at)
+            .all()
+        )
+    finally:
+        db.close()
 
     fieldnames = [
         "battle_number", "session_id", "created_at", "duration_seconds",
@@ -74,18 +86,18 @@ def export(db_path: str, character_id: int, out_path: Path) -> int:
     with out_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        for i, row in enumerate(sessions, start=1):
-            reward = pr.calculate_battle_reward(row["result"], row["enemy_type"])
+        for i, session in enumerate(sessions, start=1):
+            reward = pr.calculate_battle_reward(session.result, session.enemy_type)
             victory_points += reward
-            duration = (_parse_dt(row["updated_at"]) - _parse_dt(row["created_at"])).total_seconds()
-            metrics = _turn_log_metrics(json.loads(row["turn_log"]))
+            duration = (session.updated_at - session.created_at).total_seconds()
+            metrics = _turn_log_metrics(session.turn_log)
             writer.writerow({
                 "battle_number": i,
-                "session_id": row["id"],
-                "created_at": row["created_at"],
+                "session_id": session.id,
+                "created_at": session.created_at,
                 "duration_seconds": round(duration, 1),
-                "enemy_type": row["enemy_type"],
-                "result": row["result"],
+                "enemy_type": session.enemy_type,
+                "result": session.result,
                 "reward_points": reward,
                 "victory_points_after": victory_points,
                 "level_after": pr.calculate_level_for_points(victory_points),
@@ -96,8 +108,8 @@ def export(db_path: str, character_id: int, out_path: Path) -> int:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", default="rpg.db")
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--db", default=None, help="Разовое чтение конкретного SQLite-файла вместо DATABASE_URL")
     parser.add_argument("--character-id", type=int, default=1)
     args = parser.parse_args()
 
