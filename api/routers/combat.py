@@ -40,7 +40,6 @@ from db.models import Character, CombatSession
 
 router = APIRouter(tags=["combat"], dependencies=[Depends(require_api_key)])
 
-DODGE_MAX_FACES = 5
 DODGE_K = 15
 DOUBLE_STRIKE_K = 15
 FLEE_MAX_FACES = 4
@@ -333,7 +332,6 @@ def _resolve_attacker_turn(
             defender_agility=defender_agility,
             attack_roll=attack_roll,
             dodge_roll=dodge_roll,
-            dodge_max_faces=DODGE_MAX_FACES,
             dodge_k=DODGE_K,
             power_attack=power_attack,
         )

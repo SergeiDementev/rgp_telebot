@@ -67,13 +67,24 @@ def test_calculate_damage(strength, attack_percent, expected_damage):
 
 
 def test_dodge_success_faces_min_at_zero_agility():
-    # §4: MIN_FACES = 1 гарантирован даже при Ловкости = 0.
-    assert cm.calculate_dodge_success_faces(agility=0, max_faces=5, k=10) == 1
+    # §4: MIN_FACES = 1 гарантирован даже при Ловкости = 0 -> 1 грань (10%).
+    assert cm.calculate_dodge_success_faces(agility=0, k=10) == 1
 
 
-def test_dodge_success_faces_approaches_but_reaches_max_via_round():
-    # При очень большой Ловкости кривая практически достигает MAX_FACES (round, не floor).
-    assert cm.calculate_dodge_success_faces(agility=1_000_000, max_faces=5, k=10) == 5
+def test_dodge_success_faces_never_reaches_dice_sides_via_floor():
+    # §4 (docs/notes.md, п.60) — асимптотическая кривая, как и у двойного
+    # удара (§5): floor(), не round(), поэтому даже при огромной Ловкости
+    # грани никогда не доходят до dice_sides (100%), максимум dice_sides-1.
+    faces = cm.calculate_dodge_success_faces(agility=1_000_000, k=10)
+    assert faces < cm.DICE_SIDES
+    assert faces == 9
+
+
+def test_dodge_success_faces_regression_checkpoint_agility_nine():
+    # Контрольная точка для регрессии — Ловкость=9, K=15 (реальное рабочее
+    # значение DODGE_K, docs/combat_mechanics.md §11): 1 + floor(9*9/24) =
+    # 1 + floor(3.375) = 1 + 3 = 4 грани (40%).
+    assert cm.calculate_dodge_success_faces(agility=9, k=15) == 4
 
 
 @pytest.mark.parametrize(
@@ -189,7 +200,6 @@ def test_resolve_strike_miss_skips_dodge_entirely():
         defender_agility=1000,
         attack_roll=1,
         dodge_roll=1,
-        dodge_max_faces=5,
         dodge_k=10,
     )
     assert result.missed is True
@@ -205,7 +215,6 @@ def test_resolve_strike_dodged_deals_no_damage():
         defender_agility=1000,
         attack_roll=8,
         dodge_roll=1,
-        dodge_max_faces=5,
         dodge_k=10,
     )
     assert result.missed is False
@@ -219,7 +228,6 @@ def test_resolve_strike_hit_deals_expected_damage():
         defender_agility=0,
         attack_roll=10,
         dodge_roll=2,
-        dodge_max_faces=5,
         dodge_k=10,
     )
     assert result.missed is False
@@ -235,7 +243,6 @@ def test_resolve_strike_power_attack_miss_extends_to_face_four():
         defender_agility=0,
         attack_roll=4,
         dodge_roll=1,
-        dodge_max_faces=5,
         dodge_k=10,
         power_attack=True,
     )
@@ -249,7 +256,6 @@ def test_resolve_strike_power_attack_multiplies_damage_before_rounding():
         defender_agility=0,
         attack_roll=7,  # 70% — непромах и у обычной, и у мощной атаки
         dodge_roll=2,
-        dodge_max_faces=5,
         dodge_k=10,
     )
     normal = cm.resolve_strike(**common_kwargs, power_attack=False)
@@ -265,7 +271,6 @@ def test_resolve_strike_power_attack_dodged_deals_no_damage():
         defender_agility=1000,
         attack_roll=8,
         dodge_roll=1,
-        dodge_max_faces=5,
         dodge_k=10,
         power_attack=True,
     )
@@ -331,7 +336,8 @@ def test_double_strike_uses_floor_not_round():
 
 
 def test_saturating_curve_uses_python_round_semantics():
-    # §4/§6: в отличие от двойного удара, здесь используется round(), не floor().
+    # §6 (побег) — в отличие от двойного удара и уворота (с 2026-09-22,
+    # docs/notes.md, п.60), здесь по-прежнему используется round(), не floor().
     # agility=10, max_faces=6, k=10, min_faces=1 -> (6-1)*0.5=2.5 -> round(2.5)=2
     # (Python округляет половину к чётному, а не всегда вверх) -> итог 1+2=3.
     faces = cm.calculate_saturating_success_faces(10, max_faces=6, k=10, min_faces=1)
@@ -374,8 +380,8 @@ def test_circumstance_outcome_matches_declared_proportions():
 def test_dodge_success_rate_matches_calculated_faces_ratio():
     rng = random.Random(1234)
     n = 10_000
-    max_faces, k, agility = 6, 15, 30
-    success_faces = cm.calculate_dodge_success_faces(agility, max_faces, k)
+    k, agility = 15, 30
+    success_faces = cm.calculate_dodge_success_faces(agility, k)
     expected_rate = success_faces / cm.DICE_SIDES
 
     hits = sum(cm.is_dodge_successful(_roll_d(rng), success_faces) for _ in range(n))
@@ -403,7 +409,6 @@ def test_two_strike_turn_composition_stops_applying_after_lethal_first_strike():
         defender_agility=0,
         attack_roll=10,  # 100%, без уворота (agility=0 -> success_faces=1, roll=5 промахивается)
         dodge_roll=5,
-        dodge_max_faces=5,
         dodge_k=10,
     )
     defender_hp -= strike_1.damage
@@ -427,7 +432,6 @@ def test_two_strike_turn_composition_applies_both_strikes_when_defender_survives
         defender_agility=0,
         attack_roll=10,
         dodge_roll=5,
-        dodge_max_faces=5,
         dodge_k=10,
     )
     defender_hp -= strike_1.damage
@@ -438,7 +442,6 @@ def test_two_strike_turn_composition_applies_both_strikes_when_defender_survives
         defender_agility=0,
         attack_roll=6,
         dodge_roll=5,
-        dodge_max_faces=5,
         dodge_k=10,
     )
     defender_hp -= strike_2.damage

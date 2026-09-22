@@ -49,7 +49,6 @@ ENEMY_PRESETS = {
 
 # Черновые константы формул (§4-6, §8) — тоже предмет калибровки. Единые для
 # обеих сторон: разница только в том, чей стат подставляется в формулу.
-DODGE_MAX_FACES = 5
 DODGE_K = 15
 DOUBLE_STRIKE_K = 15
 FLEE_MAX_FACES = 4
@@ -187,7 +186,6 @@ def simulate_single_fight(player_stats: dict, enemy_stats: dict, policy: str, rn
                 defender_agility=defender["agility"],
                 attack_roll=rng.randint(1, 10),
                 dodge_roll=rng.randint(1, 10),
-                dodge_max_faces=DODGE_MAX_FACES,
                 dodge_k=DODGE_K,
                 power_attack=power_attack and attacker_role == "player",
             )

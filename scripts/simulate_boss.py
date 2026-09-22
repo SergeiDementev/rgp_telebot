@@ -242,7 +242,6 @@ def simulate_single_fight_vs_boss(
                 defender_agility=defender["agility"],
                 attack_roll=rng.randint(1, 10),
                 dodge_roll=rng.randint(1, 10),
-                dodge_max_faces=sc.DODGE_MAX_FACES,
                 dodge_k=sc.DODGE_K,
                 power_attack=power_attack and attacker_role == "player",
             )

@@ -18,7 +18,7 @@ simulate_combat.py. Экономика (лут, золото, зелья) — н
 без дублирования): _new_fighter, _fight_result, _wants_to_flee,
 roll_enemy_encounter, _spend_all_points, choose_stat_to_allocate,
 _run_checkpoint_probe, run_batch, все константы (ENEMY_PRESETS,
-DODGE_MAX_FACES/DODGE_K/DOUBLE_STRIKE_K/FLEE_MAX_FACES/FLEE_K/
+DODGE_K/DOUBLE_STRIKE_K/FLEE_MAX_FACES/FLEE_K/
 FLEE_THRESHOLD_PERCENT/CIRCUMSTANCE_MODIFIER_PERCENT/ENCOUNTER_FACES_BY_
 LEVEL_BAND через core.progression, CHARACTER_BASE_STATS/CHARACTER_STARTING_
 POOL/CHECKPOINT_INTERVAL/CHECKPOINT_FIGHTS/ENCOUNTER_ORDER).
@@ -230,7 +230,6 @@ def simulate_single_fight_economy(
                 defender_agility=defender["agility"],
                 attack_roll=rng.randint(1, 10),
                 dodge_roll=rng.randint(1, 10),
-                dodge_max_faces=sc.DODGE_MAX_FACES,
                 dodge_k=sc.DODGE_K,
             )
             defender["hp"] = max(defender["hp"] - strike.damage, 0)
