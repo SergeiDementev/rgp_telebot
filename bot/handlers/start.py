@@ -12,13 +12,9 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from bot.client import ApiClient, ApiError
 from bot.handlers.character import allocation_keyboard, render_allocation_screen, render_stats_screen, stats_screen_keyboard
 from bot.handlers.combat import build_resume_keyboard, build_resume_text
+from bot.utils import WELCOME_TEXT, start_game_keyboard  # noqa: F401 — WELCOME_TEXT реэкспортируется для тестов
 
 router = Router()
-
-WELCOME_TEXT = (
-    "🧙 Добро пожаловать в текстовую RPG!\n\n"
-    "Ищи противников, сражайся на кубиках, качай персонажа."
-)
 
 RESUME_BATTLE_PREFIX = "↩️ Продолжаем начатый бой:\n\n"
 
@@ -26,12 +22,6 @@ RESET_CONFIRM_TEXT = (
     "⚠️ Точно обнулить персонажа?\n\n"
     "Статы, уровень и весь прогресс будут удалены безвозвратно — отменить это будет нельзя."
 )
-
-
-def _start_game_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="✅ Начать игру", callback_data="start_game")]]
-    )
 
 
 def _reset_confirm_keyboard() -> InlineKeyboardMarkup:
@@ -58,7 +48,7 @@ async def cmd_start(message: Message, api: ApiClient) -> None:
         if error.status_code != 404:
             raise
         # §1: персонажа ещё нет — предложить создать.
-        await message.answer(WELCOME_TEXT, reply_markup=_start_game_keyboard())
+        await message.answer(WELCOME_TEXT, reply_markup=start_game_keyboard())
         return
 
     # §1: персонаж уже есть — повторный /start не пересоздаёт его. Баннер

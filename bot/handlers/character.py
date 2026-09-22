@@ -13,7 +13,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from bot.client import ApiClient, ApiError
 from bot.rules_content import RULES_MENU_TITLE, RULES_SECTIONS
-from bot.utils import safe_edit_text
+from bot.utils import get_character_or_prompt_start, safe_edit_text
 
 router = Router()
 
@@ -242,7 +242,9 @@ async def show_rules_section(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "open_allocation")
 async def open_allocation(callback: CallbackQuery, api: ApiClient) -> None:
-    character = await api.get_character(callback.from_user.id)
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
     await callback.message.edit_text(
         render_allocation_screen(character, title=MENU_SCREEN_TITLE, mode="levelup"),
         reply_markup=allocation_keyboard(character, mode="levelup"),
@@ -253,7 +255,9 @@ async def open_allocation(callback: CallbackQuery, api: ApiClient) -> None:
 @router.callback_query(F.data == "back_to_stats")
 @router.callback_query(F.data == "refresh_stats")
 async def back_to_stats(callback: CallbackQuery, api: ApiClient) -> None:
-    character = await api.get_character(callback.from_user.id)
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
     await safe_edit_text(callback.message, render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
     await callback.answer()
 
@@ -261,7 +265,9 @@ async def back_to_stats(callback: CallbackQuery, api: ApiClient) -> None:
 @router.callback_query(F.data.startswith("allocate:"))
 async def allocate_levelup(callback: CallbackQuery, api: ApiClient) -> None:
     stat = callback.data.split(":", 1)[1]
-    character = await api.get_character(callback.from_user.id)
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
     try:
         result = await api.allocate_point(character["id"], stat)
     except ApiError:
@@ -278,7 +284,9 @@ async def allocate_levelup(callback: CallbackQuery, api: ApiClient) -> None:
 @router.callback_query(F.data.startswith("create_allocate:"))
 async def allocate_creation(callback: CallbackQuery, api: ApiClient) -> None:
     stat = callback.data.split(":", 1)[1]
-    character = await api.get_character(callback.from_user.id)
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
     try:
         result = await api.allocate_point(character["id"], stat)
     except ApiError:
@@ -294,14 +302,18 @@ async def allocate_creation(callback: CallbackQuery, api: ApiClient) -> None:
 
 @router.callback_query(F.data == "finish_creation")
 async def finish_creation(callback: CallbackQuery, api: ApiClient) -> None:
-    character = await api.get_character(callback.from_user.id)
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
     await callback.message.edit_text(render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
     await callback.answer()
 
 
 @router.callback_query(F.data == "sell_loot")
 async def sell_loot(callback: CallbackQuery, api: ApiClient) -> None:
-    character = await api.get_character(callback.from_user.id)
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
     result = await api.sell_loot(character["id"])
     updated = result["character"]
     await callback.message.edit_text(
@@ -314,7 +326,9 @@ async def sell_loot(callback: CallbackQuery, api: ApiClient) -> None:
 @router.callback_query(F.data.startswith("buy_potion:"))
 async def buy_potion(callback: CallbackQuery, api: ApiClient) -> None:
     size = callback.data.split(":", 1)[1]
-    character = await api.get_character(callback.from_user.id)
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
     try:
         result = await api.buy_potion(character["id"], size)
     except ApiError as error:

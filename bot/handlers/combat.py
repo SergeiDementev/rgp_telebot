@@ -23,7 +23,7 @@ from bot.handlers.character import (
     render_stats_screen,
     stats_screen_keyboard,
 )
-from bot.utils import safe_edit_text
+from bot.utils import get_character_or_prompt_start, safe_edit_text
 
 router = Router()
 
@@ -285,7 +285,9 @@ async def cancel_encounter(callback: CallbackQuery, api: ApiClient) -> None:
         # уже начат с другого места). Отменять нечего, сообщаем и всё.
         await callback.answer("Бой уже начался — отменить нельзя.", show_alert=True)
         return
-    character = await api.get_character(callback.from_user.id)
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
     await callback.message.edit_text(render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
     await callback.answer()
 
@@ -427,7 +429,9 @@ async def refresh_after_battle(callback: CallbackQuery, api: ApiClient) -> None:
     сообщение — заголовок исхода боя ("Ты победил...") был частью разового
     текста turn-ответа и нигде не хранится; реконструировать его в боте
     означало бы дублировать решение api/rendering.py о формулировке исхода."""
-    character = await api.get_character(callback.from_user.id)
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
     lines = [f"❤️ HP: {character['hp_current']:.0f}/{character['hp_max']:.0f}"]
     if character["hp_seconds_to_full"] > 0:
         lines.append(f"⏳ Полное восстановление через: ~{character['hp_seconds_to_full']:.0f} сек.")
