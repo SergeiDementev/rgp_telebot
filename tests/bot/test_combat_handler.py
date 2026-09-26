@@ -97,12 +97,25 @@ async def test_search_boss_encounter_shows_potion_stock_and_challenge_buttons():
     )
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     # docs/notes.md, п.59 — каждая кнопка на своей строке, "Бросить вызов"
-    # сверху, "Назад" снизу; подпись напоминает порог уровня (подсказка, не
-    # гейт — сервер всё равно проверит его сам на start_combat).
+    # сверху, "Назад" снизу; подпись напоминает порог уровня (подсказка —
+    # сам гейт уже сработал раньше, на самом search_boss_encounter, п.66).
     assert len(markup.inline_keyboard) == 2
     assert markup.inline_keyboard[0][0].callback_data == "boss_challenge_prompt:9"
     assert "9 уровня" in markup.inline_keyboard[0][0].text
     assert markup.inline_keyboard[1][0].callback_data == "cancel_encounter:9"
+
+
+async def test_search_boss_encounter_shows_alert_when_level_too_low():
+    # docs/notes.md, п.66 — гейт перенесён сюда, до создания сессии: сразу
+    # алерт, никакого экрана входа с запасом зелий не показываем.
+    callback = make_callback("search_boss_encounter")
+    api = AsyncMock()
+    api.search_boss_encounter.side_effect = ApiError(403, "level_too_low")
+
+    await search_boss_encounter(callback, api)
+
+    callback.message.edit_text.assert_not_called()
+    callback.answer.assert_awaited_once_with("Финальный босс пока недоступен на этом уровне.", show_alert=True)
 
 
 async def test_boss_challenge_prompt_shows_confirm_buttons_and_alert():
@@ -132,19 +145,6 @@ async def test_search_boss_encounter_shows_alert_on_existing_session():
     callback.message.edit_text.assert_not_called()
     callback.answer.assert_awaited_once()
     assert callback.answer.call_args.kwargs.get("show_alert") is True
-
-
-async def test_start_combat_against_boss_shows_alert_when_level_too_low():
-    # docs/notes.md, п.58 — уровневый гейт перенесён на "⚔️ Бросить вызов"
-    # (start_combat), search_boss_encounter больше не может вернуть 403.
-    callback = make_callback("start_combat:5")
-    api = AsyncMock()
-    api.start_combat.side_effect = ApiError(403, "level_too_low")
-
-    await start_combat(callback, api)
-
-    callback.message.edit_text.assert_not_called()
-    callback.answer.assert_awaited_once_with("Финальный босс пока недоступен на этом уровне.", show_alert=True)
 
 
 async def test_start_combat_shows_fight_flee_and_auto_buttons():

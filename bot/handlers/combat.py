@@ -271,12 +271,17 @@ async def search_encounter(callback: CallbackQuery, api: ApiClient) -> None:
 async def search_boss_encounter(callback: CallbackQuery, api: ApiClient) -> None:
     """Целенаправленная встреча с финальным боссом (docs/notes.md, п.36) —
     кнопка на главном экране (bot/handlers/character.py::stats_screen_
-    keyboard), а не через "Искать противника". Доступна на любом уровне
-    (docs/notes.md, п.58) — уровневый гейт теперь на "⚔️ Бросить вызов"
-    (см. start_combat), не здесь."""
+    keyboard), а не через "Искать противника". Уровневый гейт — здесь же,
+    до создания сессии (docs/notes.md, п.66): раньше (п.58) был перенесён
+    на "⚔️ Бросить вызов" (start_combat), но после появления там же
+    подтверждения "нельзя отступить" (п.65) низкоуровневый игрок видел
+    сначала этот алерт, а только потом — что бой всё равно недоступен."""
     try:
         response = await api.search_boss_encounter(callback.from_user.id)
     except ApiError as error:
+        if error.status_code == 403:
+            await callback.answer("Финальный босс пока недоступен на этом уровне.", show_alert=True)
+            return
         if error.status_code != 409:
             raise
         await callback.answer("У тебя уже есть незавершённый бой — сначала заверши его.", show_alert=True)
@@ -326,18 +331,12 @@ async def boss_challenge_prompt(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("start_combat:"))
 async def start_combat(callback: CallbackQuery, api: ApiClient) -> None:
-    """docs/notes.md, п.58 — уровневый порог для босса проверяется именно
-    здесь (не на search_boss_encounter): сессия остаётся в
-    "awaiting_initiative" при отказе, "⬅️ Назад" на предыдущем экране
-    по-прежнему работает."""
+    """Уровневый порог для босса больше не проверяется здесь (docs/notes.md,
+    п.66) — перенесён на search_boss_encounter, до создания сессии; раз
+    сессия существует, уровень уже был достаточен, а понижаться он не
+    умеет. 403 отсюда больше не приходит."""
     session_id = _session_id_from(callback.data)
-    try:
-        response = await api.start_combat(callback.from_user.id, session_id)
-    except ApiError as error:
-        if error.status_code != 403:
-            raise
-        await callback.answer("Финальный босс пока недоступен на этом уровне.", show_alert=True)
-        return
+    response = await api.start_combat(callback.from_user.id, session_id)
     keyboard = _confirmation_keyboard(session_id, response.get("enemy_type"))
     await callback.message.edit_text(response["text"], reply_markup=keyboard)
     await callback.answer()

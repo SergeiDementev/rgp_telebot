@@ -7,9 +7,10 @@
 ## 1. Стек
 
 - **Backend:** Python + FastAPI — автоматическая валидация запросов (Pydantic), автогенерация OpenAPI/Swagger-документации, асинхронность из коробки.
-- **БД:** SQLAlchemy как ORM. Начинали с SQLite (ноль конфигурации); с 2026-09-22 (docs/notes.md) — PostgreSQL через `DATABASE_URL` в `.env` (см. `.env.example`), как и предполагалось изначально — только строка подключения в `db/session.py`, весь ORM-код не менялся. Без `DATABASE_URL` в `.env` приложение по-прежнему падает обратно на локальный SQLite-файл (`rpg.db`) — удобно для быстрого старта без поднятого Postgres.
+- **БД:** SQLAlchemy как ORM. Начинали с SQLite (ноль конфигурации); с 2026-09-22 (docs/notes.md, п.62) — PostgreSQL через `DATABASE_URL` в `.env` (см. `.env.example`), как и предполагалось изначально — только строка подключения в `db/session.py`, весь ORM-код не менялся. Без `DATABASE_URL` в `.env` приложение по-прежнему падает обратно на локальный SQLite-файл (`rpg.db`) — удобно для быстрого старта без поднятого Postgres.
 - **Бот:** aiogram (Python) — общий язык с бэкендом, можно переиспользовать Pydantic-модели между ботом и API при необходимости.
 - **HTTP-клиент бота → API:** httpx (асинхронный).
+- **Развёртывание:** Docker Compose (docs/notes.md, п.63) — три сервиса (`db`/`api`/`bot`) из одного `Dockerfile` (multi-stage — компилирует зависимости в builder-стадии, финальный образ без build-инструментов), `alembic upgrade head` выполняется при каждом старте `api`-контейнера. Альтернатива для разработки — обычные процессы на хосте (см. `docs/README.md` §2), оба пути рабочие одновременно.
 
 ---
 
@@ -33,7 +34,8 @@ project/
 │                            # для api/ и scripts/simulate_combat_economy.py, не дублируются
 │
 ├── api/                     # FastAPI-приложение — готово (этап 3)
-│   ├── main.py               # сборка приложения, create_all(), /health
+│   ├── main.py               # сборка приложения, /health (create_all() убран — схему создаёт
+│   │                          # только alembic upgrade head, см. §10)
 │   ├── routers/
 │   │   ├── character.py     # создание/просмотр персонажа, прокачка
 │   │   ├── encounter.py     # поиск противника + инициатива/обстоятельство (/start);
@@ -45,7 +47,7 @@ project/
 │   └── enemy_content.py      # загрузка content/enemies.json
 │
 ├── db/                       # готово
-│   ├── models.py             # SQLAlchemy-модели: Character, CombatSession
+│   ├── models.py             # SQLAlchemy-модели: Character, CombatSession, StatAllocationLog
 │   └── session.py            # подключение, фабрика сессий
 │
 ├── alembic.ini, migrations/  # alembic-миграции (заведены 2026-09-16) — схему БД
@@ -53,8 +55,10 @@ project/
 │                              # само приложение при старте её больше не трогает
 │
 ├── content/                  # статичные игровые данные — готово (этап 2)
-│   └── enemies.json          # статы мышь/волк/кабан/boss + can_flee/player_can_flee (пп.36, 57),
-│                              #   unlimited_potions (п.39), has_circumstance (п.56) по каждому
+│   ├── enemies.json          # статы мышь/волк/кабан/boss + can_flee/player_can_flee (пп.36, 57),
+│   │                          #   unlimited_potions (п.39), has_circumstance (п.56) по каждому
+│   └── rules.md              # текст правил (docs/notes.md, п.1/4) — парсится
+│                              #   bot/rules_content.py в разделы для меню "📜 Правила"
 │
 ├── scripts/                  # готово
 │   ├── simulate_combat.py         # консольный симулятор боёв для калибровки (см. §8, этап 2)
@@ -78,18 +82,28 @@ project/
 │   ├── scripts/
 │   └── bot/                   # моки Message/CallbackQuery и ApiClient — без реального Telegram/сети
 │
-├── requirements.txt            # рантайм: fastapi/sqlalchemy/pydantic/uvicorn/aiogram/httpx/python-dotenv
+├── requirements.txt            # рантайм: fastapi/sqlalchemy/psycopg2-binary/alembic/pydantic/uvicorn/aiogram/httpx/python-dotenv
 ├── requirements-dev.txt        # + pytest/pytest-asyncio
 │
-├── .env.example                 # шаблон: TELEGRAM_BOT_TOKEN, API_BASE_URL, INTERNAL_API_KEY
+├── Dockerfile, docker-compose.yml, .dockerignore   # docs/notes.md п.63 — образ общий для api/bot,
+│                              # команда запуска различается через docker-compose.yml::command
+│
+├── .env.example                 # шаблон: TELEGRAM_BOT_TOKEN, API_BASE_URL, INTERNAL_API_KEY,
+│                              # DATABASE_URL (опционально, хост-запуск), POSTGRES_USER/PASSWORD/DB
+│                              # (только для docker-compose, п.63)
 │
 └── bot/                       # Telegram-клиент (aiogram) — готово (этап 4)
     ├── client.py              # асинхронная обёртка над httpx для вызовов api/
+    ├── utils.py               # общие мелкие утилиты для хендлеров (docs/notes.md, п.64):
+    │                          # safe_edit_text, WELCOME_TEXT/start_game_keyboard,
+    │                          # get_character_or_prompt_start (грациозный откат на 404)
+    ├── rules_content.py       # парсит content/rules.md в разделы для меню "📜 Правила"
     ├── handlers/
-    │   ├── start.py           # /start, /rules, создание персонажа
+    │   ├── start.py           # /start, создание персонажа (/rules — не команда, см. character.py)
     │   ├── character.py       # экран статов, "Меню игрока" (статы/прокачка + золото/лут/зелья,
-    │   │                      # docs/notes.md п.30; общий экран для создания и левел-апа) +
-    │   │                      # кнопка "Финальный босс" на главном экране (п.36)
+    │   │                      # docs/notes.md п.30; общий экран для создания и левел-апа),
+    │   │                      # кнопка "Финальный босс" на главном экране (п.36) + меню правил
+    │   │                      # "📜 Правила" (п.1)
     │   └── combat.py          # весь боевой цикл — поиск, инициатива, ходы, завершение
     └── main.py                 # сборка Dispatcher, регистрация роутеров, polling
 ```
@@ -133,7 +147,7 @@ class Character:
 class CombatSession:
     id: int
     character_id: int
-    enemy_type: str                # "mouse" | "wolf" | "boar"
+    enemy_type: str                # "mouse" | "wolf" | "boar" | "boss" (docs/notes.md, п.36)
     enemy_hp_current: float        # enemy_hp_max НЕ хранится — статичен, читается из content/enemies.json
     character_hp_snapshot: float   # живой HP персонажа во время боя (обновляется на каждом ударе)
     current_turn: str | None       # "player" | "enemy"; None до /combat/{id}/start (инициатива ещё не брошена)
@@ -145,8 +159,21 @@ class CombatSession:
     strength_modifier_enemy: float = 1.0
     player_flee_right_used: bool = False
     enemy_flee_right_used: bool = False
+    player_potion_used_this_battle: bool = False   # docs/notes.md, п.31 — лимит "раз за бой" на зелья,
+                                                    # отдельно от права на побег; не действует при
+                                                    # unlimited_potions=true (сейчас только boss, п.39)
     turn_log: JSON                  # накопительный лог событий (для отображения в боте)
     created_at, updated_at: datetime
+
+class StatAllocationLog:
+    id: int
+    character_id: int
+    stat: str                      # "strength" | "agility" | "luck" | "vitality"
+    level_at_time: int             # уровень персонажа в момент решения — для аналитики
+    created_at: datetime           # (docs/notes.md) — история каждого клика "+1 к <стату>", включая
+                                    # распределение стартового пула при создании; раньше в БД был
+                                    # только итоговый результат (текущие значения статов), без истории
+                                    # самих решений
 ```
 
 Право на побег (§6 combat_mechanics.md) разведено на `player_flee_right_used`/`enemy_flee_right_used`, не общий флаг — право принадлежит стороне, а не сессии целиком, иначе побег одной стороны мог бы случайно сжечь право другой. Оба поля живут в `CombatSession`, не в `Character` — сгорают только в рамках одного боя, не переносятся между боями.
@@ -179,17 +206,19 @@ POST /encounter/search               — бросок d10 (50/30/20), созда
                                         (status="awaiting_initiative")
 POST /encounter/search_boss          — docs/notes.md п.36: без броска — целенаправленная встреча
                                         с финальным боссом (enemy_type="boss"), не через ростер.
-                                        Доступна на любом уровне (docs/notes.md п.58) — порог
-                                        проверяется дальше, на /combat/{id}/start
+                                        Проверяет character.level >= pr.BOSS_LEVEL_REQUIREMENT перед
+                                        созданием сессии, иначе 403 detail="level_too_low", без
+                                        мутации БД (docs/notes.md п.66 — было на /combat/{id}/start,
+                                        п.58; перенесено обратно сюда, до какой-либо сессии, чтобы
+                                        не показывать подтверждение "нельзя отступить" — п.65 — для
+                                        боя, который всё равно недоступен)
 POST /combat/{id}/start              — бросок инициативы + обстоятельства одним вызовом
                                         (status -> "awaiting_confirmation"). Ответ несёт
                                         enemy_type (docs/notes.md п.40) — бот по нему решает,
                                         показывать ли кнопку "⚡ Автобой" (нет смысла у босса).
-                                        Для enemy_type="boss" — до броска инициативы проверяет
-                                        character.level >= pr.BOSS_LEVEL_REQUIREMENT, иначе 403
-                                        detail="level_too_low" (docs/notes.md п.58; бот кнопку не
-                                        прячет — она теперь всегда активна, но сервер не доверяет
-                                        клиенту, тот же принцип, что и везде)
+                                        Уровневого гейта для босса здесь больше нет (п.66) — раз
+                                        сессия с enemy_type="boss" существует, уровень уже
+                                        достаточен (понижаться он не умеет)
 
 POST /combat/{id}/confirm            — { "decision": "fight" | "flee" } — после обстоятельства.
                                         "flee" -> 400 "flee_not_allowed" против боя, где
@@ -340,7 +369,7 @@ bot/                       → получает готовый текст, то�
 - Роутеры `character`, `encounter`, `combat` — тонкая оркестрация поверх уже проверенного `core/`.
 - Проверено через Swagger/TestClient, без бота (`tests/api/`).
 
-**Этап 4 — `bot/` (готово, код и юнит-тесты; сквозной прогон живьём в Telegram — ещё нет)**
+**Этап 4 — `bot/` (готово, включая сквозной прогон живьём в Telegram через Docker Compose, docs/notes.md пп.63-66)**
 - Хендлеры `/start`, создание персонажа, экран статов, поиск противника, ход боя.
 - Только вызовы `api/` через `client.py` и рендер ответов — никакой логики.
 - Потребовалось одно небольшое расширение API задним числом (единственный случай, когда предсказание из абзаца ниже не вполне сбылось): `CombatTurnResponse` не отдавал `current_turn`, а боту он нужен, чтобы подписать кнопку "Атаковать"/"Защищаться" без лишнего запроса — добавили поле в `api/schemas/combat.py` и `api/routers/combat.py`.

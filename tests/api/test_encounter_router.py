@@ -229,10 +229,11 @@ def test_start_combat_twice_returns_409(db_session_factory, monkeypatch):
     assert second.status_code == 409
 
 
-def test_search_boss_encounter_creates_session_at_any_level(db_session_factory):
-    # docs/notes.md, п.58 — экран входа доступен на любом уровне, порог
-    # проверяется позже, на POST /combat/{id}/start.
-    _insert_character(db_session_factory, level=1, potions_small=2, potions_large=1)
+def test_search_boss_encounter_creates_session_at_required_level(db_session_factory):
+    # docs/notes.md, п.66 — порог уровня проверяется здесь, до создания
+    # сессии (было перенесено на POST /combat/{id}/start п.58, вернули
+    # обратно из-за конфликта с подтверждением "нельзя отступить", п.65).
+    _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT, potions_small=2, potions_large=1)
     client = make_client(db_session_factory)
 
     response = client.post("/encounter/search_boss", headers=HEADERS)
@@ -246,21 +247,18 @@ def test_search_boss_encounter_creates_session_at_any_level(db_session_factory):
     assert body["potions_large"] == 1
 
 
-def test_start_combat_against_boss_below_required_level_returns_403(db_session_factory):
-    # docs/notes.md, п.58 — порог уровня перенесён с search_boss_encounter
-    # сюда, на "⚔️ Бросить вызов". Сессия остаётся в awaiting_initiative —
-    # "⬅️ Назад" по-прежнему работает, право не потеряно.
+def test_search_boss_encounter_below_required_level_returns_403(db_session_factory):
+    # docs/notes.md, п.66 — ниже порога сессия не создаётся вообще, нечего
+    # ни отменять, ни "доигрывать".
     _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT - 1)
     client = make_client(db_session_factory)
 
-    session_id = client.post("/encounter/search_boss", headers=HEADERS).json()["combat_session_id"]
-    response = client.post(f"/combat/{session_id}/start", headers=HEADERS)
+    response = client.post("/encounter/search_boss", headers=HEADERS)
     assert response.status_code == 403
     assert response.json()["detail"] == "level_too_low"
 
     db = db_session_factory()
-    session = db.get(CombatSession, session_id)
-    assert session.status == "awaiting_initiative"
+    assert db.query(CombatSession).count() == 0
     db.close()
 
 
