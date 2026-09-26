@@ -271,17 +271,12 @@ async def search_encounter(callback: CallbackQuery, api: ApiClient) -> None:
 async def search_boss_encounter(callback: CallbackQuery, api: ApiClient) -> None:
     """Целенаправленная встреча с финальным боссом (docs/notes.md, п.36) —
     кнопка на главном экране (bot/handlers/character.py::stats_screen_
-    keyboard), а не через "Искать противника". Уровневый гейт — здесь же,
-    до создания сессии (docs/notes.md, п.66): раньше (п.58) был перенесён
-    на "⚔️ Бросить вызов" (start_combat), но после появления там же
-    подтверждения "нельзя отступить" (п.65) низкоуровневый игрок видел
-    сначала этот алерт, а только потом — что бой всё равно недоступен."""
+    keyboard), а не через "Искать противника". Экран входа (текст + запас
+    зелий) доступен на любом уровне (docs/notes.md, п.69) — уровневый гейт
+    на "⚔️ Бросить вызов" (см. boss_challenge_prompt), не здесь."""
     try:
         response = await api.search_boss_encounter(callback.from_user.id)
     except ApiError as error:
-        if error.status_code == 403:
-            await callback.answer("Финальный босс пока недоступен на этом уровне.", show_alert=True)
-            return
         if error.status_code != 409:
             raise
         await callback.answer("У тебя уже есть незавершённый бой — сначала заверши его.", show_alert=True)
@@ -319,11 +314,20 @@ async def cancel_encounter(callback: CallbackQuery, api: ApiClient) -> None:
 
 
 @router.callback_query(F.data.startswith("boss_challenge_prompt:"))
-async def boss_challenge_prompt(callback: CallbackQuery) -> None:
-    """Подтверждение перед необратимым "Бросить вызов" (docs/notes.md,
-    п.65) — только меняет клавиатуру на месте (текст встречи с запасом
-    зелий не трогаем) и показывает алерт Telegram, без обращения к API:
-    сама встреча ещё не начата, ничего на сервере пока не изменилось."""
+async def boss_challenge_prompt(callback: CallbackQuery, api: ApiClient) -> None:
+    """"⚔️ Бросить вызов" — сначала проверка уровня (docs/notes.md, п.69),
+    ДО показа подтверждения "нельзя отступить" (п.65): низкоуровневый игрок
+    должен увидеть, что бой недоступен, а не пугающий алерт о необратимости
+    для боя, который всё равно не начнётся. Читает уровень через
+    GET /character (только чтение, ничего не мутирует) — сессия ещё не
+    трогается здесь вообще, реальную (авторитетную) проверку всё равно
+    делает сервер на start_combat при "Да, вступить в бой"."""
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
+    if character["level"] < BOSS_LEVEL_REQUIREMENT:
+        await callback.answer("Финальный босс пока недоступен на этом уровне.", show_alert=True)
+        return
     session_id = _session_id_from(callback.data)
     await callback.message.edit_reply_markup(reply_markup=_boss_challenge_confirm_keyboard(session_id))
     await callback.answer("⚠️ После этого отступить будет нельзя.", show_alert=True)
@@ -331,12 +335,18 @@ async def boss_challenge_prompt(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("start_combat:"))
 async def start_combat(callback: CallbackQuery, api: ApiClient) -> None:
-    """Уровневый порог для босса больше не проверяется здесь (docs/notes.md,
-    п.66) — перенесён на search_boss_encounter, до создания сессии; раз
-    сессия существует, уровень уже был достаточен, а понижаться он не
-    умеет. 403 отсюда больше не приходит."""
+    """docs/notes.md, п.69 — уровневый порог для босса снова проверяется
+    здесь (авторитетно, сервером): boss_challenge_prompt делает лишь ранний
+    клиентский предпоказ той же проверки ради UX, но не заменяет её —
+    сессия остаётся в "awaiting_initiative" при отказе."""
     session_id = _session_id_from(callback.data)
-    response = await api.start_combat(callback.from_user.id, session_id)
+    try:
+        response = await api.start_combat(callback.from_user.id, session_id)
+    except ApiError as error:
+        if error.status_code != 403:
+            raise
+        await callback.answer("Финальный босс пока недоступен на этом уровне.", show_alert=True)
+        return
     keyboard = _confirmation_keyboard(session_id, response.get("enemy_type"))
     await callback.message.edit_text(response["text"], reply_markup=keyboard)
     await callback.answer()

@@ -122,16 +122,11 @@ def search_boss_encounter(
     db: Session = Depends(get_db),
 ) -> EncounterSearchResponse:
     """Целенаправленная встреча с финальным боссом (docs/notes.md, п.36) —
-    не через случайный ростер §6: кнопка на главном экране, видна на любом
-    уровне (текст кнопки не знает заранее, хватает ли уровня). Порог
-    проверяется здесь же, до создания сессии (docs/notes.md, п.66 — раньше,
-    п.58, было перенесено на POST /combat/{id}/start, но после п.65
-    подтверждение "нельзя отступить" перед боссом стало показываться
-    раньше самой проверки уровня; гейт до какой-либо сессии снимает это
-    противоречие полностью, а не просто переставляет его)."""
+    не через случайный ростер §6: кнопка на главном экране, видна и
+    доступна на любом уровне (docs/notes.md, п.69 — прямая просьба: экран
+    входа с текстом и запасом зелий должен открываться всегда, порог
+    проверяется дальше, на POST /combat/{id}/start, см. её докстринг)."""
     _require_no_active_session(character, db)
-    if character.level < pr.BOSS_LEVEL_REQUIREMENT:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="level_too_low")
     return _start_encounter_session(
         character, db, "boss",
         turn_log_entry={"type": "encounter", "enemy_type": "boss"},
@@ -154,6 +149,14 @@ def start_combat(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=f"unexpected session status: {session.status!r}"
         )
+    # Порог уровня для босса (docs/notes.md, п.69 — было тут же в п.58,
+    # перенесено на search_boss_encounter в п.66, возвращено обратно: экран
+    # входа должен быть доступен на любом уровне, а не только тем, кто уже
+    # прошёл порог, — гейт снова здесь, до броска инициативы (низкоуровневый
+    # игрок не тратит бросок впустую), сессия остаётся "awaiting_initiative".
+    if session.enemy_type == "boss" and character.level < pr.BOSS_LEVEL_REQUIREMENT:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="level_too_low")
+
     while True:
         player_roll = random.randint(1, 10)
         enemy_roll = random.randint(1, 10)
