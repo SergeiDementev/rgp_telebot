@@ -6,7 +6,6 @@ import pytest
 
 from bot.client import ApiError
 from bot.handlers.combat import (
-    boss_challenge_back,
     boss_challenge_prompt,
     build_resume_keyboard,
     build_resume_text,
@@ -117,19 +116,10 @@ async def test_boss_challenge_prompt_shows_confirm_buttons_and_alert():
 
     markup = callback.message.edit_reply_markup.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert callback_datas == ["start_combat:9", "boss_challenge_back:9"]
+    # "Назад" ведёт прямо на cancel_encounter (тот же, что и на предыдущем
+    # экране) — без промежуточного возврата к экрану "Бросить вызов".
+    assert callback_datas == ["start_combat:9", "cancel_encounter:9"]
     callback.answer.assert_awaited_once_with("⚠️ После этого отступить будет нельзя.", show_alert=True)
-
-
-async def test_boss_challenge_back_restores_challenge_keyboard():
-    callback = make_callback("boss_challenge_back:9")
-    callback.message.edit_reply_markup = AsyncMock()
-
-    await boss_challenge_back(callback)
-
-    markup = callback.message.edit_reply_markup.call_args.kwargs["reply_markup"]
-    assert markup.inline_keyboard[0][0].callback_data == "boss_challenge_prompt:9"
-    callback.answer.assert_awaited_once_with()
 
 
 async def test_search_boss_encounter_shows_alert_on_existing_session():

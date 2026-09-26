@@ -166,13 +166,14 @@ def _boss_challenge_keyboard(session_id: int) -> InlineKeyboardMarkup:
 
 def _boss_challenge_confirm_keyboard(session_id: int) -> InlineKeyboardMarkup:
     """Подтверждение перед "Бросить вызов" (см. _boss_challenge_keyboard) —
-    "Назад" тут просто возвращает исходную клавиатуру, без обращения к API:
-    на сервере до этого момента ничего не менялось (сессия ещё
-    "awaiting_initiative")."""
+    "Назад" ведёт на тот же "cancel_encounter", что и "Назад" на экране до
+    этого: сессия ещё "awaiting_initiative" (на сервере ничего не
+    менялось), отменять и показывать главный экран персонажа можно точно
+    так же, без промежуточного возврата к экрану "Бросить вызов"."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="⚔️ Да, вступить в бой", callback_data=f"start_combat:{session_id}")],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"boss_challenge_back:{session_id}")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"cancel_encounter:{session_id}")],
         ]
     )
 
@@ -321,15 +322,6 @@ async def boss_challenge_prompt(callback: CallbackQuery) -> None:
     session_id = _session_id_from(callback.data)
     await callback.message.edit_reply_markup(reply_markup=_boss_challenge_confirm_keyboard(session_id))
     await callback.answer("⚠️ После этого отступить будет нельзя.", show_alert=True)
-
-
-@router.callback_query(F.data.startswith("boss_challenge_back:"))
-async def boss_challenge_back(callback: CallbackQuery) -> None:
-    """"Назад" с экрана подтверждения — на сервере ничего не менялось,
-    просто возвращаем исходную клавиатуру (см. boss_challenge_prompt)."""
-    session_id = _session_id_from(callback.data)
-    await callback.message.edit_reply_markup(reply_markup=_boss_challenge_keyboard(session_id))
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("start_combat:"))
