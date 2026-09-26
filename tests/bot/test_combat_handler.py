@@ -6,6 +6,8 @@ import pytest
 
 from bot.client import ApiError
 from bot.handlers.combat import (
+    boss_challenge_back,
+    boss_challenge_prompt,
     build_resume_keyboard,
     build_resume_text,
     cancel_encounter,
@@ -99,9 +101,35 @@ async def test_search_boss_encounter_shows_potion_stock_and_challenge_buttons():
     # сверху, "Назад" снизу; подпись напоминает порог уровня (подсказка, не
     # гейт — сервер всё равно проверит его сам на start_combat).
     assert len(markup.inline_keyboard) == 2
-    assert markup.inline_keyboard[0][0].callback_data == "start_combat:9"
+    assert markup.inline_keyboard[0][0].callback_data == "boss_challenge_prompt:9"
     assert "9 уровня" in markup.inline_keyboard[0][0].text
     assert markup.inline_keyboard[1][0].callback_data == "cancel_encounter:9"
+
+
+async def test_boss_challenge_prompt_shows_confirm_buttons_and_alert():
+    # docs/notes.md, п.65 — "Бросить вызов" необратим (нельзя отменить вне
+    # "awaiting_initiative"), поэтому сначала подтверждение, без обращения
+    # к API: сама встреча ещё не начата.
+    callback = make_callback("boss_challenge_prompt:9")
+    callback.message.edit_reply_markup = AsyncMock()
+
+    await boss_challenge_prompt(callback)
+
+    markup = callback.message.edit_reply_markup.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["start_combat:9", "boss_challenge_back:9"]
+    callback.answer.assert_awaited_once_with("⚠️ После этого отступить будет нельзя.", show_alert=True)
+
+
+async def test_boss_challenge_back_restores_challenge_keyboard():
+    callback = make_callback("boss_challenge_back:9")
+    callback.message.edit_reply_markup = AsyncMock()
+
+    await boss_challenge_back(callback)
+
+    markup = callback.message.edit_reply_markup.call_args.kwargs["reply_markup"]
+    assert markup.inline_keyboard[0][0].callback_data == "boss_challenge_prompt:9"
+    callback.answer.assert_awaited_once_with()
 
 
 async def test_search_boss_encounter_shows_alert_on_existing_session():
@@ -630,7 +658,7 @@ async def test_build_resume_keyboard_awaiting_initiative_boss_shows_challenge_an
     resume = {"status": "awaiting_initiative", "enemy_type": "boss"}
     markup = build_resume_keyboard(5, resume)
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert callback_datas == ["start_combat:5", "cancel_encounter:5"]
+    assert callback_datas == ["boss_challenge_prompt:5", "cancel_encounter:5"]
 
 
 async def test_build_resume_text_appends_potion_stock_for_boss_awaiting_initiative():

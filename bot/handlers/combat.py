@@ -145,14 +145,34 @@ def _boss_challenge_keyboard(session_id: int) -> InlineKeyboardMarkup:
     на экране после инициативы (там уже настоящая попытка побега). Порог
     уровня в подписи "Бросить вызов" — только подсказка (docs/notes.md,
     п.59), реальную проверку делает сервер на start_combat (п.58). Каждая
-    кнопка на своей строке — "Бросить вызов" сверху, "Назад" снизу."""
+    кнопка на своей строке — "Бросить вызов" сверху, "Назад" снизу.
+
+    "Бросить вызов" ведёт не прямо на start_combat, а на промежуточный
+    "boss_challenge_prompt" (docs/notes.md, п.65) — тап по ней уже
+    необратим (сервер запрещает отмену вне статуса "awaiting_initiative",
+    см. cancel_combat_session), а дальше для босса нет пути назад вообще
+    (п.57) — единственная по-настоящему необратимая кнопка в игре, стоит
+    защитить от мисклика лишним подтверждением."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
                 text=f"⚔️ Бросить вызов (с {BOSS_LEVEL_REQUIREMENT} уровня)",
-                callback_data=f"start_combat:{session_id}",
+                callback_data=f"boss_challenge_prompt:{session_id}",
             )],
             [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"cancel_encounter:{session_id}")],
+        ]
+    )
+
+
+def _boss_challenge_confirm_keyboard(session_id: int) -> InlineKeyboardMarkup:
+    """Подтверждение перед "Бросить вызов" (см. _boss_challenge_keyboard) —
+    "Назад" тут просто возвращает исходную клавиатуру, без обращения к API:
+    на сервере до этого момента ничего не менялось (сессия ещё
+    "awaiting_initiative")."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⚔️ Да, вступить в бой", callback_data=f"start_combat:{session_id}")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"boss_challenge_back:{session_id}")],
         ]
     )
 
@@ -289,6 +309,26 @@ async def cancel_encounter(callback: CallbackQuery, api: ApiClient) -> None:
     if character is None:
         return
     await callback.message.edit_text(render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("boss_challenge_prompt:"))
+async def boss_challenge_prompt(callback: CallbackQuery) -> None:
+    """Подтверждение перед необратимым "Бросить вызов" (docs/notes.md,
+    п.65) — только меняет клавиатуру на месте (текст встречи с запасом
+    зелий не трогаем) и показывает алерт Telegram, без обращения к API:
+    сама встреча ещё не начата, ничего на сервере пока не изменилось."""
+    session_id = _session_id_from(callback.data)
+    await callback.message.edit_reply_markup(reply_markup=_boss_challenge_confirm_keyboard(session_id))
+    await callback.answer("⚠️ После этого отступить будет нельзя.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("boss_challenge_back:"))
+async def boss_challenge_back(callback: CallbackQuery) -> None:
+    """"Назад" с экрана подтверждения — на сервере ничего не менялось,
+    просто возвращаем исходную клавиатуру (см. boss_challenge_prompt)."""
+    session_id = _session_id_from(callback.data)
+    await callback.message.edit_reply_markup(reply_markup=_boss_challenge_keyboard(session_id))
     await callback.answer()
 
 
