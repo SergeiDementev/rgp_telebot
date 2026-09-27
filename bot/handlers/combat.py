@@ -9,7 +9,9 @@ power_attack=true в теле запроса, отдельная кнопка р
 только на ходу игрока.
 """
 
-from typing import Optional
+import logging
+import time
+from typing import Any, Awaitable, Callable, Optional
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
@@ -25,7 +27,36 @@ from bot.handlers.character import (
 )
 from bot.utils import get_character_or_prompt_start, safe_edit_text
 
+_timing_logger = logging.getLogger("bot.combat_timing")
+
+
+async def _log_callback_timing(
+    handler: Callable[[CallbackQuery, dict], Awaitable[Any]],
+    event: CallbackQuery,
+    data: dict,
+) -> Any:
+    """Тайминг обработки каждого боевого нажатия (docs/notes.md) —
+    расследование ~2сек "подвисания" кнопки при частом темпе нажатий.
+    Логирует момент получения callback и момент завершения хендлера
+    (после edit_text/callback.answer() внутри него — этот middleware
+    оборачивает вызов хендлера целиком, оба вызова успевают отработать
+    до `return`), с разницей в миллисекундах. Пишет на каждое действие,
+    не только при сбоях — try/finally, чтобы тайминг не терялся, если
+    хендлер упадёт с исключением."""
+    started_at = time.perf_counter()
+    _timing_logger.info("combat callback received: data=%s user_id=%s", event.data, event.from_user.id)
+    try:
+        return await handler(event, data)
+    finally:
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        _timing_logger.info(
+            "combat callback handled: data=%s user_id=%s elapsed_ms=%.1f",
+            event.data, event.from_user.id, elapsed_ms,
+        )
+
+
 router = Router()
+router.callback_query.middleware(_log_callback_timing)
 
 
 def _session_id_from(callback_data: str) -> int:

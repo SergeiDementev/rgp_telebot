@@ -8,6 +8,8 @@
 бот сам ничего не хранит между сообщениями.
 """
 
+import html
+
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -65,9 +67,16 @@ BOSS_LEVEL_REQUIREMENT = 9
 
 
 def render_stats_screen(character: dict) -> str:
-    """§4: переиспользуемый экран статов персонажа."""
+    """§4: переиспользуемый экран статов персонажа.
+
+    `nickname` экранируется через html.escape() — это имя/фамилия из
+    Telegram-профиля (bot/handlers/start.py::callback.from_user.full_name),
+    полностью подконтрольные пользователю, а сообщение отправляется с
+    parse_mode=HTML (bot/main.py). Без экранирования `<`/`>`/`&` в имени,
+    не образующие валидный Telegram-тег, роняют отправку целиком
+    ("can't parse entities") — self-DoS через собственный профиль."""
     return (
-        f"🧙 {character['nickname']}\n"
+        f"🧙 {html.escape(character['nickname'])}\n"
         f"🏅 Уровень: {character['level']}\n"
         f"❤️ HP: {character['hp_current']:.0f}/{character['hp_max']:.0f}\n"
         f"💪 Сила: {character['strength']}\n"

@@ -28,8 +28,9 @@ env/
 *.sqlite3
 data/
 
-# Логи
+# Логи — bind mount в рантайме (docker-compose.yml), не нужны в образе
 *.log
+logs/
 
 # Тесты и покрытие
 .pytest_cache/

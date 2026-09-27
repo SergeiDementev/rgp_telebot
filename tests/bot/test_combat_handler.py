@@ -1,11 +1,13 @@
 """Тесты bot/handlers/combat.py."""
 
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from bot.client import ApiError
 from bot.handlers.combat import (
+    _log_callback_timing,
     boss_challenge_prompt,
     build_resume_keyboard,
     build_resume_text,
@@ -718,3 +720,38 @@ async def test_cancel_encounter_shows_alert_when_already_started():
 
     callback.message.edit_text.assert_not_called()
     callback.answer.assert_awaited_once_with("Бой уже начался — отменить нельзя.", show_alert=True)
+
+
+async def test_log_callback_timing_logs_received_and_handled_around_handler(caplog):
+    # docs/notes.md — расследование "подвисания" кнопки: middleware должен
+    # реально оборачивать вызов хендлера (не подменять результат) и писать
+    # оба лога — на получение и на завершение, с elapsed_ms.
+    callback = make_callback("take_turn:5")
+    handler = AsyncMock(return_value="handler-result")
+
+    with caplog.at_level(logging.INFO, logger="bot.combat_timing"):
+        result = await _log_callback_timing(handler, callback, {"api": "stub"})
+
+    assert result == "handler-result"
+    handler.assert_awaited_once_with(callback, {"api": "stub"})
+    messages = [record.message for record in caplog.records]
+    assert any("combat callback received" in m and "take_turn:5" in m for m in messages)
+    handled = [m for m in messages if "combat callback handled" in m]
+    assert len(handled) == 1
+    assert "take_turn:5" in handled[0]
+    assert "elapsed_ms=" in handled[0]
+
+
+async def test_log_callback_timing_logs_even_when_handler_raises(caplog):
+    # try/finally — тайминг не должен теряться, если хендлер упал.
+    callback = make_callback("take_turn:5")
+
+    async def failing_handler(event, data):
+        raise RuntimeError("boom")
+
+    with caplog.at_level(logging.INFO, logger="bot.combat_timing"):
+        with pytest.raises(RuntimeError, match="boom"):
+            await _log_callback_timing(failing_handler, callback, {})
+
+    messages = [record.message for record in caplog.records]
+    assert any("combat callback handled" in m for m in messages)

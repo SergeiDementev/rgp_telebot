@@ -100,6 +100,8 @@ docker compose down             # остановить (том rpg_pgdata с д�
 
 Тесты через Docker не гоняются — `pytest` по-прежнему только на хосте (шаг 6 выше), контейнеры этого не касаются.
 
+**Логи бота на диске** (docs/notes.md) — `bot/` пишет `logs/bot.log` (плюс ротация `logs/bot.log.1`/`.2`/`.3`) в дополнение к обычному выводу в stdout (`docker compose logs bot`), через bind mount `./logs:/app/logs` в `docker-compose.yml` — переживает `docker compose up -d --build`, в отличие от вывода контейнера. Директория `logs/` создаётся автоматически при первом запуске, в `.gitignore`/`.dockerignore`.
+
 ---
 
 ## 3. Архитектурные принципы (сквозные, действуют на весь проект)

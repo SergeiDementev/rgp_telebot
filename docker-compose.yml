@@ -49,6 +49,12 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       API_BASE_URL: http://api:8000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    volumes:
+      # docs/notes.md — файловый лог (bot/main.py) пишет сюда; bind mount
+      # в поддиректорию репозитория, не общесерверную, и переживает
+      # docker compose up -d --build (writable-слой контейнера при
+      # пересборке пересоздаётся, этот том — нет).
+      - ./logs:/app/logs
     depends_on:
       api:
         condition: service_healthy

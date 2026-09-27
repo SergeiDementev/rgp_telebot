@@ -13,6 +13,7 @@ from bot.handlers.character import (
     finish_creation,
     open_allocation,
     render_allocation_screen,
+    render_stats_screen,
     sell_loot,
     show_rules,
     show_rules_section,
@@ -256,6 +257,21 @@ async def test_buy_potion_cap_reached_shows_distinct_alert():
 
     callback.message.edit_text.assert_not_called()
     callback.answer.assert_awaited_once_with("Уже максимум зелий этого размера.", show_alert=True)
+
+
+async def test_render_stats_screen_escapes_html_special_chars_in_nickname():
+    # nickname приходит из Telegram-профиля (full_name) — полностью
+    # подконтролен пользователю, а сообщение уходит с parse_mode=HTML
+    # (bot/main.py). Без экранирования "<"/"&", не образующие валидный
+    # Telegram-тег, роняют отправку целиком ("can't parse entities") —
+    # self-DoS через собственное имя в профиле.
+    character = {**BASE_CHARACTER, "nickname": "<b>Evil</b> & Co"}
+
+    text = render_stats_screen(character)
+
+    assert "<b>Evil</b>" not in text
+    assert "&lt;b&gt;Evil&lt;/b&gt;" in text
+    assert "&amp; Co" in text
 
 
 async def test_back_to_stats_shows_stats_screen():

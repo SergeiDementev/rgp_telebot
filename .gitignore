@@ -25,8 +25,10 @@ env/
 *.sqlite
 *.sqlite3
 
-# Логи
+# Логи (logs/ отдельно от *.log — RotatingFileHandler ротирует в bot.log.1,
+# bot.log.2 и т.п., не подпадающие под *.log)
 *.log
+logs/
 
 # Сырые результаты scripts/simulate_combat.py — регенерируемый вывод
 data/
