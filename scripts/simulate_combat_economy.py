@@ -72,9 +72,30 @@ SMALL_POTION_HEAL_PERCENT = ec.SMALL_POTION_HEAL_PERCENT
 LARGE_POTION_HEAL_PERCENT = ec.LARGE_POTION_HEAL_PERCENT
 SMALL_POTION_PRICE = ec.SMALL_POTION_PRICE
 LARGE_POTION_PRICE = ec.LARGE_POTION_PRICE
-HEAL_TRIGGER_HP_PERCENT = ec.HEAL_TRIGGER_HP_PERCENT
 SMALL_POTION_CAP = ec.SMALL_POTION_CAP
 LARGE_POTION_CAP = ec.LARGE_POTION_CAP
+
+# Автопитьё зелья по порогу HP (docs/notes.md) — НЕ в core/economy.py:
+# живая игра (с п.33) использует только явное решение игрока кнопкой, эта
+# логика нужна исключительно AI-модели противника здесь и в
+# scripts/simulate_boss.py (импортирует их отсюда как `sce.*`, тот же
+# принцип реэкспорта, что и константы выше).
+HEAL_TRIGGER_HP_PERCENT = 40  # использовать зелье в бою, если HP/HP_max <= этот порог
+
+
+def is_hp_at_or_below_heal_threshold(hp: float, hp_max: float) -> bool:
+    return hp / hp_max <= HEAL_TRIGGER_HP_PERCENT / 100
+
+
+def choose_potion_to_drink(potions_small: int, potions_large: int):
+    """Автоматический выбор зелья ВО ВРЕМЯ БОЯ (не в магазине — там игрок
+    выбирает размер явно кнопкой) — приоритет Большому, если есть. None,
+    если инвентарь пуст."""
+    if potions_large > 0:
+        return "large"
+    if potions_small > 0:
+        return "small"
+    return None
 
 # Граница "раннего этапа" для диагностики цены входа в экономику
 # (docs/notes.md) — уровни 1-4, дальше считается "остальная игра".
@@ -97,7 +118,7 @@ def roll_loot(enemy_name: str, rng) -> tuple:
     return ec.resolve_loot_drop(enemy_name, rng.randint(1, 100))
 
 
-_choose_potion = ec.choose_potion_to_drink
+_choose_potion = choose_potion_to_drink
 _potion_heal_percent = ec.potion_heal_percent
 
 
@@ -109,9 +130,9 @@ def _maybe_drink_potion(attacker: dict) -> None:
     (в отличие от боевых проверок, которые все идут через cm.*)."""
     if attacker["potion_used_this_battle"]:
         return
-    if not ec.is_hp_at_or_below_heal_threshold(attacker["hp"], attacker["hp_max"]):
+    if not is_hp_at_or_below_heal_threshold(attacker["hp"], attacker["hp_max"]):
         return
-    potion = ec.choose_potion_to_drink(attacker["potions_small"], attacker["potions_large"])
+    potion = choose_potion_to_drink(attacker["potions_small"], attacker["potions_large"])
     if potion is None:
         return
     if potion == "large":

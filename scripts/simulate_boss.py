@@ -120,12 +120,14 @@ def compute_typical_level_9_10_stats(seeds=PROBE_SEEDS, policy: str = "priority_
 def _maybe_drink_potion_unlimited(attacker: dict) -> None:
     """Как sce._maybe_drink_potion, но БЕЗ лимита "раз за бой" — у финального
     босса этого лимита нет вообще (docs/notes.md, п.39), ограничивает
-    только реальный инвентарь. Переиспользует core.economy.choose_potion_
-    to_drink/calculate_heal_amount как есть, не дублирует условия
-    триггера/приоритета/процента лечения."""
-    if not ec.is_hp_at_or_below_heal_threshold(attacker["hp"], attacker["hp_max"]):
+    только реальный инвентарь. Переиспользует sce.choose_potion_to_drink/
+    core.economy.calculate_heal_amount как есть, не дублирует условия
+    триггера/приоритета/процента лечения. Триггер/выбор зелья живут в
+    simulate_combat_economy.py, не в core/economy.py (docs/notes.md) — это
+    логика AI-модели противника для симулятора, не правило самой игры."""
+    if not sce.is_hp_at_or_below_heal_threshold(attacker["hp"], attacker["hp_max"]):
         return
-    potion = ec.choose_potion_to_drink(attacker["potions_small"], attacker["potions_large"])
+    potion = sce.choose_potion_to_drink(attacker["potions_small"], attacker["potions_large"])
     if potion is None:
         return
     if potion == "large":

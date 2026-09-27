@@ -36,6 +36,14 @@ def test_roll_loot_nothing_has_zero_price():
 # ---------------------------------------------------------------------------
 
 
+def test_is_hp_at_or_below_heal_threshold():
+    # docs/notes.md — не в core/economy.py: живая игра решение пить зелье
+    # по порогу HP не принимает вообще (п.33), это только AI-модель
+    # противника здесь и в scripts/simulate_boss.py.
+    assert sce.is_hp_at_or_below_heal_threshold(40, 100) is True
+    assert sce.is_hp_at_or_below_heal_threshold(41, 100) is False
+
+
 def test_choose_potion_prefers_large_when_both_available():
     assert sce._choose_potion(potions_small=3, potions_large=1) == "large"
 

@@ -95,26 +95,11 @@ def test_calculate_heal_amount_rounds_to_integer_for_non_divisible_hp_max():
     assert ec.calculate_heal_amount(50, "small") == 12  # round(12.5) -> 12
 
 
-def test_is_hp_at_or_below_heal_threshold():
-    assert ec.is_hp_at_or_below_heal_threshold(40, 100) is True
-    assert ec.is_hp_at_or_below_heal_threshold(41, 100) is False
-
-
-# ---------------------------------------------------------------------------
-# Выбор зелья для питья в бою
-# ---------------------------------------------------------------------------
-
-
-def test_choose_potion_to_drink_prefers_large():
-    assert ec.choose_potion_to_drink(potions_small=3, potions_large=1) == "large"
-
-
-def test_choose_potion_to_drink_falls_back_to_small():
-    assert ec.choose_potion_to_drink(potions_small=2, potions_large=0) == "small"
-
-
-def test_choose_potion_to_drink_none_when_empty():
-    assert ec.choose_potion_to_drink(potions_small=0, potions_large=0) is None
+# is_hp_at_or_below_heal_threshold/choose_potion_to_drink — не здесь
+# (docs/notes.md): автопитьё зелья по порогу HP не используется живой игрой
+# (п.33 — только явное решение игрока кнопкой), нужно только AI-модели
+# противника в калибровочных симуляторах — тесты переехали в
+# tests/scripts/test_simulate_combat_economy.py вместе с самой логикой.
 
 
 # ---------------------------------------------------------------------------

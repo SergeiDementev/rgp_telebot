@@ -6,12 +6,14 @@
 готовый бросок аргументом (`roll`), как `resolve_circumstance_outcome`
 принимает d10 в `combat_mechanics.py`.
 
-Единственный источник констант и правил экономики для `api/` (реальная игра)
-и `scripts/simulate_combat_economy.py`/`simulate_boss.py` (калибровка) — до
+Источник констант и правил экономики для `api/` (реальная игра) — до
 2026-09-17 эти константы существовали только в симуляторе (docs/notes.md,
 пп.26-29); перенесены сюда, когда экономика из черновика калибровки стала
-частью самой игры (docs/notes.md, п.30).
-"""
+частью самой игры (docs/notes.md, п.30). Автоматическое питьё зелья по
+порогу HP (`HEAL_TRIGGER_HP_PERCENT` и связанные функции) сюда не входит —
+живая игра с п.33 использует только явное решение игрока кнопкой; та
+логика нужна исключительно AI-модели противника в калибровочных
+симуляторах и живёт в `scripts/simulate_combat_economy.py`."""
 
 from typing import Optional
 
@@ -68,7 +70,6 @@ SMALL_POTION_HEAL_PERCENT = 25
 LARGE_POTION_HEAL_PERCENT = 50
 SMALL_POTION_PRICE = 8
 LARGE_POTION_PRICE = 50
-HEAL_TRIGGER_HP_PERCENT = 40  # использовать зелье в бою, если HP/HP_max <= этот порог
 
 SMALL_POTION_CAP = 5
 LARGE_POTION_CAP = 3
@@ -104,21 +105,6 @@ def calculate_heal_amount(hp_max: float, size: str) -> int:
     (уже целый) никогда не мог "доокруглить" обратно — он молча копился в
     hp_current/character_hp_snapshot до конца боя и дальше."""
     return round(hp_max * potion_heal_percent(size) / 100)
-
-
-def is_hp_at_or_below_heal_threshold(hp: float, hp_max: float) -> bool:
-    return hp / hp_max <= HEAL_TRIGGER_HP_PERCENT / 100
-
-
-def choose_potion_to_drink(potions_small: int, potions_large: int) -> Optional[str]:
-    """Автоматический выбор зелья ВО ВРЕМЯ БОЯ (не в магазине — там игрок
-    выбирает размер явно кнопкой) — приоритет Большому, если есть. None,
-    если инвентарь пуст."""
-    if potions_large > 0:
-        return "large"
-    if potions_small > 0:
-        return "small"
-    return None
 
 
 def check_can_buy_potion(gold: int, potions_small: int, potions_large: int, size: str) -> Optional[str]:

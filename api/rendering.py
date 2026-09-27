@@ -120,6 +120,22 @@ def render_double_strike_check(enemy_type: str, side_role: str, luck_roll: int, 
     return f"🎲 {prefix}: {luck_roll} → двойного удара нет."
 
 
+def _attack_label(power_attack: bool, normal_label: str) -> str:
+    """§3a: подпись атакующего действия — "💥 Мощный удар", если выбран
+    мощный удар, иначе обычная подпись вызывающей функции (у полной и
+    компактной формы разный текст для обычной атаки — "🗡️ Твоя атака" /
+    "🗡️ Удар" — но один и тот же для мощного удара)."""
+    return "💥 Мощный удар" if power_attack else normal_label
+
+
+def _damage_suffix(percent: int, power_attack: bool) -> str:
+    """§3a: хвост строки атаки после "→" — процент силы, при мощном ударе с
+    пометкой множителя урона (POWER_ATTACK_DAMAGE_MULTIPLIER, не хардкод)."""
+    if power_attack:
+        return f"{percent}% силы, урон ×{POWER_ATTACK_DAMAGE_MULTIPLIER:g}!"
+    return f"{percent}% силы."
+
+
 def render_strike(
     enemy_type: str,
     side_role: str,
@@ -139,21 +155,19 @@ def render_strike(
     уворот и урон уже посчитаны вызывающим кодом с учётом множителя, здесь
     только отображение."""
     names = ENEMY_NAMES[enemy_type]
+    power_attack = power_attack and side_role == "player"  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
     if side_role == "player":
         dodge_label, damage_verb = f"{names['nom_cap']} уворачивается", "Ты наносишь"
         dodge_verb = names["dodge_verb"]
-        attack_label = "💥 Мощный удар" if power_attack else "🗡️ Твоя атака"
+        attack_label = _attack_label(power_attack, "🗡️ Твоя атака")
     else:
         attack_label, dodge_label, damage_verb = f"🗡️ Атака {names['gen_low']}", "Твой уворот", f"{names['nom_cap']} наносит"
         dodge_verb = "увернулся"
-        power_attack = False  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
 
     if attack_percent is None:
         return f"{attack_label}: {attack_roll} → промах!"
 
-    percent_part = (
-        f"{attack_percent}% силы, урон ×{POWER_ATTACK_DAMAGE_MULTIPLIER:g}!" if power_attack else f"{attack_percent}% силы."
-    )
+    percent_part = _damage_suffix(attack_percent, power_attack)
     lines = [f"{attack_label}: {attack_roll} → {percent_part}"]
     if dodged:
         lines.append(f"🛡️ {dodge_label}: {dodge_roll} → {dodge_verb}!")
@@ -179,20 +193,18 @@ def render_compact_strike(
     удара. power_attack — см. render_strike, тот же принцип (только игрок,
     только подпись/эмодзи/пометка множителя)."""
     names = ENEMY_NAMES[enemy_type]
+    power_attack = power_attack and side_role == "player"  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
     if side_role == "player":
         dodge_label, dodge_verb = f"{names['nom_cap']} уворачивается", names["dodge_verb"]
-        strike_label = "💥 Мощный удар" if power_attack else "🗡️ Удар"
+        strike_label = _attack_label(power_attack, "🗡️ Удар")
     else:
         dodge_label, dodge_verb = "Ты уворачиваешься", "увернулся"
         strike_label = "🗡️ Удар"
-        power_attack = False  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
 
     if attack_percent is None:
         return f"{strike_label} {strike_number}: {attack_roll} → промах."
 
-    percent_part = (
-        f"{attack_percent}% силы, урон ×{POWER_ATTACK_DAMAGE_MULTIPLIER:g}!" if power_attack else f"{attack_percent}% силы."
-    )
+    percent_part = _damage_suffix(attack_percent, power_attack)
     parts = [f"{strike_label} {strike_number}: {attack_roll} → {percent_part}"]
     if dodged:
         parts.append(f"🛡️ {dodge_label}: {dodge_roll} → {dodge_verb}!")
