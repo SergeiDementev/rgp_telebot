@@ -68,9 +68,7 @@ def _old_resolve_strike(
     """Копия cm.resolve_strike — сигнатура идентична (drop-in замена через
     монки-патч), но уворот считается по старой формуле с потолком через
     cm.calculate_saturating_success_faces (см. докстринг модуля)."""
-    attack_percent = (
-        cm.resolve_power_attack_percent(attack_roll) if power_attack else cm.resolve_attack_percent(attack_roll)
-    )
+    attack_percent = cm.resolve_attack_percent(attack_roll, power=power_attack)
     if attack_percent is None:
         return cm.StrikeResult(missed=True, attack_percent=None, dodge_success_faces=None, dodged=None, damage=0.0)
 

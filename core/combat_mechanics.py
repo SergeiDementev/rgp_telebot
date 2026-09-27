@@ -32,19 +32,15 @@ FLEE_THRESHOLD_PERCENT_DEFAULT = 25
 CIRCUMSTANCE_MODIFIER_PERCENT_DEFAULT = 20
 
 
-def resolve_attack_percent(attack_roll: int) -> Optional[int]:
-    """§3: процент от Силы по грани атаки, либо None при промахе (1-2)."""
-    if attack_roll <= ATTACK_MISS_MAX_FACE:
-        return None
-    if attack_roll <= ATTACK_FIXED_MAX_FACE:
-        return ATTACK_FIXED_PERCENT
-    step = attack_roll - ATTACK_SCALING_MIN_FACE
-    return ATTACK_SCALING_MIN_PERCENT + step * ATTACK_SCALING_STEP_PERCENT
+def resolve_attack_percent(attack_roll: int, *, power: bool = False) -> Optional[int]:
+    """§3(+§3a): процент от Силы по грани атаки, либо None при промахе.
 
-
-def resolve_power_attack_percent(attack_roll: int) -> Optional[int]:
-    """§3a: процент от Силы по грани мощного удара, либо None при промахе (1-4)."""
-    if attack_roll <= POWER_ATTACK_MISS_MAX_FACE:
+    Обычная атака и Мощный удар (только игрок) делят одну и ту же шкалу
+    фиксированного/линейно растущего процента (3-5 -> 50%, 6-10 -> 60-100%)
+    — отличается только порог промаха (1-2 грани обычная атака, 1-4 —
+    мощный удар, §3a)."""
+    miss_max_face = POWER_ATTACK_MISS_MAX_FACE if power else ATTACK_MISS_MAX_FACE
+    if attack_roll <= miss_max_face:
         return None
     if attack_roll <= ATTACK_FIXED_MAX_FACE:
         return ATTACK_FIXED_PERCENT
@@ -163,16 +159,29 @@ def resolve_circumstance_outcome(roll: int) -> Optional[str]:
     return "buff"
 
 
+def resolve_circumstance_multiplier(
+    outcome: Optional[str],
+    modifier_percent: float = CIRCUMSTANCE_MODIFIER_PERCENT_DEFAULT,
+) -> float:
+    """§8: голый множитель Силы кидающего по исходу обстоятельства (buff ->
+    ×(1+modifier), debuff -> ×(1-modifier), иначе ×1) — без домножения на
+    конкретное значение Силы, чтобы вызывающий код мог сохранить множитель
+    отдельно и применить его позже (api/routers/encounter.py хранит его в
+    CombatSession.strength_modifier_*, до самого момента удара)."""
+    if outcome == "buff":
+        return 1 + modifier_percent / 100
+    if outcome == "debuff":
+        return 1 - modifier_percent / 100
+    return 1.0
+
+
 def apply_circumstance_strength_modifier(
     strength: float,
     outcome: Optional[str],
     modifier_percent: float = CIRCUMSTANCE_MODIFIER_PERCENT_DEFAULT,
 ) -> float:
     """§8: модификатор относителен к кидающему (buff усиливает его, debuff ослабляет)."""
-    if outcome == "buff":
-        return strength * (1 + modifier_percent / 100)
-    if outcome == "debuff":
-        return strength * (1 - modifier_percent / 100)
+    return strength * resolve_circumstance_multiplier(outcome, modifier_percent)
     return strength
 
 
@@ -196,9 +205,7 @@ def resolve_strike(
     """§3(+§3a)+§4: один удар целиком — атака (обычная либо мощная), при
     попадании уворот, итоговый урон. Уворот не различает тип атаки —
     работает одинаково для мобов, волка/кабана и босса, как и всегда."""
-    attack_percent = (
-        resolve_power_attack_percent(attack_roll) if power_attack else resolve_attack_percent(attack_roll)
-    )
+    attack_percent = resolve_attack_percent(attack_roll, power=power_attack)
     if attack_percent is None:
         return StrikeResult(
             missed=True,

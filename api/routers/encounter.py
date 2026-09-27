@@ -40,14 +40,6 @@ def _roll_enemy_encounter(level: int) -> tuple:
     return roll, "boar"
 
 
-def _circumstance_multiplier(outcome) -> float:
-    if outcome == "buff":
-        return 1 + cm.CIRCUMSTANCE_MODIFIER_PERCENT_DEFAULT / 100
-    if outcome == "debuff":
-        return 1 - cm.CIRCUMSTANCE_MODIFIER_PERCENT_DEFAULT / 100
-    return 1.0
-
-
 def _require_no_active_session(character: Character, db: Session) -> None:
     active_session = (
         db.query(CombatSession)
@@ -182,7 +174,7 @@ def start_combat(
         circumstance_outcome = cm.resolve_circumstance_outcome(circumstance_roll)
         roller_role = first_role  # §8: кидает победитель инициативы
 
-    multiplier = _circumstance_multiplier(circumstance_outcome)
+    multiplier = cm.resolve_circumstance_multiplier(circumstance_outcome)
     player_modifier = multiplier if roller_role == "player" else 1.0
     enemy_modifier = multiplier if roller_role == "enemy" else 1.0
 

@@ -1060,3 +1060,19 @@
 **Тесты не запускал** — только `docs/`, код не менялся.
 
 **Проверка:** перечитал получившийся `README.md` целиком на связность. Изменение только в `docs/` — не требует перезапуска/пересборки.
+
+## 75. Рефакторинг D1-D3 из ретроспективного обзора — ✅ сделано (2026-09-27)
+
+Прямая просьба реализовать топ-3 находки из ретроспективного обзора боевых механик (прошлый пункт без номера — устный отчёт, не записывался отдельной записью): чисто внутренний рефакторинг, поведение игры не меняется. Baseline (530/530) зафиксирован до начала, полный прогон после каждого из трёх шагов.
+
+**D1 — слияние `resolve_attack_percent`/`resolve_power_attack_percent`** (`core/combat_mechanics.py`): одна функция `resolve_attack_percent(attack_roll, *, power: bool = False)`, порог промаха выбирается одной строкой (`POWER_ATTACK_MISS_MAX_FACE if power else ATTACK_MISS_MAX_FACE`), остальное тело общее. Обновлены все вызывающие места: `resolve_strike` (тот же модуль), `scripts/simulate_dodge_formula_change.py::_old_resolve_strike`, тест `test_resolve_power_attack_percent_boundaries` (`tests/core/test_combat_mechanics.py`). Старое имя `resolve_power_attack_percent` не оставлял обёрткой — обновил все места напрямую, репозиторий маленький, все вызовы под контролем.
+
+**D2 — `_circumstance_multiplier` → переиспользование core-функции**: в `core/combat_mechanics.py` добавлена `resolve_circumstance_multiplier(outcome, modifier_percent=...) -> float` (голый множитель, без домножения на Силу — именно то, что было нужно роутеру для хранения в `session.strength_modifier_*`), `apply_circumstance_strength_modifier` стала однострочной обёрткой (`strength * resolve_circumstance_multiplier(...)`). `api/routers/encounter.py::_circumstance_multiplier` удалена целиком, вызов заменён на `cm.resolve_circumstance_multiplier(circumstance_outcome)`.
+
+**D3 — тройное дублирование логики побега** (`api/routers/combat.py`): новый хелпер `_resolve_flee_attempt(session, character, db, *, fleeing_role, pursuer_strength, fleeing_current_hp) -> str` — бросок → `cm.resolve_flee_attempt` → обновление нужного HP-поля сессии (`character_hp_snapshot` для "player", `enemy_hp_current` для "enemy") → исход (`defeat`/`player_fled` либо `victory`/`enemy_fled`, в зависимости от `fleeing_role`) → `render_flee_attempt` → запись в `turn_log` → `_finish_battle` → commit/refresh → склейка текста. `FleeAttemptResult.missed` внутри хелпера не читается (специально не убирал из самой структуры — отдельная, более мелкая уборка, не в этом заходе). Заменены все три места: `confirm_combat` (отказ сразу после обстоятельства), `flee_decision` (явный выбор "🏃 Сбежать"), `_check_flee_gate` (автопобег бота — там же осталось предварительное присоединение `log_entry` к `turn_log` до вызова хелпера, чтобы сохранить прежний порядок записей: `[log_entry, flee_attempt_entry]`).
+
+**A1/A2 (`_check_flee_gate`/`_finish_battle`)** — проверено, не трогал сверх D3, как договаривались: `_check_flee_gate` действительно сократился "бесплатно" (ветка автопобега бота — с ~23 строк до 7) как прямое механическое следствие D3, без новых решений. Структурно функция всё ещё совмещает проверку применимости и оркестрацию трёх разных исходов — это уже требовало бы отдельного решения, оставлено как есть. `_finish_battle` не менялся вообще — D3 её только продолжает вызывать, ничего в ней не сократилось.
+
+**Тесты не добавлял и не менял** (кроме одной замены имени функции в D1, см. выше) — весь прогон (530/530) сохранился на каждом шаге без единой правки под новое поведение, что и было целью проверки: поведение идентично прежнему.
+
+**Проверка:** `python -m pytest` — 530 из 530 до начала и после каждого из трёх шагов (D1, D2, D3), итог тот же. Изменение в `core/`/`api/`/`scripts/`/`tests/` — требует перезапуска API (бот не трогали, боевой текст рендерится идентично).

@@ -104,6 +104,50 @@ def _finish_battle(session: CombatSession, character: Character, result: str, db
     )
 
 
+def _resolve_flee_attempt(
+    session: CombatSession,
+    character: Character,
+    db: Session,
+    *,
+    fleeing_role: str,
+    pursuer_strength: float,
+    fleeing_current_hp: float,
+) -> str:
+    """§7 combat_mechanics.md: безответный удар преследователя без защиты
+    убегающего — общий паттерн для трёх разных поводов попытки побега
+    (отказ от боя сразу после обстоятельства — confirm_combat; явный выбор
+    "🏃 Сбежать" по HP-порогу — flee_decision; автопобег бота, когда
+    возможность открылась у него — _check_flee_gate). Раньше был списан в
+    каждое из трёх мест почти без изменений.
+
+    `fleeing_role` — "player" | "enemy": чья сторона убегает, определяет и
+    какое HP-поле сессии обновлять, и как назвать исход боя. `flee.missed`
+    здесь не читается — ни один из трёх старых сайтов его не использовал."""
+    attack_roll = random.randint(1, 10)
+    flee = cm.resolve_flee_attempt(pursuer_strength, attack_roll, fleeing_current_hp)
+
+    if fleeing_role == "player":
+        session.character_hp_snapshot = flee.fleeing_hp_after
+        result = "defeat" if flee.fleeing_defeated else "player_fled"
+    else:
+        session.enemy_hp_current = flee.fleeing_hp_after
+        result = "victory" if flee.fleeing_defeated else "enemy_fled"
+
+    flee_text = rendering.render_flee_attempt(
+        session.enemy_type, fleeing_role, attack_roll, flee.attack_percent, flee.damage, flee.fleeing_defeated
+    )
+    session.turn_log = session.turn_log + [
+        {
+            "type": "flee_attempt", "fleeing_role": fleeing_role, "attack_roll": attack_roll,
+            "damage": flee.damage, "defeated": flee.fleeing_defeated,
+        }
+    ]
+    finish_text = _finish_battle(session, character, result, db)
+    db.commit()
+    db.refresh(session)
+    return f"{flee_text}\n\n{finish_text}"
+
+
 def _use_potion(session: CombatSession, character: Character, size: str, db: Session) -> str:
     """Зелье — явное действие игрока в свой ход, кнопкой (docs/notes.md,
     п.33 — отменяет автоматику по порогу HP из п.32: та срабатывала и в
@@ -196,28 +240,13 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
         return {"proceed": False, "text": f"{hp_status}\n\n{check_text}"}
 
     # §7: бот всегда бежит, если возможность открылась — резолвится синхронно.
+    session.turn_log = session.turn_log + [log_entry]
     pursuer_strength = character.strength * session.strength_modifier_player
-    attack_roll = random.randint(1, 10)
-    flee = cm.resolve_flee_attempt(pursuer_strength, attack_roll, current_hp)
-    session.enemy_hp_current = flee.fleeing_hp_after
-    result = "victory" if flee.fleeing_defeated else "enemy_fled"
-    flee_text = rendering.render_flee_attempt(
-        session.enemy_type, "enemy", attack_roll, flee.attack_percent, flee.damage, flee.fleeing_defeated
+    attempt_text = _resolve_flee_attempt(
+        session, character, db,
+        fleeing_role="enemy", pursuer_strength=pursuer_strength, fleeing_current_hp=current_hp,
     )
-    session.turn_log = session.turn_log + [
-        log_entry,
-        {
-            "type": "flee_attempt",
-            "fleeing_role": "enemy",
-            "attack_roll": attack_roll,
-            "damage": flee.damage,
-            "defeated": flee.fleeing_defeated,
-        },
-    ]
-    finish_text = _finish_battle(session, character, result, db)
-    db.commit()
-    db.refresh(session)
-    return {"proceed": False, "text": f"{check_text}\n\n{flee_text}\n\n{finish_text}"}
+    return {"proceed": False, "text": f"{check_text}\n\n{attempt_text}"}
 
 
 def _hp_status_text(session: CombatSession, character: Character, enemy_stats: dict) -> str:
@@ -416,23 +445,11 @@ def confirm_combat(
 
     # §9 шаг 3б / §7: отказ -> безответный удар противника без защиты.
     pursuer_strength = enemy_stats["strength"] * session.strength_modifier_enemy
-    attack_roll = random.randint(1, 10)
-    flee = cm.resolve_flee_attempt(pursuer_strength, attack_roll, session.character_hp_snapshot)
-    session.character_hp_snapshot = flee.fleeing_hp_after
-    result = "defeat" if flee.fleeing_defeated else "player_fled"
-    flee_text = rendering.render_flee_attempt(
-        session.enemy_type, "player", attack_roll, flee.attack_percent, flee.damage, flee.fleeing_defeated
+    attempt_text = _resolve_flee_attempt(
+        session, character, db,
+        fleeing_role="player", pursuer_strength=pursuer_strength, fleeing_current_hp=session.character_hp_snapshot,
     )
-    session.turn_log = session.turn_log + [
-        {
-            "type": "flee_attempt", "fleeing_role": "player", "attack_roll": attack_roll,
-            "damage": flee.damage, "defeated": flee.fleeing_defeated,
-        }
-    ]
-    finish_text = _finish_battle(session, character, result, db)
-    db.commit()
-    db.refresh(session)
-    return _turn_response(session, character, f"{flee_text}\n\n{finish_text}")
+    return _turn_response(session, character, attempt_text)
 
 
 @router.post("/combat/{combat_session_id}/turn", response_model=CombatTurnResponse)
@@ -484,23 +501,12 @@ def flee_decision(
     if payload.decision == "flee":
         enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
         pursuer_strength = enemy_stats["strength"] * session.strength_modifier_enemy
-        attack_roll = random.randint(1, 10)
-        flee = cm.resolve_flee_attempt(pursuer_strength, attack_roll, session.character_hp_snapshot)
-        session.character_hp_snapshot = flee.fleeing_hp_after
-        result = "defeat" if flee.fleeing_defeated else "player_fled"
-        flee_text = rendering.render_flee_attempt(
-            session.enemy_type, "player", attack_roll, flee.attack_percent, flee.damage, flee.fleeing_defeated
+        attempt_text = _resolve_flee_attempt(
+            session, character, db,
+            fleeing_role="player", pursuer_strength=pursuer_strength,
+            fleeing_current_hp=session.character_hp_snapshot,
         )
-        session.turn_log = session.turn_log + [
-            {
-                "type": "flee_attempt", "fleeing_role": "player", "attack_roll": attack_roll,
-                "damage": flee.damage, "defeated": flee.fleeing_defeated,
-            }
-        ]
-        finish_text = _finish_battle(session, character, result, db)
-        db.commit()
-        db.refresh(session)
-        return _turn_response(session, character, f"{flee_text}\n\n{finish_text}")
+        return _turn_response(session, character, attempt_text)
 
     # "continue" — право уже сгорело в _check_flee_gate() при самом броске;
     # присвоение здесь избыточно, но безвредно — оставлено для ясности.

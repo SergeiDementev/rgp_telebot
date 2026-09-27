@@ -47,7 +47,7 @@ def test_resolve_attack_percent_boundaries(attack_roll, expected_percent):
     ],
 )
 def test_resolve_power_attack_percent_boundaries(attack_roll, expected_percent):
-    assert cm.resolve_power_attack_percent(attack_roll) == expected_percent
+    assert cm.resolve_attack_percent(attack_roll, power=True) == expected_percent
 
 
 @pytest.mark.parametrize(
