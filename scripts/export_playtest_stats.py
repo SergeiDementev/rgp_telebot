@@ -87,7 +87,12 @@ def export(db_override: str, character_id: int, out_path: Path) -> int:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for i, session in enumerate(sessions, start=1):
-            reward = pr.calculate_battle_reward(session.result, session.enemy_type)
+            # Победа над финальным боссом — конец игры без награды (та же
+            # ранняя ветка, что в api/routers/combat.py::_finish_battle).
+            if session.enemy_type == "boss" and session.result == "victory":
+                reward = 0
+            else:
+                reward = pr.calculate_battle_reward(session.result, session.enemy_type)
             victory_points += reward
             duration = (session.updated_at - session.created_at).total_seconds()
             metrics = _turn_log_metrics(session.turn_log)
