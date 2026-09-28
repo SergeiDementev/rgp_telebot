@@ -63,6 +63,13 @@ class Character(Base):
     potions_small = Column(Integer, nullable=False, default=0)
     potions_large = Column(Integer, nullable=False, default=0)
 
+    # Двуязычность (docs/notes.md) — "ru" | "en", по одному на персонажа, не
+    # на Telegram-аккаунт: отдельной модели пользователя в проекте нет,
+    # персонаж — единственная сущность, за которой закреплён игрок.
+    # api/dependencies.py::get_localized_character выставляет по этому полю
+    # текущую локаль (core/i18n.py) на время обработки запроса.
+    language = Column(String, nullable=False, default="ru")
+
 
 class CombatSession(Base):
     __tablename__ = "combat_sessions"

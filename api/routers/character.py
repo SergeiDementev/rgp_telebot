@@ -20,6 +20,8 @@ from api.schemas.character import (
     CharacterCreate,
     CharacterOut,
     SellLootResponse,
+    SetLanguageRequest,
+    SetLanguageResponse,
 )
 from core import economy as ec
 from core import progression as pr
@@ -68,6 +70,7 @@ def _to_character_out(character: Character, active_combat_session_id: int | None
         loot=character.loot,
         potions_small=character.potions_small,
         potions_large=character.potions_large,
+        language=character.language,
         active_combat_session_id=active_combat_session_id,
     )
 
@@ -101,6 +104,7 @@ def create_character(payload: CharacterCreate, db: Session = Depends(get_db)) ->
         loot={},
         potions_small=0,
         potions_large=0,
+        language=payload.language,
     )
     db.add(character)
     db.commit()
@@ -230,3 +234,19 @@ def buy_potion(character_id: int, payload: BuyPotionRequest, db: Session = Depen
     db.commit()
     db.refresh(character)
     return BuyPotionResponse(character=_to_character_out(character))
+
+
+@router.post("/{character_id}/set_language", response_model=SetLanguageResponse)
+def set_language(character_id: int, payload: SetLanguageRequest, db: Session = Depends(get_db)) -> SetLanguageResponse:
+    """Команда /language в боте (docs/notes.md) — сохраняет выбор языка на
+    персонажа. Этот роутер не рендерит игровой текст (docs/notes.md), поэтому
+    без get_localized_character — сюда не нужно выставлять текущую локаль,
+    только записать новую на будущее."""
+    character = db.get(Character, character_id)
+    if character is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+
+    character.language = payload.language
+    db.commit()
+    db.refresh(character)
+    return SetLanguageResponse(character=_to_character_out(character))

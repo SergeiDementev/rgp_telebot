@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from api import enemy_content
 from api import rendering
-from api.dependencies import get_current_character, get_db, require_api_key
+from api.dependencies import get_db, get_localized_character, require_api_key
 from api.schemas.combat import CombatStartResponse, EncounterSearchResponse
 from core import combat_mechanics as cm
 from core import progression as pr
@@ -96,7 +96,7 @@ def _start_encounter_session(
 
 @router.post("/encounter/search", response_model=EncounterSearchResponse)
 def search_encounter(
-    character: Character = Depends(get_current_character),
+    character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
 ) -> EncounterSearchResponse:
     _require_no_active_session(character, db)
@@ -110,7 +110,7 @@ def search_encounter(
 
 @router.post("/encounter/search_boss", response_model=EncounterSearchResponse)
 def search_boss_encounter(
-    character: Character = Depends(get_current_character),
+    character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
 ) -> EncounterSearchResponse:
     """Целенаправленная встреча с финальным боссом (docs/notes.md, п.36) —
@@ -129,7 +129,7 @@ def search_boss_encounter(
 @router.post("/combat/{combat_session_id}/start", response_model=CombatStartResponse)
 def start_combat(
     combat_session_id: int,
-    character: Character = Depends(get_current_character),
+    character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
 ) -> CombatStartResponse:
     session = db.get(CombatSession, combat_session_id)

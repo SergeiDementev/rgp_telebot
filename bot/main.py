@@ -15,12 +15,23 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramRetryAfter
+from aiogram.types import BotCommand
 from dotenv import load_dotenv
 
 from bot.client import ApiClient
-from bot.handlers import character, combat, fallback, start
+from bot.handlers import character, combat, fallback, language, start
 
 load_dotenv()
+
+# Системное меню команд Telegram (иконка "/" рядом с полем ввода, docs/
+# notes.md) — без этого команды по-прежнему работают при ручном вводе, но
+# не отображаются в подсказке. /rules сюда не входит осознанно (docs/
+# notes.md, п.1) — не команда, кнопка на экране статов.
+BOT_COMMANDS = [
+    BotCommand(command="start", description="Начать/продолжить игру"),
+    BotCommand(command="language", description="Сменить язык / Change language"),
+    BotCommand(command="reset", description="Обнулить персонажа"),
+]
 
 # Поддиректория проекта, не общесерверная (docs/notes.md) — на сервере со
 # временем могут появиться другие приложения, их логи не должны смешиваться
@@ -66,6 +77,7 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(start.router)
     dp.include_router(character.router)
     dp.include_router(combat.router)
+    dp.include_router(language.router)
     # Последним (docs/notes.md) — ловит любой текст, не подошедший ни
     # одной команде/фильтру выше по цепочке.
     dp.include_router(fallback.router)
@@ -85,6 +97,7 @@ async def main() -> None:
 
     bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     bot.session.middleware(_log_retry_after)
+    await bot.set_my_commands(BOT_COMMANDS)
     dp = build_dispatcher()
 
     async with ApiClient() as api:

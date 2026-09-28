@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from bot.client import ApiClient, ApiError
 from bot.handlers.character import allocation_keyboard, render_allocation_screen, render_stats_screen, stats_screen_keyboard
 from bot.handlers.combat import build_resume_keyboard, build_resume_text
-from bot.utils import WELCOME_TEXT, start_game_keyboard  # noqa: F401 — WELCOME_TEXT реэкспортируется для тестов
+from bot.utils import WELCOME_TEXT, detect_language, start_game_keyboard  # noqa: F401 — WELCOME_TEXT реэкспортируется для тестов
 
 router = Router()
 
@@ -79,7 +79,11 @@ async def start_game(callback: CallbackQuery, api: ApiClient) -> None:
     except ApiError as error:
         if error.status_code != 404:
             raise
-        character = await api.create_character(callback.from_user.id, callback.from_user.full_name)
+        # docs/notes.md — язык по умолчанию только для по-настоящему нового
+        # персонажа; при повторном /start (get_character успевает) язык уже
+        # выбран раньше и его не переопределяем.
+        language = detect_language(callback.from_user.language_code)
+        character = await api.create_character(callback.from_user.id, callback.from_user.full_name, language)
 
     await callback.message.edit_text(
         render_allocation_screen(character, title="🧙 Создание героя", mode="creation"),
@@ -118,8 +122,15 @@ async def reset_confirm(callback: CallbackQuery, api: ApiClient) -> None:
     _boss_victory_keyboard) — только для аналитики на сервере, поведение
     бота от неё не зависит."""
     reason = callback.data.split(":", 1)[1]
+    # docs/notes.md — язык переносится со старого персонажа на нового, не
+    # переопределяется заново по language_code: если игрок явно выбрал язык
+    # через /language, обнуление персонажа не должно тихо сбрасывать этот
+    # выбор обратно к автоопределению.
+    old_character = await api.get_character(callback.from_user.id)
     await api.delete_character(callback.from_user.id, reason=reason)
-    character = await api.create_character(callback.from_user.id, callback.from_user.full_name)
+    character = await api.create_character(
+        callback.from_user.id, callback.from_user.full_name, old_character["language"]
+    )
     await callback.message.edit_text(
         render_allocation_screen(character, title="🧙 Создание героя", mode="creation"),
         reply_markup=allocation_keyboard(character, mode="creation"),

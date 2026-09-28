@@ -26,10 +26,11 @@ def make_message(user_id: int = 1) -> MagicMock:
     return message
 
 
-def make_callback(user_id: int = 1, full_name: str = "Hero") -> MagicMock:
+def make_callback(user_id: int = 1, full_name: str = "Hero", language_code: str = "ru") -> MagicMock:
     callback = MagicMock()
     callback.from_user.id = user_id
     callback.from_user.full_name = full_name
+    callback.from_user.language_code = language_code
     callback.message.edit_text = AsyncMock()
     callback.answer = AsyncMock()
     return callback
@@ -100,7 +101,7 @@ async def test_cmd_start_reraises_non_404_errors():
 
 
 async def test_start_game_creates_character_when_missing():
-    callback = make_callback(full_name="Hero")
+    callback = make_callback(full_name="Hero", language_code="ru")
     api = AsyncMock()
     api.get_character.side_effect = ApiError(404, "not found")
     api.create_character.return_value = {
@@ -110,11 +111,27 @@ async def test_start_game_creates_character_when_missing():
 
     await start_game(callback, api)
 
-    api.create_character.assert_awaited_once_with(callback.from_user.id, "Hero")
+    api.create_character.assert_awaited_once_with(callback.from_user.id, "Hero", "ru")
     callback.message.edit_text.assert_awaited_once()
     text = callback.message.edit_text.call_args.args[0]
     assert "Создание героя" in text
     callback.answer.assert_awaited_once()
+
+
+async def test_start_game_detects_english_from_language_code():
+    # docs/notes.md — language_code, не начинающийся с "ru" (в том числе
+    # отсутствующий), -> "en" по умолчанию для нового персонажа.
+    callback = make_callback(full_name="Hero", language_code="en-US")
+    api = AsyncMock()
+    api.get_character.side_effect = ApiError(404, "not found")
+    api.create_character.return_value = {
+        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
+        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+    }
+
+    await start_game(callback, api)
+
+    api.create_character.assert_awaited_once_with(callback.from_user.id, "Hero", "en")
 
 
 async def test_start_game_reuses_existing_character_without_recreating():
@@ -171,6 +188,7 @@ async def test_reset_confirm_deletes_character_and_shows_creation_screen():
     callback = make_callback(full_name="Hero")
     callback.data = "reset_confirm:manual_reset"
     api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru"}
     api.create_character.return_value = {
         "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
         "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
@@ -179,12 +197,30 @@ async def test_reset_confirm_deletes_character_and_shows_creation_screen():
     await reset_confirm(callback, api)
 
     api.delete_character.assert_awaited_once_with(callback.from_user.id, reason="manual_reset")
-    api.create_character.assert_awaited_once_with(callback.from_user.id, "Hero")
+    api.create_character.assert_awaited_once_with(callback.from_user.id, "Hero", "ru")
     callback.message.edit_text.assert_awaited_once()
     text = callback.message.edit_text.call_args.args[0]
     assert "Создание героя" in text
     assert WELCOME_TEXT not in text
     callback.answer.assert_awaited_once()
+
+
+async def test_reset_confirm_carries_over_existing_language_choice():
+    # docs/notes.md — язык переносится со старого персонажа, а не
+    # переопределяется заново по language_code профиля: явный выбор через
+    # /language не должен тихо сбрасываться обнулением персонажа.
+    callback = make_callback(full_name="Hero", language_code="ru")
+    callback.data = "reset_confirm:manual_reset"
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "en"}
+    api.create_character.return_value = {
+        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
+        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+    }
+
+    await reset_confirm(callback, api)
+
+    api.create_character.assert_awaited_once_with(callback.from_user.id, "Hero", "en")
 
 
 async def test_reset_confirm_passes_boss_victory_reason():
@@ -195,6 +231,7 @@ async def test_reset_confirm_passes_boss_victory_reason():
     callback = make_callback(full_name="Hero")
     callback.data = "reset_confirm:boss_victory"
     api = AsyncMock()
+    api.get_character.return_value = {"id": 2, "nickname": "Hero", "language": "ru"}
     api.create_character.return_value = {
         "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
         "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,

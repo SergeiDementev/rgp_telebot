@@ -1,13 +1,20 @@
 """Pydantic-схемы запросов/ответов для роутера character."""
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
+
+Language = Literal["ru", "en"]
 
 
 class CharacterCreate(BaseModel):
     telegram_user_id: int
     nickname: str = Field(min_length=1, max_length=64)
+    # docs/notes.md — дефолт "ru" только ради обратной совместимости тестов,
+    # которые создают персонажа без этого поля вообще; бот (реальный
+    # единственный клиент) передаёт его всегда явно, определив по
+    # message.from_user.language_code при первом /start.
+    language: Language = "ru"
 
 
 class CharacterOut(BaseModel):
@@ -29,6 +36,7 @@ class CharacterOut(BaseModel):
     loot: dict[str, int]
     potions_small: int
     potions_large: int
+    language: Language
     active_combat_session_id: Optional[int] = None
 
 
@@ -49,4 +57,12 @@ class BuyPotionRequest(BaseModel):
 
 
 class BuyPotionResponse(BaseModel):
+    character: CharacterOut
+
+
+class SetLanguageRequest(BaseModel):
+    language: Language
+
+
+class SetLanguageResponse(BaseModel):
     character: CharacterOut

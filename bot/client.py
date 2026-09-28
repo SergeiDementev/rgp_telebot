@@ -74,9 +74,11 @@ class ApiClient:
 
     # --- character (backend_plan.md §5) ---
 
-    async def create_character(self, telegram_user_id: int, nickname: str) -> dict:
+    async def create_character(self, telegram_user_id: int, nickname: str, language: str = "ru") -> dict:
         return await self._request(
-            "POST", "/character", json={"telegram_user_id": telegram_user_id, "nickname": nickname}
+            "POST",
+            "/character",
+            json={"telegram_user_id": telegram_user_id, "nickname": nickname, "language": language},
         )
 
     async def get_character(self, telegram_user_id: int) -> dict:
@@ -93,6 +95,11 @@ class ApiClient:
     async def buy_potion(self, character_id: int, size: str) -> dict:
         return await self._request(
             "POST", f"/character/{character_id}/buy_potion", json={"size": size}
+        )
+
+    async def set_language(self, character_id: int, language: str) -> dict:
+        return await self._request(
+            "POST", f"/character/{character_id}/set_language", json={"language": language}
         )
 
     async def delete_character(self, telegram_user_id: int, reason: str) -> None:

@@ -53,6 +53,20 @@ def test_create_character_returns_base_stats_and_starting_pool(db_session_factor
     assert body["hp_current"] == 50
 
 
+def test_create_character_defaults_language_to_ru(db_session_factory):
+    # docs/notes.md — дефолт только ради тестов/обратной совместимости; бот
+    # (реальный единственный клиент) передаёт его всегда явно.
+    client = make_client(db_session_factory)
+    response = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"})
+    assert response.json()["language"] == "ru"
+
+
+def test_create_character_respects_explicit_language(db_session_factory):
+    client = make_client(db_session_factory)
+    response = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero", "language": "en"})
+    assert response.json()["language"] == "en"
+
+
 def test_create_character_is_idempotent(db_session_factory):
     client = make_client(db_session_factory)
     first = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
@@ -401,3 +415,38 @@ def test_require_api_key_without_override(db_session_factory):
         headers={"X-Internal-Api-Key": DEV_DEFAULT_API_KEY},
     )
     assert right_key.status_code == 201
+
+
+def test_set_language_updates_character(db_session_factory):
+    client = make_client(db_session_factory)
+    character_id = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()["id"]
+
+    response = client.post(f"/character/{character_id}/set_language", json={"language": "en"})
+
+    assert response.status_code == 200
+    assert response.json()["character"]["language"] == "en"
+
+
+def test_set_language_persists_across_reads(db_session_factory):
+    client = make_client(db_session_factory)
+    character_id = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()["id"]
+    client.post(f"/character/{character_id}/set_language", json={"language": "en"})
+
+    response = client.get("/character/1")
+
+    assert response.json()["language"] == "en"
+
+
+def test_set_language_character_not_found(db_session_factory):
+    client = make_client(db_session_factory)
+    response = client.post("/character/999/set_language", json={"language": "en"})
+    assert response.status_code == 404
+
+
+def test_set_language_rejects_unknown_language(db_session_factory):
+    client = make_client(db_session_factory)
+    character_id = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()["id"]
+
+    response = client.post(f"/character/{character_id}/set_language", json={"language": "de"})
+
+    assert response.status_code == 422

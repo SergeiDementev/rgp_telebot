@@ -37,7 +37,7 @@ async def test_create_character_sends_correct_request_without_telegram_header():
 
     assert captured["method"] == "POST"
     assert captured["path"] == "/character"
-    assert captured["json"] == {"telegram_user_id": 1, "nickname": "Hero"}
+    assert captured["json"] == {"telegram_user_id": 1, "nickname": "Hero", "language": "ru"}
     assert captured["headers"]["x-internal-api-key"] == "dev-local-key"
     assert "x-telegram-user-id" not in captured["headers"]
     assert result["nickname"] == "Hero"
@@ -85,6 +85,17 @@ async def test_buy_potion_sends_size_in_body():
     assert captured["path"] == "/character/1/buy_potion"
     assert captured["json"] == {"size": "small"}
     assert result["character"]["potions_small"] == 1
+
+
+async def test_set_language_sends_language_in_body():
+    handler, captured = _echo_handler(200, {"character": {"language": "en"}})
+    client = make_client(handler)
+
+    result = await client.set_language(1, "en")
+
+    assert captured["path"] == "/character/1/set_language"
+    assert captured["json"] == {"language": "en"}
+    assert result["character"]["language"] == "en"
 
 
 async def test_delete_character_handles_204_no_content():

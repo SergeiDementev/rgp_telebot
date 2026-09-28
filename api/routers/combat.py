@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from api import enemy_content, rendering
-from api.dependencies import get_current_character, get_db, require_api_key
+from api.dependencies import get_db, get_localized_character, require_api_key
 from api.schemas.combat import (
     CombatSessionOut,
     CombatTurnResponse,
@@ -418,7 +418,7 @@ def _resolve_attacker_turn(
 def confirm_combat(
     combat_session_id: int,
     payload: ConfirmRequest,
-    character: Character = Depends(get_current_character),
+    character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
 ) -> CombatTurnResponse:
     session = _load_owned_session(db, combat_session_id, character)
@@ -456,7 +456,7 @@ def confirm_combat(
 def take_turn(
     combat_session_id: int,
     payload: TurnRequest = TurnRequest(),
-    character: Character = Depends(get_current_character),
+    character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
 ) -> CombatTurnResponse:
     """payload.power_attack (docs/combat_mechanics.md §3a) — по умолчанию
@@ -487,7 +487,7 @@ def take_turn(
 def flee_decision(
     combat_session_id: int,
     payload: FleeDecisionRequest,
-    character: Character = Depends(get_current_character),
+    character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
 ) -> CombatTurnResponse:
     session = _load_owned_session(db, combat_session_id, character)
@@ -530,7 +530,7 @@ def flee_decision(
 def use_potion(
     combat_session_id: int,
     payload: UsePotionRequest,
-    character: Character = Depends(get_current_character),
+    character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
 ) -> CombatTurnResponse:
     """docs/notes.md, п.33 — явное действие игрока в свой ход, не автоматика.
@@ -562,7 +562,7 @@ def use_potion(
 @router.get("/combat/{combat_session_id}", response_model=CombatSessionOut)
 def get_combat_session(
     combat_session_id: int,
-    character: Character = Depends(get_current_character),
+    character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
 ) -> CombatSessionOut:
     session = _load_owned_session(db, combat_session_id, character)
@@ -582,7 +582,7 @@ def get_combat_session(
 @router.get("/combat/{combat_session_id}/resume", response_model=CombatTurnResponse)
 def resume_combat_session(
     combat_session_id: int,
-    character: Character = Depends(get_current_character),
+    character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
 ) -> CombatTurnResponse:
     """Восстановление экрана боя, когда клавиатура на стороне бота потеряна
@@ -603,7 +603,7 @@ def resume_combat_session(
 @router.delete("/combat/{combat_session_id}", status_code=status.HTTP_204_NO_CONTENT)
 def cancel_combat_session(
     combat_session_id: int,
-    character: Character = Depends(get_current_character),
+    character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
 ) -> None:
     """Отмена встречи ДО инициативы (docs/notes.md, п.51) — кнопка "⬅️ Назад"

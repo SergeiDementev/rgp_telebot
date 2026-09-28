@@ -17,7 +17,8 @@ from bot.client import ApiClient, ApiError
 WELCOME_TEXT = (
     "🧙 Добро пожаловать в текстовую RPG!\n\n"
     "Ищи противников, сражайся на кубиках, качай персонажа. "
-    "Финальная цель — набраться сил и одолеть финального босса."
+    "Финальная цель — набраться сил и одолеть финального босса.\n\n"
+    "🌐 /language — сменить язык / switch language"
 )
 
 
@@ -25,6 +26,15 @@ def start_game_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="✅ Начать игру", callback_data="start_game")]]
     )
+
+
+def detect_language(language_code: Optional[str]) -> str:
+    """Язык персонажа по умолчанию при первом создании (docs/notes.md) —
+    из message.from_user.language_code Telegram (двух-трёхбуквенный код,
+    иногда с региональным суффиксом вроде "ru-RU"/"en-US", иногда
+    отсутствует вовсе — Telegram его не гарантирует). "ru"/"ru-RU"/... →
+    "ru", всё остальное, включая None, → "en"."""
+    return "ru" if language_code is not None and language_code.startswith("ru") else "en"
 
 
 async def safe_edit_text(message: Message, text: str, *, reply_markup: Optional[InlineKeyboardMarkup] = None) -> None:

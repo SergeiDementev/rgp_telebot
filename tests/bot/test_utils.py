@@ -1,11 +1,11 @@
-"""Тесты bot/utils.py — safe_edit_text."""
+"""Тесты bot/utils.py — safe_edit_text, detect_language."""
 
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest
 
-from bot.utils import safe_edit_text
+from bot.utils import detect_language, safe_edit_text
 
 
 def make_message() -> MagicMock:
@@ -43,3 +43,18 @@ async def test_safe_edit_text_reraises_other_bad_request_errors():
 
     with pytest.raises(TelegramBadRequest):
         await safe_edit_text(message, "text")
+
+
+@pytest.mark.parametrize("language_code", ["ru", "ru-RU", "ru-KZ"])
+def test_detect_language_recognizes_russian_variants(language_code):
+    assert detect_language(language_code) == "ru"
+
+
+@pytest.mark.parametrize("language_code", ["en", "en-US", "de", "fr-FR", "uk"])
+def test_detect_language_defaults_to_english_for_other_codes(language_code):
+    assert detect_language(language_code) == "en"
+
+
+def test_detect_language_defaults_to_english_when_missing():
+    # docs/notes.md — Telegram не гарантирует language_code вообще.
+    assert detect_language(None) == "en"
