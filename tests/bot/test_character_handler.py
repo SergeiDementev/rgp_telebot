@@ -19,6 +19,7 @@ from bot.handlers.character import (
     show_rules,
     show_rules_section,
     stats_screen_keyboard,
+    toggle_language,
 )
 from bot.rules_content import rules_menu_title, rules_sections
 from core import i18n
@@ -320,6 +321,59 @@ async def test_back_to_stats_shows_active_boss_button_at_level_one():
     assert "🔒" not in button.text
 
 
+async def test_toggle_language_switches_ru_to_en_and_rerenders_same_message():
+    # docs/notes.md — переключатель на главном экране персонажа: ru -> en,
+    # тот же экран через edit_text (не новое сообщение, в отличие от
+    # /language, bot/handlers/language.py), без промежуточного подэкрана
+    # выбора языка.
+    callback = make_callback("toggle_language")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "language": "ru"}
+    try:
+        await toggle_language(callback, api)
+
+        api.set_language.assert_awaited_once_with(1, "en")
+        assert i18n.get_locale() == "en"
+        callback.message.edit_text.assert_awaited_once()
+        text = callback.message.edit_text.call_args.args[0]
+        assert "🏅 Level: 1" in text
+        markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+        labels = [btn.text for row in markup.inline_keyboard for btn in row]
+        # Кнопка теперь предлагает переключить ОБРАТНО, на русский.
+        assert "🌐 Русский" in labels
+        callback.answer.assert_awaited_once()
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+async def test_toggle_language_switches_en_to_ru():
+    callback = make_callback("toggle_language")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "language": "en"}
+    try:
+        await toggle_language(callback, api)
+
+        api.set_language.assert_awaited_once_with(1, "ru")
+        assert i18n.get_locale() == "ru"
+        text = callback.message.edit_text.call_args.args[0]
+        assert "🏅 Уровень: 1" in text
+        markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+        labels = [btn.text for row in markup.inline_keyboard for btn in row]
+        assert "🌐 English" in labels
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+async def test_toggle_language_prompts_start_when_character_missing():
+    callback = make_callback("toggle_language")
+    api = AsyncMock()
+    api.get_character.side_effect = ApiError(404, "not found")
+
+    await toggle_language(callback, api)
+
+    api.set_language.assert_not_called()
+
+
 async def test_allocate_levelup_spends_point_and_refreshes_screen():
     callback = make_callback("allocate:strength")
     api = AsyncMock()
@@ -382,7 +436,8 @@ async def test_finish_creation_shows_stats_screen_with_search_button():
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[0][0].callback_data == "refresh_stats"
     assert markup.inline_keyboard[1][0].callback_data == "search_encounter"
-    assert markup.inline_keyboard[-2][0].callback_data == "show_rules"
+    assert markup.inline_keyboard[-3][0].callback_data == "show_rules"
+    assert markup.inline_keyboard[-2][0].callback_data == "toggle_language"
     # Кнопка финального босса — всегда последняя и всегда активна
     # (docs/notes.md, пп.36, 58), даже на свежем 1 уровне.
     assert markup.inline_keyboard[-1][0].callback_data == "search_boss_encounter"
@@ -443,9 +498,16 @@ async def test_render_allocation_screen_levelup_en(en_locale):
 
 
 async def test_stats_screen_keyboard_labels_en(en_locale):
-    markup = stats_screen_keyboard(BASE_CHARACTER)
+    # character["language"] явно "en" (не полагаемся на дефолт BASE_CHARACTER
+    # без этого поля) — кнопка переключателя языка считает целевой язык от
+    # character.get("language", ...), не от i18n.get_locale() напрямую,
+    # они должны совпадать, как и в реальном флоу (get_character_or_prompt_
+    # start всегда выставляет оба разом).
+    markup = stats_screen_keyboard({**BASE_CHARACTER, "language": "en"})
     labels = [btn.text for row in markup.inline_keyboard for btn in row]
-    assert labels == ["🔄 Refresh", "🔍 Search for an enemy", "👤 Player Menu", "📜 Rules", "⚔️ Final Boss"]
+    assert labels == [
+        "🔄 Refresh", "🔍 Search for an enemy", "👤 Player Menu", "📜 Rules", "🌐 Русский", "⚔️ Final Boss",
+    ]
 
 
 async def test_allocation_keyboard_buy_potion_labels_en(en_locale):

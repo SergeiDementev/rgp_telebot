@@ -68,6 +68,12 @@ BUY_POTION_ERROR_KEYS = {
     "cap_reached": "character.buy_error.cap_reached",
 }
 
+# Названия языков в переключателе на главном экране (docs/notes.md) — те же
+# нативные названия, что и в bot/handlers/language.py::_language_keyboard,
+# не через core.i18n.t(): это имя языка, а не переводимая фраза (по-русски
+# "Русский" остаётся "Русский" независимо от текущей локали интерфейса).
+_LANGUAGE_NATIVE_NAMES = {"ru": "Русский", "en": "English"}
+
 # Дублирует core/progression.py::BOSS_LEVEL_REQUIREMENT (docs/notes.md,
 # п.58) — только для подписи кнопки "⚔️ Бросить вызов" на экране входа в
 # бой с боссом (bot/handlers/combat.py::_boss_challenge_keyboard), реальную
@@ -139,6 +145,18 @@ def boss_button() -> InlineKeyboardButton:
     return InlineKeyboardButton(text=i18n.t("character.button.boss"), callback_data="search_boss_encounter")
 
 
+def _language_switch_button(character_language: str) -> InlineKeyboardButton:
+    """Показывает язык, НА который переключит, а не текущий (docs/notes.md)
+    — привычный паттерн переключателей языка: должно быть понятно
+    независимо от того, на каком языке сейчас экран. Только два
+    поддерживаемых языка (core.i18n.SUPPORTED_LOCALES) — переключение
+    мгновенное, без промежуточного подэкрана выбора (в отличие от
+    bot/handlers/language.py::cmd_language, который остаётся рабочим
+    fallback-входом с явным выбором из двух кнопок)."""
+    target = next(locale for locale in i18n.SUPPORTED_LOCALES if locale != character_language)
+    return InlineKeyboardButton(text=f"🌐 {_LANGUAGE_NATIVE_NAMES[target]}", callback_data="toggle_language")
+
+
 def stats_screen_keyboard(character: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -146,6 +164,7 @@ def stats_screen_keyboard(character: dict) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text=i18n.t("character.button.search_encounter"), callback_data="search_encounter")],
             [InlineKeyboardButton(text=menu_screen_title(), callback_data="open_allocation")],
             [InlineKeyboardButton(text=i18n.t("character.button.rules"), callback_data="show_rules")],
+            [_language_switch_button(character.get("language", i18n.DEFAULT_LOCALE))],
             [boss_button()],
         ]
     )
@@ -336,6 +355,31 @@ async def back_to_stats(callback: CallbackQuery, api: ApiClient) -> None:
     character = await get_character_or_prompt_start(callback, api)
     if character is None:
         return
+    await safe_edit_text(callback.message, render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "toggle_language")
+async def toggle_language(callback: CallbackQuery, api: ApiClient) -> None:
+    """Переключатель языка на главном экране персонажа (docs/notes.md) —
+    основной способ смены языка: та же кнопочная механика, что и у
+    остальных кнопок этого экрана (edit_text того же сообщения, не новое
+    сообщение — в отличие от /language, которое по природе слэш-команд
+    Telegram всегда шлёт отдельное сообщение, bot/handlers/language.py).
+    Только два поддерживаемых языка (core.i18n.SUPPORTED_LOCALES) —
+    переключает сразу на противоположный, без промежуточного выбора."""
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
+    current = character.get("language", i18n.DEFAULT_LOCALE)
+    new_language = next(locale for locale in i18n.SUPPORTED_LOCALES if locale != current)
+    await api.set_language(character["id"], new_language)
+    # Локаль на этот момент — от СТАРОГО character["language"] (выставлена
+    # get_character_or_prompt_start выше); экран должен перерисоваться на
+    # НОВОМ языке, тот же принцип, что и в bot/handlers/language.py::
+    # set_language.
+    i18n.set_locale(new_language)
+    character["language"] = new_language
     await safe_edit_text(callback.message, render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
     await callback.answer()
 
