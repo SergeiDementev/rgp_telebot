@@ -12,6 +12,12 @@ class EncounterSearchResponse(BaseModel):
     text: str
     potions_small: int
     potions_large: int
+    # docs/notes.md — character.language, уже в scope у эндпоинта (get_
+    # localized_character) без лишнего запроса: бот использует его, чтобы
+    # выставить локаль перед построением клавиатуры в хендлерах, которые
+    # сами персонажа не запрашивают (иначе клавиатура ориентировалась бы на
+    # язык клиента Telegram, а не на явно выбранный язык персонажа).
+    language: str
 
 
 class CombatStartResponse(BaseModel):
@@ -22,6 +28,7 @@ class CombatStartResponse(BaseModel):
     player_strength_modifier: float
     enemy_strength_modifier: float
     text: str
+    language: str
 
 
 class ConfirmRequest(BaseModel):
@@ -50,6 +57,7 @@ class CombatTurnResponse(BaseModel):
     potions_small: int
     potions_large: int
     potion_used_this_battle: bool
+    language: str
 
 
 class CombatSessionOut(BaseModel):
@@ -61,3 +69,4 @@ class CombatSessionOut(BaseModel):
     player_hp_current: float
     enemy_hp_current: float
     enemy_hp_max: float
+    language: str

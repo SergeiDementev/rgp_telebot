@@ -316,6 +316,7 @@ def _turn_response(session: CombatSession, character: Character, text: str) -> C
         current_turn=session.current_turn, enemy_type=session.enemy_type, text=text,
         potions_small=character.potions_small, potions_large=character.potions_large,
         potion_used_this_battle=session.player_potion_used_this_battle,
+        language=character.language,
     )
 
 
@@ -576,6 +577,7 @@ def get_combat_session(
         player_hp_current=session.character_hp_snapshot,
         enemy_hp_current=session.enemy_hp_current,
         enemy_hp_max=enemy_stats["hp_max"],
+        language=character.language,
     )
 
 

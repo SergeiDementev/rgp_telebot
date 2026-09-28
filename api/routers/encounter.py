@@ -91,6 +91,7 @@ def _start_encounter_session(
         text=text,
         potions_small=character.potions_small,
         potions_large=character.potions_large,
+        language=character.language,
     )
 
 
@@ -210,4 +211,5 @@ def start_combat(
         player_strength_modifier=player_modifier,
         enemy_strength_modifier=enemy_modifier,
         text=text,
+        language=character.language,
     )

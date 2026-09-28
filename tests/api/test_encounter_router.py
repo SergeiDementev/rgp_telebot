@@ -38,6 +38,7 @@ def _insert_character(db_session_factory, telegram_user_id=1, **overrides) -> in
         last_hp_update_at=datetime.now(timezone.utc).replace(tzinfo=None),
         potions_small=overrides.get("potions_small", 0),
         potions_large=overrides.get("potions_large", 0),
+        language=overrides.get("language", "ru"),
     )
     db.add(character)
     db.commit()
@@ -70,6 +71,20 @@ def test_search_encounter_includes_potion_snapshot(db_session_factory):
     body = response.json()
     assert body["potions_small"] == 2
     assert body["potions_large"] == 1
+
+
+def test_search_encounter_includes_character_language(db_session_factory):
+    # docs/notes.md — бот использует это поле, чтобы выставить локаль перед
+    # построением клавиатуры в хендлерах, которые сами персонажа не
+    # запрашивают (search_encounter и т.п.) — без него клавиатура
+    # ориентировалась бы на язык клиента Telegram, а не на явно выбранный
+    # язык персонажа.
+    _insert_character(db_session_factory, language="en")
+    client = make_client(db_session_factory)
+
+    response = client.post("/encounter/search", headers=HEADERS)
+
+    assert response.json()["language"] == "en"
 
 
 def test_search_encounter_without_character_returns_404(db_session_factory):
@@ -131,6 +146,20 @@ def test_start_combat_transitions_to_awaiting_confirmation(db_session_factory, m
     assert body["first_role"] in ("player", "enemy")
     assert body["enemy_type"] == "wolf"  # docs/notes.md, п.40 — бот решает по нему, показывать ли автобой
     assert body["text"]
+
+
+def test_start_combat_includes_character_language(db_session_factory, monkeypatch):
+    _insert_character(db_session_factory, language="en")
+    client = make_client(db_session_factory)
+
+    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)
+    session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
+
+    rolls = iter([7, 4, 5])
+    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: next(rolls))
+    response = client.post(f"/combat/{session_id}/start", headers=HEADERS)
+
+    assert response.json()["language"] == "en"
 
 
 def test_start_combat_player_wins_initiative_and_rolls_buff(db_session_factory, monkeypatch):

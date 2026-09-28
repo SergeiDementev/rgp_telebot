@@ -73,6 +73,22 @@ def _session_id_from(callback_data: str) -> int:
     return int(callback_data.split(":", 1)[1])
 
 
+def _set_locale_from_response(response: dict) -> None:
+    """Точная локаль по character.language из ответа API (docs/notes.md) —
+    найдено на практике: "в русском варианте кнопки остаются на
+    английском". Большинство хендлеров этого роутера не запрашивают
+    персонажа отдельно (один HTTP-запрос = один ход, docs/README.md) и до
+    этого места полагались на best-effort set_locale_from_telegram_profile
+    (язык КЛИЕНТА Telegram, не язык персонажа, docs/notes.md, блок 4) —
+    расходится, если игрок явно переключил язык персонажа через кнопку, а
+    язык интерфейса Telegram остался прежним. combat/encounter-эндпоинты
+    уже кладут character.language в тот же ответ, откуда берётся и текст
+    (api/schemas/combat.py) — нулевая цена, не требует отдельного запроса."""
+    language = response.get("language")
+    if language is not None:
+        i18n.set_locale(language)
+
+
 USE_POTION_ERROR_KEYS = {
     "already_used": "combat.ui.error.potion_already_used",
     "not_owned": "combat.ui.error.potion_not_owned",
@@ -340,6 +356,7 @@ async def _show_current_battle_state(callback: CallbackQuery, api: ApiClient, se
         )
         await callback.answer()
         return
+    _set_locale_from_response(resume)
     text = f"{i18n.t('combat.ui.error.battle_in_progress')}\n\n{build_resume_text(resume)}"
     await callback.message.edit_text(text, reply_markup=build_resume_keyboard(session_id, resume))
     await callback.answer()
@@ -357,6 +374,7 @@ async def search_encounter(callback: CallbackQuery, api: ApiClient) -> None:
         # это падало необработанным исключением (docs/notes.md).
         await callback.answer(i18n.t("combat.ui.error.already_in_battle"), show_alert=True)
         return
+    _set_locale_from_response(response)
     session_id = response["combat_session_id"]
     await callback.message.edit_text(response["text"], reply_markup=_initiative_prompt_keyboard(session_id))
     await callback.answer()
@@ -376,6 +394,7 @@ async def search_boss_encounter(callback: CallbackQuery, api: ApiClient) -> None
             raise
         await callback.answer(i18n.t("combat.ui.error.already_in_battle"), show_alert=True)
         return
+    _set_locale_from_response(response)
     session_id = response["combat_session_id"]
     # docs/notes.md, п.51 — запас зелий на экране входа (бой с боссом без
     # лимита "раз за бой", важно видеть, с чем реально входишь), плюс "⬅️
@@ -445,6 +464,7 @@ async def start_combat(callback: CallbackQuery, api: ApiClient) -> None:
             raise
         await callback.answer(i18n.t("combat.ui.error.boss_unavailable"), show_alert=True)
         return
+    _set_locale_from_response(response)
     keyboard = _confirmation_keyboard(session_id, response.get("enemy_type"))
     await callback.message.edit_text(response["text"], reply_markup=keyboard)
     await callback.answer()
@@ -460,6 +480,7 @@ async def confirm_fight(callback: CallbackQuery, api: ApiClient) -> None:
             raise
         await _show_current_battle_state(callback, api, session_id)
         return
+    _set_locale_from_response(response)
     await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
     await callback.answer()
 
@@ -471,9 +492,12 @@ async def _run_autobattle(callback: CallbackQuery, api: ApiClient, session_id: i
     по одному ходу не даёт игроку ничего, кроме ожидания). Крутит ходы
     молча, без пауз и без правки сообщения на каждом шаге, и один раз
     показывает результат — либо паузу на решение "сбежать/биться дальше",
-    либо конец боя."""
+    либо конец боя. Локаль — из ПОСЛЕДНЕГО ответа (docs/notes.md): язык
+    персонажа не меняется посреди боя, но так проще, чем выставлять на
+    каждой итерации цикла ради значения, которое и так не изменится."""
     while response["status"] == "active":
         response = await api.take_turn(callback.from_user.id, session_id)
+    _set_locale_from_response(response)
     await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response, mode="auto"))
 
 
@@ -510,6 +534,7 @@ async def confirm_flee(callback: CallbackQuery, api: ApiClient) -> None:
         # п.57), сервер отклонил на всякий случай.
         await callback.answer(i18n.t("combat.ui.error.cant_flee"), show_alert=True)
         return
+    _set_locale_from_response(response)
     await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard())
     await callback.answer()
 
@@ -522,6 +547,7 @@ async def _take_turn(callback: CallbackQuery, api: ApiClient, session_id: int, *
             raise
         await _show_current_battle_state(callback, api, session_id)
         return
+    _set_locale_from_response(response)
     await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
     await callback.answer()
 
@@ -554,6 +580,7 @@ async def use_potion(callback: CallbackQuery, api: ApiClient) -> None:
         message = i18n.t(USE_POTION_ERROR_KEYS.get(error.detail, "combat.ui.error.potion_generic"))
         await callback.answer(message, show_alert=True)
         return
+    _set_locale_from_response(response)
     await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
     await callback.answer()
 
@@ -568,6 +595,7 @@ async def flee_decision_flee(callback: CallbackQuery, api: ApiClient) -> None:
             raise
         await _show_current_battle_state(callback, api, session_id)
         return
+    _set_locale_from_response(response)
     await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard())
     await callback.answer()
 
@@ -582,6 +610,7 @@ async def flee_decision_continue(callback: CallbackQuery, api: ApiClient) -> Non
             raise
         await _show_current_battle_state(callback, api, session_id)
         return
+    _set_locale_from_response(response)
     await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
     await callback.answer()
 

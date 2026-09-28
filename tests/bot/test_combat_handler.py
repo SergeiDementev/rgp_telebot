@@ -992,3 +992,112 @@ async def test_search_encounter_already_in_battle_alert_en():
         callback.answer.assert_awaited_once_with("You already have an unfinished battle — finish it first.", show_alert=True)
     finally:
         i18n.reset_locale(token)
+
+
+# --- Локаль клавиатуры берётся из character.language в ответе API, не из
+# --- языка клиента Telegram (docs/notes.md) -------------------------------
+# Найдено на практике: "в русском варианте кнопки остаются на английском".
+# Большинство хендлеров этого роутера не запрашивают персонажа отдельно
+# (один HTTP-запрос = один ход) и раньше полагались только на best-effort
+# set_locale_from_telegram_profile (язык КЛИЕНТА Telegram) — если игрок
+# явно переключил язык персонажа кнопкой, а язык интерфейса Telegram
+# остался прежним, клавиатура расходилась с текстом. В тестах ниже
+# ambient-локаль нарочно выставлена в EN (имитация языка клиента), а ответ
+# API несёт "language": "ru" (явный выбор персонажа) — кнопки должны
+# оказаться русскими вопреки ambient-локали.
+
+
+async def test_search_encounter_keyboard_uses_response_language_over_telegram_client():
+    callback = make_callback("search_encounter")
+    api = AsyncMock()
+    api.search_encounter.return_value = {
+        "combat_session_id": 5, "enemy_type": "wolf", "text": "Ты наткнулся на волка.", "language": "ru",
+    }
+    token = i18n.set_locale("en")
+    try:
+        await search_encounter(callback, api)
+        button = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+        assert button.text == "⚔️ Определить инициативу"
+    finally:
+        i18n.reset_locale(token)
+
+
+async def test_start_combat_keyboard_uses_response_language_over_telegram_client():
+    callback = make_callback("start_combat:5")
+    api = AsyncMock()
+    api.start_combat.return_value = {
+        "combat_session_id": 5, "status": "awaiting_confirmation", "enemy_type": "wolf", "text": "...", "language": "ru",
+    }
+    token = i18n.set_locale("en")
+    try:
+        await start_combat(callback, api)
+        button = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+        assert button.text == "⚔️ Вступить в бой"
+    finally:
+        i18n.reset_locale(token)
+
+
+async def test_confirm_fight_keyboard_uses_response_language_over_telegram_client():
+    callback = make_callback("confirm_fight:5")
+    api = AsyncMock()
+    api.confirm_combat.return_value = {
+        "status": "active", "result": None, "current_turn": "player", "text": "...", "language": "ru",
+    }
+    token = i18n.set_locale("en")
+    try:
+        await confirm_fight(callback, api)
+        button = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+        assert button.text == "🎲 Атаковать"
+    finally:
+        i18n.reset_locale(token)
+
+
+async def test_take_turn_keyboard_uses_response_language_over_telegram_client():
+    callback = make_callback("take_turn:5")
+    api = AsyncMock()
+    api.take_turn.return_value = {"status": "active", "current_turn": "enemy", "text": "...", "language": "ru"}
+    token = i18n.set_locale("en")
+    try:
+        await take_turn(callback, api)
+        button = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+        assert button.text == "🛡️ Защищаться"
+    finally:
+        i18n.reset_locale(token)
+
+
+async def test_confirm_fight_auto_keyboard_uses_final_response_language():
+    # docs/notes.md — _run_autobattle берёт локаль из ПОСЛЕДНЕГО ответа
+    # (после цикла take_turn), не из первого confirm_combat.
+    callback = make_callback("confirm_fight_auto:5")
+    api = AsyncMock()
+    api.confirm_combat.return_value = {"status": "active", "current_turn": "player", "text": "...", "language": "en"}
+    api.take_turn.return_value = {
+        "status": "awaiting_flee_decision", "enemy_type": "wolf", "text": "...", "language": "ru",
+    }
+    token = i18n.set_locale("en")
+    try:
+        await confirm_fight_auto(callback, api)
+        markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+        labels = [btn.text for row in markup.inline_keyboard for btn in row]
+        assert labels == ["🏃 Сбежать", "⚔️ Биться дальше"]
+    finally:
+        i18n.reset_locale(token)
+
+
+async def test_show_current_battle_state_uses_resume_response_language():
+    callback = make_callback("confirm_fight:5")
+    api = AsyncMock()
+    api.confirm_combat.side_effect = ApiError(409, "unexpected session status: 'active'")
+    api.resume_combat_session.return_value = {
+        "status": "active", "current_turn": "player", "enemy_type": "wolf", "text": "...",
+        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": False, "language": "ru",
+    }
+    token = i18n.set_locale("en")
+    try:
+        await confirm_fight(callback, api)
+        text = callback.message.edit_text.call_args.args[0]
+        assert text.startswith("⚠️ Бой уже идёт")
+        markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+        assert markup.inline_keyboard[0][0].text == "🎲 Атаковать"
+    finally:
+        i18n.reset_locale(token)

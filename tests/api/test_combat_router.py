@@ -125,6 +125,25 @@ def test_confirm_fight_shows_fight_confirmed_message_in_english(db_session_facto
     assert response.json()["text"].endswith("⚔️ You enter the fight!")
 
 
+def test_confirm_fight_response_includes_character_language(db_session_factory, monkeypatch):
+    # docs/notes.md — бот использует это поле, чтобы выставить локаль перед
+    # построением клавиатуры в хендлерах, которые сами персонажа не
+    # запрашивают (confirm_fight и т.п.) — без него клавиатура
+    # ориентировалась бы на язык клиента Telegram, а не на явно выбранный
+    # язык персонажа (найдено на практике: "в русском варианте кнопки
+    # остаются на английском").
+    _insert_character(db_session_factory, language="en")
+    client = make_client(db_session_factory)
+
+    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
+    client.post(f"/combat/{session_id}/start", headers=HEADERS)
+
+    response = client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
+
+    assert response.json()["language"] == "en"
+
+
 def test_confirm_flee_ends_battle_with_no_reward(db_session_factory, monkeypatch):
     _insert_character(db_session_factory, strength=10)
     client = make_client(db_session_factory)
