@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from bot.handlers.fallback import unknown_text
+from core import i18n
 
 pytestmark = pytest.mark.asyncio
 
@@ -34,3 +35,17 @@ async def test_unknown_text_does_not_forward_message_text_anywhere():
 
     reply_text = message.answer.call_args.args[0]
     assert "secret payload" not in reply_text
+
+
+async def test_unknown_text_replies_in_english_locale():
+    # docs/notes.md, блок 6 — хендлер не запрашивает персонажа, локаль на
+    # момент выполнения выставляет диспетчерская мидлварь (bot/utils.py::
+    # set_locale_from_telegram_profile, блок 4); здесь эмулируем это через
+    # прямой i18n.set_locale(), как и в остальных тестах на обе локали.
+    message = make_message("some random text")
+    token = i18n.set_locale("en")
+    try:
+        await unknown_text(message)
+        message.answer.assert_awaited_once_with("The game is controlled only through the buttons under messages.")
+    finally:
+        i18n.reset_locale(token)

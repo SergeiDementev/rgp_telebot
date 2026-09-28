@@ -21,18 +21,9 @@ from dotenv import load_dotenv
 from bot.client import ApiClient
 from bot.handlers import character, combat, fallback, language, start
 from bot.utils import set_locale_from_telegram_profile
+from core import i18n
 
 load_dotenv()
-
-# Системное меню команд Telegram (иконка "/" рядом с полем ввода, docs/
-# notes.md) — без этого команды по-прежнему работают при ручном вводе, но
-# не отображаются в подсказке. /rules сюда не входит осознанно (docs/
-# notes.md, п.1) — не команда, кнопка на экране статов.
-BOT_COMMANDS = [
-    BotCommand(command="start", description="Начать/продолжить игру"),
-    BotCommand(command="language", description="Сменить язык / Change language"),
-    BotCommand(command="reset", description="Обнулить персонажа"),
-]
 
 # Поддиректория проекта, не общесерверная (docs/notes.md) — на сервере со
 # временем могут появиться другие приложения, их логи не должны смешиваться
@@ -73,6 +64,46 @@ def _add_file_logging() -> None:
     logging.getLogger().addHandler(file_handler)
 
 
+def _bot_commands() -> list[BotCommand]:
+    """Три подписи команд на текущей локали (core.i18n.get_locale()) —
+    вызывающий код (_register_bot_commands) сам выставляет нужную локаль
+    перед каждым вызовом. /rules сюда не входит осознанно (docs/notes.md,
+    п.1) — не команда, кнопка на экране статов."""
+    return [
+        BotCommand(command="start", description=i18n.t("bot_commands.start")),
+        BotCommand(command="language", description=i18n.t("bot_commands.language")),
+        BotCommand(command="reset", description=i18n.t("bot_commands.reset")),
+    ]
+
+
+async def _register_bot_commands(bot: Bot) -> None:
+    """Системное меню команд Telegram (иконка "/" рядом с полем ввода) —
+    решение docs/notes.md, блок 6: показывается на языке КЛИЕНТА Telegram
+    (Bot API's language_code в set_my_commands), не на языке, явно
+    выбранном персонажем через /language. Обе локали — разные механизмы:
+    core.i18n.get_locale() выставляется заново на каждый апдейт (bot/
+    utils.py::set_locale_from_telegram_profile/character.language), а меню
+    команд правится один раз при старте бота, на уровне всего бота, не на
+    пользователя — Telegram не даёт способа адресовать его по нашему
+    собственному character.language, только по языку самого клиента
+    Telegram, который тот присылает с каждым апдейтом.
+
+    Три вызова: явный "ru", явный "en", и без language_code — дефолт для
+    любого другого языка клиента, тем же принципом, что и bot/utils.py::
+    detect_language() ("не ru -> en")."""
+    for locale in ("ru", "en"):
+        token = i18n.set_locale(locale)
+        try:
+            await bot.set_my_commands(_bot_commands(), language_code=locale)
+        finally:
+            i18n.reset_locale(token)
+    token = i18n.set_locale("en")
+    try:
+        await bot.set_my_commands(_bot_commands())
+    finally:
+        i18n.reset_locale(token)
+
+
 def build_dispatcher() -> Dispatcher:
     dp = Dispatcher()
     # Ставится на уровне диспетчера, не отдельного роутера (docs/notes.md,
@@ -105,7 +136,7 @@ async def main() -> None:
 
     bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     bot.session.middleware(_log_retry_after)
-    await bot.set_my_commands(BOT_COMMANDS)
+    await _register_bot_commands(bot)
     dp = build_dispatcher()
 
     async with ApiClient() as api:

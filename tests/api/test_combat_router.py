@@ -41,6 +41,7 @@ def _insert_character(db_session_factory, telegram_user_id=1, **overrides) -> in
         last_hp_update_at=datetime.now(timezone.utc).replace(tzinfo=None),
         potions_small=overrides.get("potions_small", 0),
         potions_large=overrides.get("potions_large", 0),
+        language=overrides.get("language", "ru"),
     )
     db.add(character)
     db.commit()
@@ -96,6 +97,32 @@ def test_confirm_fight_transitions_to_active(db_session_factory, monkeypatch):
     assert response.status_code == 200
     assert response.json()["status"] == "active"
     assert response.json()["text"].startswith("❤️ Ты: 50/50   👹 Мышь: 20/20")
+
+
+def test_confirm_fight_shows_fight_confirmed_message(db_session_factory, monkeypatch):
+    # docs/notes.md, блок 6 — раньше сырой литерал в самом роутере, в обход
+    # api/rendering.py/core.i18n целиком.
+    _insert_character(db_session_factory)
+    client = make_client(db_session_factory)
+
+    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
+    client.post(f"/combat/{session_id}/start", headers=HEADERS)
+
+    response = client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
+    assert response.json()["text"] == "❤️ Ты: 50/50   👹 Мышь: 20/20\n\n⚔️ Ты вступаешь в бой!"
+
+
+def test_confirm_fight_shows_fight_confirmed_message_in_english(db_session_factory, monkeypatch):
+    _insert_character(db_session_factory, language="en")
+    client = make_client(db_session_factory)
+
+    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
+    client.post(f"/combat/{session_id}/start", headers=HEADERS)
+
+    response = client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
+    assert response.json()["text"].endswith("⚔️ You enter the fight!")
 
 
 def test_confirm_flee_ends_battle_with_no_reward(db_session_factory, monkeypatch):

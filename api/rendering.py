@@ -332,3 +332,12 @@ def render_boss_victory() -> str:
     поздравительным заголовком вместо стандартного "Бой окончен!"."""
     names = i18n.enemy_names("boss")
     return i18n.t("combat.boss_victory", name_acc_cap=names["acc_cap"])
+
+
+def render_fight_confirmed() -> str:
+    """Подтверждение "принял бой" (docs/notes.md, п.81/блок 6) —
+    api/routers/combat.py::confirm_combat, ветка decision="fight". Раньше
+    это был сырой литерал в самом роутере, в обход этого модуля/core.i18n
+    целиком — единственное такое место, все остальные ответы combat-роутера
+    уже шли через render_*/i18n.t()."""
+    return i18n.t("combat.fight_confirmed")

@@ -167,6 +167,10 @@ TRANSLATIONS: dict[str, str] = {
 
     "combat.boss_victory": "🎉 Ты повергнул {name_acc_cap}!\n\nПриключение окончено. Спасибо, что играл(а)!",
 
+    # docs/notes.md, блок 6 — api/routers/combat.py::confirm_combat, ветка
+    # decision="fight" (раньше сырой литерал в обход этого механизма).
+    "combat.fight_confirmed": "⚔️ Ты вступаешь в бой!",
+
     # --- Экран персонажа (bot/handlers/character.py, docs/notes.md, блок 3) ---
     "character.menu_title": "👤 Меню игрока",
     "character.creation_title": "🧙 Создание героя",
@@ -268,4 +272,12 @@ TRANSLATIONS: dict[str, str] = {
     # обвязка меню разделов.
     "rules.menu_header": "📖 <b>{title}</b>\n\nВыбери раздел:",
     "rules.button.back_to_sections": "⬅️ К списку разделов",
+
+    # --- bot/handlers/fallback.py (блок 6) ---
+    "fallback.unknown_text": "Управление в игре — только кнопками под сообщениями.",
+
+    # --- bot/main.py::_bot_commands (системное меню команд Telegram, блок 6) ---
+    "bot_commands.start": "Начать/продолжить игру",
+    "bot_commands.language": "Сменить язык",
+    "bot_commands.reset": "Обнулить персонажа",
 }

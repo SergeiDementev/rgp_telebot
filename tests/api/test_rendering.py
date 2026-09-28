@@ -337,6 +337,12 @@ def test_render_boss_victory_has_no_reward_or_hp_line():
     assert "⏳" not in text
 
 
+def test_render_fight_confirmed():
+    # docs/notes.md, блок 6 — раньше сырой литерал в api/routers/combat.py,
+    # в обход этого модуля/core.i18n целиком.
+    assert r.render_fight_confirmed() == "⚔️ Ты вступаешь в бой!"
+
+
 # --- Английская локаль (docs/notes.md, блок 2) --------------------------
 # По одному тесту на каждую render_*-функцию — доказывает, что
 # i18n.set_locale("en") действительно меняет вывод, не полное дублирование
@@ -449,3 +455,7 @@ def test_render_battle_end_defeat_en(en_locale):
 def test_render_boss_victory_en(en_locale):
     text = r.render_boss_victory()
     assert text == "🎉 You have defeated the Forest King!\n\nThe adventure is over. Thanks for playing!"
+
+
+def test_render_fight_confirmed_en(en_locale):
+    assert r.render_fight_confirmed() == "⚔️ You enter the fight!"

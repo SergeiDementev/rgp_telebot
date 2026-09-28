@@ -433,7 +433,7 @@ def confirm_combat(
         hp_status = _hp_status_text(session, character, enemy_stats)
         db.commit()
         db.refresh(session)
-        return _turn_response(session, character, f"{hp_status}\n\n⚔️ Ты вступаешь в бой!")
+        return _turn_response(session, character, f"{hp_status}\n\n{rendering.render_fight_confirmed()}")
 
     # Финальный босс — без пути назад после инициативы вообще (docs/notes.md,
     # п.57, player_can_flee=false в content/enemies.json): кнопка "Отступить"

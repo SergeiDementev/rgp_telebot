@@ -155,6 +155,10 @@ TRANSLATIONS: dict[str, str] = {
 
     "combat.boss_victory": "🎉 You have defeated the {name_acc_cap}!\n\nThe adventure is over. Thanks for playing!",
 
+    # docs/notes.md, block 6 — api/routers/combat.py::confirm_combat, the
+    # decision="fight" branch.
+    "combat.fight_confirmed": "⚔️ You enter the fight!",
+
     # --- Character screen (bot/handlers/character.py, docs/notes.md, block 3) ---
     "character.menu_title": "👤 Player Menu",
     "character.creation_title": "🧙 Hero Creation",
@@ -245,4 +249,12 @@ TRANSLATIONS: dict[str, str] = {
     # --- /rules (bot/handlers/character.py + bot/rules_content.py, block 5) ---
     "rules.menu_header": "📖 <b>{title}</b>\n\nChoose a section:",
     "rules.button.back_to_sections": "⬅️ Back to sections",
+
+    # --- bot/handlers/fallback.py (block 6) ---
+    "fallback.unknown_text": "The game is controlled only through the buttons under messages.",
+
+    # --- bot/main.py::_bot_commands (Telegram's system command menu, block 6) ---
+    "bot_commands.start": "Start/continue the game",
+    "bot_commands.language": "Change language",
+    "bot_commands.reset": "Reset character",
 }
