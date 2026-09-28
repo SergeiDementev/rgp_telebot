@@ -210,4 +210,55 @@ TRANSLATIONS: dict[str, str] = {
     "character.buy_error.cap_reached": "Уже максимум зелий этого размера.",
     "character.buy_error.generic": "Не удалось купить зелье.",
     "character.allocate_error.no_points": "Не осталось свободных очков",
+
+    # --- Боевой UI бота (bot/handlers/combat.py, docs/notes.md, блок 4) ---
+    # Кнопки/алерты вокруг боя — в отличие от combat.* из блока 2 (боевой
+    # лог, рендерится на api/, боевой ход), это клиентская обвязка бота:
+    # выбор действия, флоу босса, эдж-кейсы. "💥 Мощный удар"/"Малое"/
+    # "Большое" здесь переиспользуют combat.strike.power_label/combat.
+    # potion.*_label из блока 2 — не дублируются отдельным переводом.
+    "combat.ui.button.attack": "🎲 Атаковать",
+    "combat.ui.button.defend": "🛡️ Защищаться",
+    "combat.ui.button.flee": "🏃 Сбежать",
+    "combat.ui.button.continue_fight": "⚔️ Биться дальше",
+    "combat.ui.button.restart": "🔄 Начать заново",
+    "combat.ui.button.determine_initiative": "⚔️ Определить инициативу",
+    "combat.ui.button.boss_challenge": "⚔️ Бросить вызов (с {level} уровня)",
+    "combat.ui.button.boss_challenge_confirm": "⚔️ Да, вступить в бой",
+    "combat.ui.button.enter_battle": "⚔️ Вступить в бой",
+    "combat.ui.button.retreat": "🏃 Отступить",
+    "combat.ui.button.autobattle": "⚡ Автобой",
+    "combat.ui.potion_stock": "🧪 Твой запас:\n  {small_label}: {potions_small}/{small_cap}\n  {large_label}: {potions_large}/{large_cap}",
+
+    "combat.ui.error.already_in_battle": "У тебя уже есть незавершённый бой — сначала заверши его.",
+    "combat.ui.error.cant_cancel_started": "Бой уже начался — отменить нельзя.",
+    "combat.ui.error.boss_unavailable": "Финальный босс пока недоступен на этом уровне.",
+    "combat.ui.warning.boss_no_retreat": "⚠️ После этого отступить будет нельзя.",
+    "combat.ui.error.cant_flee": "Из боя с этим противником нельзя отступить.",
+    "combat.ui.error.potion_already_used": "Зелье в этом бою уже использовано.",
+    "combat.ui.error.potion_not_owned": "У тебя нет такого зелья.",
+    "combat.ui.error.potion_generic": "Сейчас нельзя использовать зелье.",
+
+    # --- /language (bot/handlers/language.py, блок 4) ---
+    # LANGUAGE_PROMPT_TEXT и подписи "Русский"/"English" сознательно не
+    # переведены через t() — показываются до выбора языка, см. докстринг
+    # модуля.
+    "language.confirmation": "✅ Язык переключён на русский.",
+
+    # --- /start, /reset (bot/handlers/start.py + bot/utils.py, блок 4) ---
+    "start.welcome": (
+        "🧙 Добро пожаловать в текстовую RPG!\n\n"
+        "Ищи противников, сражайся на кубиках, качай персонажа. "
+        "Финальная цель — набраться сил и одолеть финального босса.\n\n"
+        "🌐 /language — сменить язык / switch language"
+    ),
+    "start.button.start_game": "✅ Начать игру",
+    "start.resume_prefix": "↩️ Продолжаем начатый бой:\n\n",
+    "start.reset_confirm": (
+        "⚠️ Точно обнулить персонажа?\n\n"
+        "Статы, уровень и весь прогресс будут удалены безвозвратно — отменить это будет нельзя."
+    ),
+    "start.button.reset_yes": "🗑 Да, удалить",
+    "start.button.cancel": "Отмена",
+    "start.reset_done": "Персонаж обнулён",
 }

@@ -18,30 +18,31 @@ from bot.handlers.character import (
     stats_screen_keyboard,
 )
 from bot.handlers.combat import build_resume_keyboard, build_resume_text
-from bot.utils import WELCOME_TEXT, detect_language, start_game_keyboard  # noqa: F401 — WELCOME_TEXT реэкспортируется для тестов
+from bot.utils import detect_language, start_game_keyboard, welcome_text  # noqa: F401 — welcome_text реэкспортируется для тестов
 from core import i18n
 
 router = Router()
 
-RESUME_BATTLE_PREFIX = "↩️ Продолжаем начатый бой:\n\n"
 
-RESET_CONFIRM_TEXT = (
-    "⚠️ Точно обнулить персонажа?\n\n"
-    "Статы, уровень и весь прогресс будут удалены безвозвратно — отменить это будет нельзя."
-)
+def resume_battle_prefix() -> str:
+    return i18n.t("start.resume_prefix")
+
+
+def reset_confirm_text() -> str:
+    return i18n.t("start.reset_confirm")
 
 
 def _reset_confirm_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🗑 Да, удалить", callback_data="reset_confirm:manual_reset"),
+                InlineKeyboardButton(text=i18n.t("start.button.reset_yes"), callback_data="reset_confirm:manual_reset"),
                 # "Отмена" ведёт на уже существующий "back_to_stats" (bot/
                 # handlers/character.py), не на отдельный текст без кнопок
                 # (docs/notes.md) — иначе отмена была тупиком: "Отменено." без
                 # единой кнопки, продолжить играть можно было только вручную
                 # набрав /start.
-                InlineKeyboardButton(text="Отмена", callback_data="back_to_stats"),
+                InlineKeyboardButton(text=i18n.t("start.button.cancel"), callback_data="back_to_stats"),
             ]
         ]
     )
@@ -54,19 +55,23 @@ async def cmd_start(message: Message, api: ApiClient) -> None:
     except ApiError as error:
         if error.status_code != 404:
             raise
-        # §1: персонажа ещё нет — предложить создать.
-        await message.answer(WELCOME_TEXT, reply_markup=start_game_keyboard())
+        # §1: персонажа ещё нет — предложить создать. Локаль на этот момент
+        # уже best-effort выставлена bot/utils.py::set_locale_from_telegram_
+        # profile (bot/main.py, docs/notes.md, блок 4) — welcome_text()
+        # рендерится на ней без дополнительных действий здесь.
+        await message.answer(welcome_text(), reply_markup=start_game_keyboard())
         return
 
     # docs/notes.md, блок 3 — экраны ниже (render_stats_screen и т.п.) идут
-    # через core.i18n.t(), поэтому локаль нужно выставить до их вызова; сам
-    # WELCOME_TEXT не переведён (вне рамок блока), локаль на него не влияет.
+    # через core.i18n.t(), поэтому локаль нужно выставить точнее (по
+    # character.language) до их вызова — переопределяет best-effort
+    # значение от set_locale_from_telegram_profile.
     i18n.set_locale(character.get("language", i18n.DEFAULT_LOCALE))
 
     # §1: персонаж уже есть — повторный /start не пересоздаёт его. Баннер
     # шлём в любом случае, даже при восстановлении боя ниже — то же самое
     # первое сообщение, что игрок всегда видит на /start.
-    await message.answer(WELCOME_TEXT)
+    await message.answer(welcome_text())
 
     # docs/notes.md, п.48 — незавершённый бой не теряется, если сообщение с
     # его клавиатурой пропало (например, игрок удалил чат в Telegram):
@@ -76,7 +81,7 @@ async def cmd_start(message: Message, api: ApiClient) -> None:
     if active_session_id is not None:
         resume = await api.resume_combat_session(message.from_user.id, active_session_id)
         await message.answer(
-            f"{RESUME_BATTLE_PREFIX}{build_resume_text(resume)}",
+            f"{resume_battle_prefix()}{build_resume_text(resume)}",
             reply_markup=build_resume_keyboard(active_session_id, resume),
         )
         return
@@ -110,7 +115,7 @@ async def cmd_reset(message: Message) -> None:
     """Обнулить персонажа — в основном для тестирования, но без ограничения
     на окружение (docs/notes.md). Необратимо, поэтому только через
     подтверждение, а не с одного нажатия."""
-    await message.answer(RESET_CONFIRM_TEXT, reply_markup=_reset_confirm_keyboard())
+    await message.answer(reset_confirm_text(), reply_markup=_reset_confirm_keyboard())
 
 
 @router.callback_query(F.data == "reset_request")
@@ -118,7 +123,7 @@ async def reset_request(callback: CallbackQuery) -> None:
     """То же подтверждение, что и /reset, но с кнопки на экране прокачки
     (bot/handlers/character.py) — редактируем то же сообщение, а не шлём
     новое, как остальные экраны вне боя."""
-    await callback.message.edit_text(RESET_CONFIRM_TEXT, reply_markup=_reset_confirm_keyboard())
+    await callback.message.edit_text(reset_confirm_text(), reply_markup=_reset_confirm_keyboard())
     await callback.answer()
 
 
@@ -149,4 +154,4 @@ async def reset_confirm(callback: CallbackQuery, api: ApiClient) -> None:
         render_allocation_screen(character, title=creation_screen_title(), mode="creation"),
         reply_markup=allocation_keyboard(character, mode="creation"),
     )
-    await callback.answer("Персонаж обнулён")
+    await callback.answer(i18n.t("start.reset_done"))

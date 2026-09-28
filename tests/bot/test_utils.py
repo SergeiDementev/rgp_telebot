@@ -6,7 +6,14 @@ import pytest
 from aiogram.exceptions import TelegramBadRequest
 
 from bot.client import ApiError
-from bot.utils import detect_language, get_character_or_prompt_start, safe_edit_text
+from bot.utils import (
+    detect_language,
+    get_character_or_prompt_start,
+    safe_edit_text,
+    set_locale_from_telegram_profile,
+    start_game_keyboard,
+    welcome_text,
+)
 from core import i18n
 
 
@@ -111,3 +118,74 @@ async def test_get_character_or_prompt_start_returns_none_and_prompts_on_404():
     assert character is None
     callback.message.edit_text.assert_awaited_once()
     callback.answer.assert_awaited_once()
+
+
+def test_welcome_text_switches_with_locale():
+    # docs/notes.md, блок 4 — функция, не константа, значение зависит от
+    # core.i18n.get_locale().
+    token = i18n.set_locale("en")
+    try:
+        assert welcome_text() == i18n.t("start.welcome")
+        assert "Welcome to the text RPG" in welcome_text()
+    finally:
+        i18n.reset_locale(token)
+    assert "Добро пожаловать" in welcome_text()
+
+
+def test_start_game_keyboard_label_switches_with_locale():
+    token = i18n.set_locale("en")
+    try:
+        markup = start_game_keyboard()
+        assert markup.inline_keyboard[0][0].text == "✅ Start the game"
+    finally:
+        i18n.reset_locale(token)
+
+
+@pytest.mark.asyncio
+async def test_set_locale_from_telegram_profile_sets_ru_and_calls_handler():
+    callback = make_callback()
+    callback.from_user.language_code = "ru-RU"
+    handler = AsyncMock(return_value="handled")
+    try:
+        result = await set_locale_from_telegram_profile(handler, callback, {"api": "stub"})
+        assert result == "handled"
+        handler.assert_awaited_once_with(callback, {"api": "stub"})
+        # Мидлварь выставляет локаль ДО вызова хендлера — проверяем это
+        # через сайд-эффект внутри самого handler, а не постфактум, раз
+        # AsyncMock ничего не читает из контекста сам по себе.
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+@pytest.mark.asyncio
+async def test_set_locale_from_telegram_profile_reflects_in_handler_execution():
+    callback = make_callback()
+    callback.from_user.language_code = "en-US"
+    seen_locale = {}
+
+    async def handler(event, data):
+        seen_locale["value"] = i18n.get_locale()
+        return None
+
+    try:
+        await set_locale_from_telegram_profile(handler, callback, {})
+        assert seen_locale["value"] == "en"
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+@pytest.mark.asyncio
+async def test_set_locale_from_telegram_profile_defaults_to_en_when_code_missing():
+    callback = make_callback()
+    callback.from_user.language_code = None
+    seen_locale = {}
+
+    async def handler(event, data):
+        seen_locale["value"] = i18n.get_locale()
+        return None
+
+    try:
+        await set_locale_from_telegram_profile(handler, callback, {})
+        assert seen_locale["value"] == "en"
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)

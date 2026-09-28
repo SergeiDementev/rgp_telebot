@@ -779,3 +779,130 @@ async def test_log_callback_timing_logs_even_when_handler_raises(caplog):
 
     messages = [record.message for record in caplog.records]
     assert any("combat callback handled" in m for m in messages)
+
+
+# --- Английская локаль (docs/notes.md, блок 4) ---------------------------
+# По одному репрезентативному тесту на область: кнопки хода, флоу босса,
+# алерты об ошибках/эдж-кейсах — не полное дублирование русских тестов
+# выше. Хендлеры этого роутера сами локаль не выставляют (кроме тех, что
+# уже знают character.language, см. get_character_or_prompt_start) — в
+# продакшене это делает bot/utils.py::set_locale_from_telegram_profile на
+# уровне диспетчера (bot/main.py), которая в юнит-тестах не участвует
+# (хендлеры вызываются напрямую), поэтому явно выставляем локаль сами.
+
+
+async def test_confirm_fight_buttons_en():
+    callback = make_callback("confirm_fight:5")
+    api = AsyncMock()
+    api.confirm_combat.return_value = {
+        "status": "active", "result": None, "current_turn": "player", "text": "..."
+    }
+    token = i18n.set_locale("en")
+    try:
+        await confirm_fight(callback, api)
+        row = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0]
+        assert row[0].text == "🎲 Attack"
+        assert row[1].text == "💥 Power attack"
+    finally:
+        i18n.reset_locale(token)
+
+
+async def test_start_combat_boss_button_en():
+    callback = make_callback("start_combat:5")
+    api = AsyncMock()
+    api.start_combat.return_value = {
+        "combat_session_id": 5, "status": "awaiting_confirmation", "enemy_type": "boss", "text": "..."
+    }
+    token = i18n.set_locale("en")
+    try:
+        await start_combat(callback, api)
+        button = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+        assert button.text == "⚔️ Enter the fight"
+    finally:
+        i18n.reset_locale(token)
+
+
+async def test_confirm_fight_auto_stops_at_flee_decision_buttons_en():
+    callback = make_callback("confirm_fight_auto:5")
+    api = AsyncMock()
+    api.confirm_combat.return_value = {"status": "active", "current_turn": "player", "text": "..."}
+    api.take_turn.return_value = {"status": "awaiting_flee_decision", "text": "..."}
+    token = i18n.set_locale("en")
+    try:
+        await confirm_fight_auto(callback, api)
+        markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+        labels = [btn.text for row in markup.inline_keyboard for btn in row]
+        assert labels == ["🏃 Flee", "⚔️ Keep fighting"]
+    finally:
+        i18n.reset_locale(token)
+
+
+async def test_search_boss_encounter_potion_stock_text_en():
+    callback = make_callback("search_boss_encounter")
+    api = AsyncMock()
+    api.search_boss_encounter.return_value = {
+        "combat_session_id": 9, "enemy_type": "boss", "text": "You step into the Forest King's hall.",
+        "potions_small": 2, "potions_large": 1,
+    }
+    token = i18n.set_locale("en")
+    try:
+        await search_boss_encounter(callback, api)
+        text = callback.message.edit_text.call_args.args[0]
+        assert text == (
+            "You step into the Forest King's hall.\n\n"
+            "🧪 Your stock:\n"
+            "  Small: 2/5\n"
+            "  Large: 1/3"
+        )
+        button = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+        assert button.text == "⚔️ Challenge (from level 9)"
+    finally:
+        i18n.reset_locale(token)
+
+
+async def test_boss_challenge_prompt_alerts_en():
+    callback = make_callback("boss_challenge_prompt:9")
+    callback.message.edit_reply_markup = AsyncMock()
+    api = AsyncMock()
+    api.get_character.return_value = {"level": 9, "language": "en"}
+    try:
+        await boss_challenge_prompt(callback, api)
+        callback.answer.assert_awaited_once_with("⚠️ After this, there's no retreating.", show_alert=True)
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+async def test_use_potion_error_alerts_en():
+    callback = make_callback("use_potion:5:small")
+    api = AsyncMock()
+    api.use_potion.side_effect = ApiError(400, "not_owned")
+    token = i18n.set_locale("en")
+    try:
+        await use_potion(callback, api)
+        callback.answer.assert_awaited_once_with("You don't have that potion.", show_alert=True)
+    finally:
+        i18n.reset_locale(token)
+
+
+async def test_confirm_flee_not_allowed_alert_en():
+    callback = make_callback("confirm_flee:5")
+    api = AsyncMock()
+    api.confirm_combat.side_effect = ApiError(400, "flee_not_allowed")
+    token = i18n.set_locale("en")
+    try:
+        await confirm_flee(callback, api)
+        callback.answer.assert_awaited_once_with("You can't retreat from this battle.", show_alert=True)
+    finally:
+        i18n.reset_locale(token)
+
+
+async def test_search_encounter_already_in_battle_alert_en():
+    callback = make_callback("search_encounter")
+    api = AsyncMock()
+    api.search_encounter.side_effect = ApiError(409, "character already has an active combat session")
+    token = i18n.set_locale("en")
+    try:
+        await search_encounter(callback, api)
+        callback.answer.assert_awaited_once_with("You already have an unfinished battle — finish it first.", show_alert=True)
+    finally:
+        i18n.reset_locale(token)

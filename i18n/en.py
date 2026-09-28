@@ -198,4 +198,47 @@ TRANSLATIONS: dict[str, str] = {
     "character.buy_error.cap_reached": "Already at the maximum for this potion size.",
     "character.buy_error.generic": "Couldn't buy the potion.",
     "character.allocate_error.no_points": "No stat points left",
+
+    # --- Bot combat UI (bot/handlers/combat.py, docs/notes.md, block 4) ---
+    "combat.ui.button.attack": "🎲 Attack",
+    "combat.ui.button.defend": "🛡️ Defend",
+    "combat.ui.button.flee": "🏃 Flee",
+    "combat.ui.button.continue_fight": "⚔️ Keep fighting",
+    "combat.ui.button.restart": "🔄 Start over",
+    "combat.ui.button.determine_initiative": "⚔️ Roll initiative",
+    "combat.ui.button.boss_challenge": "⚔️ Challenge (from level {level})",
+    "combat.ui.button.boss_challenge_confirm": "⚔️ Yes, enter the fight",
+    "combat.ui.button.enter_battle": "⚔️ Enter the fight",
+    "combat.ui.button.retreat": "🏃 Retreat",
+    "combat.ui.button.autobattle": "⚡ Auto-battle",
+    "combat.ui.potion_stock": "🧪 Your stock:\n  {small_label}: {potions_small}/{small_cap}\n  {large_label}: {potions_large}/{large_cap}",
+
+    "combat.ui.error.already_in_battle": "You already have an unfinished battle — finish it first.",
+    "combat.ui.error.cant_cancel_started": "The battle has already started — it can't be cancelled.",
+    "combat.ui.error.boss_unavailable": "The final boss isn't available at this level yet.",
+    "combat.ui.warning.boss_no_retreat": "⚠️ After this, there's no retreating.",
+    "combat.ui.error.cant_flee": "You can't retreat from this battle.",
+    "combat.ui.error.potion_already_used": "A potion has already been used this battle.",
+    "combat.ui.error.potion_not_owned": "You don't have that potion.",
+    "combat.ui.error.potion_generic": "You can't use a potion right now.",
+
+    # --- /language (bot/handlers/language.py, block 4) ---
+    "language.confirmation": "✅ Language switched to English.",
+
+    # --- /start, /reset (bot/handlers/start.py + bot/utils.py, block 4) ---
+    "start.welcome": (
+        "🧙 Welcome to the text RPG!\n\n"
+        "Search for enemies, fight with dice rolls, level up your character. "
+        "The ultimate goal — grow strong enough to defeat the final boss.\n\n"
+        "🌐 /language — сменить язык / switch language"
+    ),
+    "start.button.start_game": "✅ Start the game",
+    "start.resume_prefix": "↩️ Resuming your battle:\n\n",
+    "start.reset_confirm": (
+        "⚠️ Reset your character for real?\n\n"
+        "Stats, level and all progress will be permanently deleted — this can't be undone."
+    ),
+    "start.button.reset_yes": "🗑 Yes, delete",
+    "start.button.cancel": "Cancel",
+    "start.reset_done": "Character reset",
 }

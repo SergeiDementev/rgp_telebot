@@ -6,6 +6,7 @@ import pytest
 
 from bot.client import ApiError
 from bot.handlers.language import LANGUAGE_PROMPT_TEXT, cmd_language, set_language
+from core import i18n
 
 pytestmark = pytest.mark.asyncio
 
@@ -61,6 +62,34 @@ async def test_set_language_saves_choice_and_confirms_in_english():
     api.set_language.assert_awaited_once_with(7, "en")
     text = callback.message.edit_text.call_args.args[0]
     assert "english" in text.lower()
+
+
+async def test_set_language_confirmation_uses_newly_chosen_language_not_old():
+    # docs/notes.md, блок 4 — локаль после get_character_or_prompt_start
+    # отражает СТАРЫЙ character["language"]; подтверждение должно звучать
+    # на НОВОМ выбранном языке (i18n.set_locale(language) явно после
+    # api.set_language), а не на том, что было до переключения.
+    callback = make_callback("set_language:en")
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 7, "language": "ru"}
+    try:
+        await set_language(callback, api)
+        assert i18n.get_locale() == "en"
+        text = callback.message.edit_text.call_args.args[0]
+        assert text == "✅ Language switched to English."
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+async def test_set_language_confirms_exact_russian_text():
+    callback = make_callback("set_language:ru")
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 7, "language": "en"}
+
+    await set_language(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert text == "✅ Язык переключён на русский."
 
 
 async def test_set_language_prompts_start_when_character_missing():

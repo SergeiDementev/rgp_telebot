@@ -59,15 +59,23 @@ async def _log_callback_timing(
 
 router = Router()
 router.callback_query.middleware(_log_callback_timing)
+# Локаль по умолчанию для клавиатур этого роутера ("Атаковать"/
+# "Защищаться"/"Сбежать" и т.п., построенных клиентски через core.i18n.t()
+# без лишнего обращения к API на каждый ход) выставляется на уровне всего
+# диспетчера — bot/utils.py::set_locale_from_telegram_profile, подключена
+# в bot/main.py::build_dispatcher (docs/notes.md, блок 4). Хендлеры, что
+# знают точный character.language (get_character_or_prompt_start —
+# boss_challenge_prompt, refresh_after_battle, успешная ветка cancel_
+# encounter), переопределяют это значение точнее чуть позже в себе самих.
 
 
 def _session_id_from(callback_data: str) -> int:
     return int(callback_data.split(":", 1)[1])
 
 
-USE_POTION_ERROR_MESSAGES = {
-    "already_used": "Зелье в этом бою уже использовано.",
-    "not_owned": "У тебя нет такого зелья.",
+USE_POTION_ERROR_KEYS = {
+    "already_used": "combat.ui.error.potion_already_used",
+    "not_owned": "combat.ui.error.potion_not_owned",
 }
 
 
@@ -75,12 +83,15 @@ def _attack_phase_buttons(session_id: int, current_turn: Optional[str]) -> list[
     """Кнопка(и) хода игрока. На ходу противника — только "Защищаться" (та
     же кнопка запускает /turn, подпись косметическая). На ходу игрока —
     выбор между обычной атакой и "💥 Мощный удар" (docs/combat_mechanics.md
-    §3a) — доступен всегда, в любом бою, включая босса, без лимита."""
+    §3a) — доступен всегда, в любом бою, включая босса, без лимита.
+    "💥 Мощный удар" — тот же ключ, что и подпись атаки в боевом логе
+    (`combat.strike.power_label`, api/rendering.py, блок 2): слово то же
+    самое, отдельного перевода не заводим."""
     if current_turn == "enemy":
-        return [InlineKeyboardButton(text="🛡️ Защищаться", callback_data=f"take_turn:{session_id}")]
+        return [InlineKeyboardButton(text=i18n.t("combat.ui.button.defend"), callback_data=f"take_turn:{session_id}")]
     return [
-        InlineKeyboardButton(text="🎲 Атаковать", callback_data=f"take_turn:{session_id}"),
-        InlineKeyboardButton(text="💥 Мощный удар", callback_data=f"take_turn_power:{session_id}"),
+        InlineKeyboardButton(text=i18n.t("combat.ui.button.attack"), callback_data=f"take_turn:{session_id}"),
+        InlineKeyboardButton(text=i18n.t("combat.strike.power_label"), callback_data=f"take_turn_power:{session_id}"),
     ]
 
 
@@ -91,14 +102,19 @@ def _potion_buttons(session_id: int, response: dict) -> list[InlineKeyboardButto
     структурно не может там появиться, отдельный флаг режима не нужен.
     Кнопка есть, только пока куплено хотя бы одно зелье нужного размера и
     лимит "раз за бой" (общий на оба размера) не сгорел; никогда — на ходу
-    противника."""
+    противника. "Малое"/"Большое" — те же ключи, что и в блоке 2/3
+    (`combat.potion.small_label`/`large_label`), не отдельный перевод."""
     if response.get("current_turn") != "player" or response.get("potion_used_this_battle"):
         return []
     buttons = []
     if response.get("potions_small", 0) > 0:
-        buttons.append(InlineKeyboardButton(text="🧪 Малое", callback_data=f"use_potion:{session_id}:small"))
+        buttons.append(InlineKeyboardButton(
+            text=f"🧪 {i18n.t('combat.potion.small_label')}", callback_data=f"use_potion:{session_id}:small"
+        ))
     if response.get("potions_large", 0) > 0:
-        buttons.append(InlineKeyboardButton(text="🧪 Большое", callback_data=f"use_potion:{session_id}:large"))
+        buttons.append(InlineKeyboardButton(
+            text=f"🧪 {i18n.t('combat.potion.large_label')}", callback_data=f"use_potion:{session_id}:large"
+        ))
     return buttons
 
 
@@ -116,8 +132,8 @@ def _flee_choice_keyboard(session_id: int, *, mode: str = "manual") -> InlineKey
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🏃 Сбежать", callback_data=f"flee_decision_flee:{session_id}"),
-                InlineKeyboardButton(text="⚔️ Биться дальше", callback_data=continue_callback),
+                InlineKeyboardButton(text=i18n.t("combat.ui.button.flee"), callback_data=f"flee_decision_flee:{session_id}"),
+                InlineKeyboardButton(text=i18n.t("combat.ui.button.continue_fight"), callback_data=continue_callback),
             ]
         ]
     )
@@ -156,23 +172,25 @@ def _boss_victory_keyboard() -> InlineKeyboardMarkup:
     этом экране нет. Причина архивации в самом callback_data —
     "boss_victory", не "manual_reset" (для аналитики на сервере)."""
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="🔄 Начать заново", callback_data="reset_confirm:boss_victory")]]
+        inline_keyboard=[[InlineKeyboardButton(text=i18n.t("combat.ui.button.restart"), callback_data="reset_confirm:boss_victory")]]
     )
 
 
 def _initiative_prompt_keyboard(session_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="⚔️ Определить инициативу", callback_data=f"start_combat:{session_id}")]
+            [InlineKeyboardButton(
+                text=i18n.t("combat.ui.button.determine_initiative"), callback_data=f"start_combat:{session_id}"
+            )]
         ]
     )
 
 
 def _potion_stock_text(potions_small: int, potions_large: int) -> str:
-    return (
-        f"🧪 Твой запас:\n"
-        f"  Малое: {potions_small}/{SMALL_POTION_CAP}\n"
-        f"  Большое: {potions_large}/{LARGE_POTION_CAP}"
+    return i18n.t(
+        "combat.ui.potion_stock",
+        small_label=i18n.t("combat.potion.small_label"), potions_small=potions_small, small_cap=SMALL_POTION_CAP,
+        large_label=i18n.t("combat.potion.large_label"), potions_large=potions_large, large_cap=LARGE_POTION_CAP,
     )
 
 
@@ -196,10 +214,10 @@ def _boss_challenge_keyboard(session_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text=f"⚔️ Бросить вызов (с {BOSS_LEVEL_REQUIREMENT} уровня)",
+                text=i18n.t("combat.ui.button.boss_challenge", level=BOSS_LEVEL_REQUIREMENT),
                 callback_data=f"boss_challenge_prompt:{session_id}",
             )],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"cancel_encounter:{session_id}")],
+            [InlineKeyboardButton(text=i18n.t("character.button.back"), callback_data=f"cancel_encounter:{session_id}")],
         ]
     )
 
@@ -212,8 +230,8 @@ def _boss_challenge_confirm_keyboard(session_id: int) -> InlineKeyboardMarkup:
     так же, без промежуточного возврата к экрану "Бросить вызов"."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="⚔️ Да, вступить в бой", callback_data=f"start_combat:{session_id}")],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"cancel_encounter:{session_id}")],
+            [InlineKeyboardButton(text=i18n.t("combat.ui.button.boss_challenge_confirm"), callback_data=f"start_combat:{session_id}")],
+            [InlineKeyboardButton(text=i18n.t("character.button.back"), callback_data=f"cancel_encounter:{session_id}")],
         ]
     )
 
@@ -227,15 +245,17 @@ def _confirmation_keyboard(session_id: int, enemy_type: str) -> InlineKeyboardMa
     до конца."""
     if enemy_type == "boss":
         return InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="⚔️ Вступить в бой", callback_data=f"confirm_fight:{session_id}")]]
+            inline_keyboard=[[InlineKeyboardButton(
+                text=i18n.t("combat.ui.button.enter_battle"), callback_data=f"confirm_fight:{session_id}"
+            )]]
         )
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="⚔️ Вступить в бой", callback_data=f"confirm_fight:{session_id}"),
-                InlineKeyboardButton(text="🏃 Отступить", callback_data=f"confirm_flee:{session_id}"),
+                InlineKeyboardButton(text=i18n.t("combat.ui.button.enter_battle"), callback_data=f"confirm_fight:{session_id}"),
+                InlineKeyboardButton(text=i18n.t("combat.ui.button.retreat"), callback_data=f"confirm_flee:{session_id}"),
             ],
-            [InlineKeyboardButton(text="⚡ Автобой", callback_data=f"confirm_fight_auto:{session_id}")],
+            [InlineKeyboardButton(text=i18n.t("combat.ui.button.autobattle"), callback_data=f"confirm_fight_auto:{session_id}")],
         ]
     )
 
@@ -300,7 +320,7 @@ async def search_encounter(callback: CallbackQuery, api: ApiClient) -> None:
         # У персонажа уже есть незавершённая боевая сессия (см. api/routers/
         # encounter.py) — например, бот перезапустили посреди боя. Раньше
         # это падало необработанным исключением (docs/notes.md).
-        await callback.answer("У тебя уже есть незавершённый бой — сначала заверши его.", show_alert=True)
+        await callback.answer(i18n.t("combat.ui.error.already_in_battle"), show_alert=True)
         return
     session_id = response["combat_session_id"]
     await callback.message.edit_text(response["text"], reply_markup=_initiative_prompt_keyboard(session_id))
@@ -319,7 +339,7 @@ async def search_boss_encounter(callback: CallbackQuery, api: ApiClient) -> None
     except ApiError as error:
         if error.status_code != 409:
             raise
-        await callback.answer("У тебя уже есть незавершённый бой — сначала заверши его.", show_alert=True)
+        await callback.answer(i18n.t("combat.ui.error.already_in_battle"), show_alert=True)
         return
     session_id = response["combat_session_id"]
     # docs/notes.md, п.51 — запас зелий на экране входа (бой с боссом без
@@ -344,7 +364,7 @@ async def cancel_encounter(callback: CallbackQuery, api: ApiClient) -> None:
             raise
         # Гонка — сессия уже не в статусе "до инициативы" (например, бой
         # уже начат с другого места). Отменять нечего, сообщаем и всё.
-        await callback.answer("Бой уже начался — отменить нельзя.", show_alert=True)
+        await callback.answer(i18n.t("combat.ui.error.cant_cancel_started"), show_alert=True)
         return
     character = await get_character_or_prompt_start(callback, api)
     if character is None:
@@ -366,11 +386,11 @@ async def boss_challenge_prompt(callback: CallbackQuery, api: ApiClient) -> None
     if character is None:
         return
     if character["level"] < BOSS_LEVEL_REQUIREMENT:
-        await callback.answer("Финальный босс пока недоступен на этом уровне.", show_alert=True)
+        await callback.answer(i18n.t("combat.ui.error.boss_unavailable"), show_alert=True)
         return
     session_id = _session_id_from(callback.data)
     await callback.message.edit_reply_markup(reply_markup=_boss_challenge_confirm_keyboard(session_id))
-    await callback.answer("⚠️ После этого отступить будет нельзя.", show_alert=True)
+    await callback.answer(i18n.t("combat.ui.warning.boss_no_retreat"), show_alert=True)
 
 
 @router.callback_query(F.data.startswith("start_combat:"))
@@ -385,7 +405,7 @@ async def start_combat(callback: CallbackQuery, api: ApiClient) -> None:
     except ApiError as error:
         if error.status_code != 403:
             raise
-        await callback.answer("Финальный босс пока недоступен на этом уровне.", show_alert=True)
+        await callback.answer(i18n.t("combat.ui.error.boss_unavailable"), show_alert=True)
         return
     keyboard = _confirmation_keyboard(session_id, response.get("enemy_type"))
     await callback.message.edit_text(response["text"], reply_markup=keyboard)
@@ -435,7 +455,7 @@ async def confirm_flee(callback: CallbackQuery, api: ApiClient) -> None:
             raise
         # Гонка/устаревшая клавиатура — у бота эта кнопка для босса и так не
         # показывается (docs/notes.md, п.57), сервер отклонил на всякий случай.
-        await callback.answer("Из боя с этим противником нельзя отступить.", show_alert=True)
+        await callback.answer(i18n.t("combat.ui.error.cant_flee"), show_alert=True)
         return
     await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard())
     await callback.answer()
@@ -469,7 +489,7 @@ async def use_potion(callback: CallbackQuery, api: ApiClient) -> None:
     try:
         response = await api.use_potion(callback.from_user.id, session_id, size)
     except ApiError as error:
-        message = USE_POTION_ERROR_MESSAGES.get(error.detail, "Сейчас нельзя использовать зелье.")
+        message = i18n.t(USE_POTION_ERROR_KEYS.get(error.detail, "combat.ui.error.potion_generic"))
         await callback.answer(message, show_alert=True)
         return
     await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
@@ -513,8 +533,11 @@ async def refresh_after_battle(callback: CallbackQuery, api: ApiClient) -> None:
     character = await get_character_or_prompt_start(callback, api)
     if character is None:
         return
-    lines = [f"❤️ HP: {character['hp_current']:.0f}/{character['hp_max']:.0f}"]
+    # Те же ключи, что и у строки HP/таймера в конце боя (api/rendering.py::
+    # render_battle_end, блок 2, "combat.battle_end.hp_line"/"regen_line") —
+    # текст identичен, отдельного перевода не заводим.
+    lines = [i18n.t("combat.battle_end.hp_line", hp_current=f"{character['hp_current']:.0f}", hp_max=f"{character['hp_max']:.0f}")]
     if character["hp_seconds_to_full"] > 0:
-        lines.append(f"⏳ Полное восстановление через: ~{character['hp_seconds_to_full']:.0f} сек.")
+        lines.append(i18n.t("combat.battle_end.regen_line", hp_seconds_to_full=f"{character['hp_seconds_to_full']:.0f}"))
     await safe_edit_text(callback.message, "\n".join(lines), reply_markup=_post_battle_keyboard())
     await callback.answer()

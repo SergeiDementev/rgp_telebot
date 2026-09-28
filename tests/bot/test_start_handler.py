@@ -6,14 +6,14 @@ import pytest
 
 from bot.client import ApiError
 from bot.handlers.start import (
-    RESET_CONFIRM_TEXT,
-    RESUME_BATTLE_PREFIX,
-    WELCOME_TEXT,
     cmd_reset,
     cmd_start,
     reset_confirm,
+    reset_confirm_text,
     reset_request,
+    resume_battle_prefix,
     start_game,
+    welcome_text,
 )
 from core import i18n
 
@@ -46,7 +46,7 @@ async def test_cmd_start_new_user_shows_welcome_with_start_button():
 
     message.answer.assert_awaited_once()
     args, kwargs = message.answer.call_args
-    assert args[0] == WELCOME_TEXT
+    assert args[0] == welcome_text()
     assert kwargs["reply_markup"] is not None
 
 
@@ -62,7 +62,7 @@ async def test_cmd_start_existing_user_shows_welcome_then_stats():
 
     assert message.answer.await_count == 2
     first_call, second_call = message.answer.call_args_list
-    assert first_call.args[0] == WELCOME_TEXT
+    assert first_call.args[0] == welcome_text()
     assert "Hero" in second_call.args[0]
 
 
@@ -85,9 +85,9 @@ async def test_cmd_start_resumes_active_battle_instead_of_stats_screen():
     # только вторым сообщением идёт восстановленный бой, а не меню персонажа.
     assert message.answer.await_count == 2
     first_call, second_call = message.answer.call_args_list
-    assert first_call.args[0] == WELCOME_TEXT
+    assert first_call.args[0] == welcome_text()
     args, kwargs = second_call
-    assert args[0] == f"{RESUME_BATTLE_PREFIX}❤️ Ты: 34/50   👹 Волк: 12/50"
+    assert args[0] == f"{resume_battle_prefix()}❤️ Ты: 34/50   👹 Волк: 12/50"
     callback_datas = [btn.callback_data for row in kwargs["reply_markup"].inline_keyboard for btn in row]
     assert callback_datas == ["take_turn:5", "take_turn_power:5"]
 
@@ -156,7 +156,7 @@ async def test_cmd_reset_asks_for_confirmation():
 
     message.answer.assert_awaited_once()
     args, kwargs = message.answer.call_args
-    assert args[0] == RESET_CONFIRM_TEXT
+    assert args[0] == reset_confirm_text()
     markup = kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert "reset_confirm:manual_reset" in callback_datas
@@ -175,7 +175,7 @@ async def test_reset_request_edits_message_with_confirmation():
 
     callback.message.edit_text.assert_awaited_once()
     args, kwargs = callback.message.edit_text.call_args
-    assert args[0] == RESET_CONFIRM_TEXT
+    assert args[0] == reset_confirm_text()
     markup = kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert "reset_confirm:manual_reset" in callback_datas
@@ -202,7 +202,7 @@ async def test_reset_confirm_deletes_character_and_shows_creation_screen():
     callback.message.edit_text.assert_awaited_once()
     text = callback.message.edit_text.call_args.args[0]
     assert "Создание героя" in text
-    assert WELCOME_TEXT not in text
+    assert welcome_text() not in text
     callback.answer.assert_awaited_once()
 
 

@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 
 from bot.client import ApiClient
 from bot.handlers import character, combat, fallback, language, start
+from bot.utils import set_locale_from_telegram_profile
 
 load_dotenv()
 
@@ -74,6 +75,13 @@ def _add_file_logging() -> None:
 
 def build_dispatcher() -> Dispatcher:
     dp = Dispatcher()
+    # Ставится на уровне диспетчера, не отдельного роутера (docs/notes.md,
+    # блок 4) — покрывает все хендлеры разом, включая /start и /reset, где
+    # персонаж ещё не известен вовсе. bot/utils.py::
+    # set_locale_from_telegram_profile — best-effort по профилю Telegram,
+    # хендлеры с точным character.language переопределяют это позже сами.
+    dp.message.middleware(set_locale_from_telegram_profile)
+    dp.callback_query.middleware(set_locale_from_telegram_profile)
     dp.include_router(start.router)
     dp.include_router(character.router)
     dp.include_router(combat.router)

@@ -1,6 +1,6 @@
 """Общие мелкие утилиты для хендлеров бота."""
 
-from typing import Optional
+from typing import Any, Awaitable, Callable, Optional, Union
 
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -8,24 +8,27 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from bot.client import ApiClient, ApiError
 from core import i18n
 
-# WELCOME_TEXT/start_game_keyboard живут здесь, а не в bot/handlers/start.py
-# (откуда их естественно было бы ожидать), потому что get_character_or_
-# prompt_start() ниже нужен и character.py, и combat.py, а те, в свою
-# очередь, уже импортируются из start.py — переезд сюда единственный
-# способ не завести цикл импортов (bot/utils.py ничего не импортирует из
-# bot/handlers/*). bot/handlers/start.py по-прежнему реэкспортирует
-# WELCOME_TEXT для обратной совместимости импортов из тестов.
-WELCOME_TEXT = (
-    "🧙 Добро пожаловать в текстовую RPG!\n\n"
-    "Ищи противников, сражайся на кубиках, качай персонажа. "
-    "Финальная цель — набраться сил и одолеть финального босса.\n\n"
-    "🌐 /language — сменить язык / switch language"
-)
+# welcome_text()/start_game_keyboard живут здесь, а не в bot/handlers/
+# start.py (откуда их естественно было бы ожидать), потому что
+# get_character_or_prompt_start() ниже нужен и character.py, и combat.py, а
+# те, в свою очередь, уже импортируются из start.py — переезд сюда
+# единственный способ не завести цикл импортов (bot/utils.py ничего не
+# импортирует из bot/handlers/*). bot/handlers/start.py по-прежнему
+# реэкспортирует welcome_text для совместимости импортов из тестов.
+
+
+def welcome_text() -> str:
+    """Функция, не константа (docs/notes.md, блок 4) — значение зависит от
+    текущей локали. Строка "/language — сменить язык / switch language"
+    сознательно остаётся двуязычной в обоих каталогах (i18n/ru.py, i18n/
+    en.py) — это постоянная подсказка, как переключиться, полезная
+    независимо от того, угадан ли язык верно."""
+    return i18n.t("start.welcome")
 
 
 def start_game_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="✅ Начать игру", callback_data="start_game")]]
+        inline_keyboard=[[InlineKeyboardButton(text=i18n.t("start.button.start_game"), callback_data="start_game")]]
     )
 
 
@@ -36,6 +39,30 @@ def detect_language(language_code: Optional[str]) -> str:
     отсутствует вовсе — Telegram его не гарантирует). "ru"/"ru-RU"/... →
     "ru", всё остальное, включая None, → "en"."""
     return "ru" if language_code is not None and language_code.startswith("ru") else "en"
+
+
+async def set_locale_from_telegram_profile(
+    handler: Callable[[Union[Message, CallbackQuery], dict], Awaitable[Any]],
+    event: Union[Message, CallbackQuery],
+    data: dict,
+) -> Any:
+    """Диспетчерская мидлварь (docs/notes.md, блок 4; подключена в
+    bot/main.py::build_dispatcher для Message и CallbackQuery — раньше
+    аналогичная логика была только в bot/handlers/combat.py, локальной для
+    одного роутера; вынесена сюда и обобщена, чтобы покрыть все хендлеры
+    разом, включая /start и /reset до того, как персонаж вообще известен).
+
+    Ставит best-effort локаль по профилю Telegram (detect_language) ДО
+    того, как выполнится любой хендлер любого роутера — без этого контекст
+    оставался бы на DEFAULT_LOCALE ("ru") везде, где хендлер не запрашивает
+    персонажа явно (у aiogram свежий contextvars.Context на каждый апдейт,
+    docs/notes.md, блок 3 — не наследуется от предыдущего). Хендлеры,
+    которые знают точный character.language (через get_character_or_
+    prompt_start или свой прямой api.get_character()), переопределяют это
+    значение точнее чуть позже в себе самих — обе точки set_locale()
+    безопасны в любом порядке."""
+    i18n.set_locale(detect_language(event.from_user.language_code))
+    return await handler(event, data)
 
 
 async def safe_edit_text(message: Message, text: str, *, reply_markup: Optional[InlineKeyboardMarkup] = None) -> None:
@@ -74,13 +101,15 @@ async def get_character_or_prompt_start(callback: CallbackQuery, api: ApiClient)
     `.get(..., DEFAULT_LOCALE)`, не прямой доступ по ключу — реальный API
     всегда отдаёт language (обязательное поле, api/schemas/character.py),
     но часть моков в тестах его не имитирует и это не повод падать здесь с
-    KeyError."""
+    KeyError. 404-ветка ничего не переопределяет сама (docs/notes.md,
+    блок 4) — welcome_text() уже рендерится на локали, выставленной
+    set_locale_from_telegram_profile до входа сюда."""
     try:
         character = await api.get_character(callback.from_user.id)
     except ApiError as error:
         if error.status_code != 404:
             raise
-        await safe_edit_text(callback.message, WELCOME_TEXT, reply_markup=start_game_keyboard())
+        await safe_edit_text(callback.message, welcome_text(), reply_markup=start_game_keyboard())
         await callback.answer()
         return None
     i18n.set_locale(character.get("language", i18n.DEFAULT_LOCALE))
