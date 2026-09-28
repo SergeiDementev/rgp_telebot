@@ -21,14 +21,16 @@ WORKDIR /app
 COPY --from=builder /install /usr/local
 
 # Только то, что реально нужно в рантайме (docs/, scripts/, tests/, data/
-# — см. .dockerignore) — content/ и migrations/ обязательны: первое читает
-# api/enemy_content.py и bot/rules_content.py, второе — alembic на старте
-# api-контейнера (см. docker-compose.yml).
+# — см. .dockerignore) — content/, i18n/ и migrations/ обязательны:
+# первое читает api/enemy_content.py и bot/rules_content.py, второе —
+# core/i18n.py::t() (docs/notes.md, двуязычность ru/en), третье — alembic
+# на старте api-контейнера (см. docker-compose.yml).
 COPY api/ api/
 COPY bot/ bot/
 COPY core/ core/
 COPY db/ db/
 COPY content/ content/
+COPY i18n/ i18n/
 COPY migrations/ migrations/
 COPY alembic.ini .
 
