@@ -261,4 +261,11 @@ TRANSLATIONS: dict[str, str] = {
     "start.button.reset_yes": "🗑 Да, удалить",
     "start.button.cancel": "Отмена",
     "start.reset_done": "Персонаж обнулён",
+
+    # --- /rules (bot/handlers/character.py + bot/rules_content.py, блок 5) ---
+    # Сам текст правил — content/rules.md/rules.en.md, отдельные файлы, не
+    # TRANSLATIONS (см. докстринг bot/rules_content.py) — здесь только
+    # обвязка меню разделов.
+    "rules.menu_header": "📖 <b>{title}</b>\n\nВыбери раздел:",
+    "rules.button.back_to_sections": "⬅️ К списку разделов",
 }

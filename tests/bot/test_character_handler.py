@@ -20,7 +20,7 @@ from bot.handlers.character import (
     show_rules_section,
     stats_screen_keyboard,
 )
-from bot.rules_content import RULES_MENU_TITLE, RULES_SECTIONS
+from bot.rules_content import rules_menu_title, rules_sections
 from core import i18n
 
 pytestmark = pytest.mark.asyncio
@@ -54,9 +54,9 @@ async def test_show_rules_edits_same_message_with_section_menu():
 
     callback.message.edit_text.assert_awaited_once()
     text = callback.message.edit_text.call_args.args[0]
-    assert RULES_MENU_TITLE in text
+    assert rules_menu_title() in text
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
-    assert len(markup.inline_keyboard) == len(RULES_SECTIONS) + 1  # + кнопка "Назад"
+    assert len(markup.inline_keyboard) == len(rules_sections()) + 1  # + кнопка "Назад"
     assert markup.inline_keyboard[0][0].callback_data == "rules_section:0"
     assert markup.inline_keyboard[-1][0].callback_data == "back_to_stats"
     callback.answer.assert_awaited_once()
@@ -69,7 +69,7 @@ async def test_show_rules_section_shows_section_text_with_back_to_menu():
 
     callback.message.edit_text.assert_awaited_once()
     text = callback.message.edit_text.call_args.args[0]
-    expected_title, expected_body = RULES_SECTIONS[2]
+    expected_title, expected_body = rules_sections()[2]
     assert expected_title in text
     assert expected_body in text
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
@@ -473,3 +473,29 @@ async def test_open_allocation_renders_in_character_language(en_locale):
     assert text.startswith("🏅 Level:")
     assert "💰 Gold: 0" in text
     assert "📦 Loot: none yet" in text
+
+
+async def test_show_rules_en(en_locale):
+    # docs/notes.md, блок 5 — меню разделов правил на текущей локали.
+    callback = make_callback("show_rules")
+
+    await show_rules(callback)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert "Game Rules" in text
+    assert "Choose a section:" in text
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert markup.inline_keyboard[0][0].text == "1. Introduction"
+    assert markup.inline_keyboard[-1][0].text == "⬅️ Back"
+
+
+async def test_show_rules_section_en(en_locale):
+    callback = make_callback("rules_section:0")
+
+    await show_rules_section(callback)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert "1. Introduction" in text
+    assert "This is a text-based turn-based RPG" in text
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert markup.inline_keyboard[0][0].text == "⬅️ Back to sections"

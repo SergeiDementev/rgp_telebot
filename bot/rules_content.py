@@ -1,19 +1,35 @@
-"""content/rules.md -> текст для Telegram (bot задан на parse_mode=HTML, main.py).
+"""content/rules.md / content/rules.en.md -> текст для Telegram (бот задан
+на parse_mode=HTML, main.py).
 
-content/rules.md — единый источник и для человека (обычный markdown), и для
-бота: здесь только минимальное преобразование в то, что понимает Telegram
-(<b>/<code>/<blockquote> — из немногих тегов, которые разрешает Bot API), и
-сборка markdown-таблиц в читаемые строки — таблиц Telegram не поддерживает
-вообще. Файл целиком (~7000 символов) не влезает в лимит одного сообщения
-Telegram (4096 символов), поэтому режется на секции по `## ` — ровно так же,
-как секции самого документа; кнопка "Правила" открывает меню, а не текст
-целиком (bot/handlers/character.py).
-"""
+content/rules.{md,en.md} — единый источник и для человека (обычный
+markdown), и для бота: здесь только минимальное преобразование в то, что
+понимает Telegram (<b>/<code>/<blockquote> — из немногих тегов, которые
+разрешает Bot API), и сборка markdown-таблиц в читаемые строки — таблиц
+Telegram не поддерживает вообще. Файл целиком (~7000 символов) не влезает в
+лимит одного сообщения Telegram (4096 символов), поэтому режется на секции
+по `## ` — ровно так же, как секции самого документа; кнопка "Правила"
+открывает меню, а не текст целиком (bot/handlers/character.py).
+
+Двуязычность (docs/notes.md, блок 5) — целый параллельный файл на локаль
+(`content/rules.en.md`), не плоский TRANSLATIONS-словарь по ключу-фразе, как
+для UI-строк в блоках 2-4: связный документ с заголовками/таблицами/
+цитатами непрактично дробить на десятки мелких ключей — легко
+рассинхронизировать при правке, а сам парсер (regex по markdown-синтаксису:
+`##`/`###`/`**`/`` ` ``/`|`/`> `) языконезависим и не требует переделки под
+перевод, раз оба файла держат одинаковую структуру секций. Оба файла
+разбираются один раз при импорте (`_PARSED_BY_LOCALE`), выбор — по текущей
+`core.i18n.get_locale()` в `rules_menu_title()`/`rules_sections()`."""
 
 import re
 from pathlib import Path
 
-_CONTENT_PATH = Path(__file__).resolve().parent.parent / "content" / "rules.md"
+from core import i18n
+
+_CONTENT_DIR = Path(__file__).resolve().parent.parent / "content"
+_CONTENT_PATHS = {
+    "ru": _CONTENT_DIR / "rules.md",
+    "en": _CONTENT_DIR / "rules.en.md",
+}
 
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
 _CODE_RE = re.compile(r"`([^`]+?)`")
@@ -94,5 +110,28 @@ def parse_rules_markdown(source: str):
     return menu_title, sections
 
 
-with open(_CONTENT_PATH, encoding="utf-8") as _f:
-    RULES_MENU_TITLE, RULES_SECTIONS = parse_rules_markdown(_f.read())
+def _load_parsed(path: Path):
+    with open(path, encoding="utf-8") as f:
+        return parse_rules_markdown(f.read())
+
+
+_PARSED_BY_LOCALE = {locale: _load_parsed(path) for locale, path in _CONTENT_PATHS.items()}
+
+
+def rules_menu_title() -> str:
+    """Заголовок меню разделов правил для текущей локали (docs/notes.md,
+    блок 5) — функция, не константа, как и остальные локале-зависимые
+    заголовки/тексты в bot/ (menu_screen_title(), welcome_text() и т.п.,
+    блоки 3-4)."""
+    menu_title, _sections = _PARSED_BY_LOCALE.get(i18n.get_locale(), _PARSED_BY_LOCALE[i18n.DEFAULT_LOCALE])
+    return menu_title
+
+
+def rules_sections() -> list:
+    """(заголовок раздела, HTML-текст раздела) для текущей локали. Порядок и
+    количество секций идентичны между ru/en (docs/notes.md, блок 5,
+    tests/bot/test_rules_content.py) — кнопки меню адресуют раздел по
+    числовому индексу (bot/handlers/character.py::rules_menu_keyboard),
+    поэтому расхождение в структуре между языками сломало бы меню."""
+    _menu_title, sections = _PARSED_BY_LOCALE.get(i18n.get_locale(), _PARSED_BY_LOCALE[i18n.DEFAULT_LOCALE])
+    return sections

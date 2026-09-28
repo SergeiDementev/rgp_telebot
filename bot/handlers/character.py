@@ -30,7 +30,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.client import ApiClient, ApiError
-from bot.rules_content import RULES_MENU_TITLE, RULES_SECTIONS
+from bot.rules_content import rules_menu_title, rules_sections
 from bot.utils import get_character_or_prompt_start, safe_edit_text
 from core import i18n
 
@@ -155,18 +155,23 @@ def rules_menu_keyboard() -> InlineKeyboardMarkup:
     """content/rules.md целиком не влезает в лимит сообщения Telegram (4096
     символов) — показываем меню разделов, а не текст сразу (bot/rules_content.py).
 
-    Текст правил — не в этом блоке (docs/notes.md, блок 3): длинный контент
-    другого характера, отдельный следующий блок."""
+    Разделы — на текущей локали (bot/rules_content.py::rules_sections(),
+    docs/notes.md, блок 5); callback_data адресует раздел числовым
+    индексом, не текстом заголовка — порядок и количество разделов между
+    ru/en обязаны совпадать (tests/bot/test_rules_content.py), иначе один
+    и тот же индекс открывал бы разные по смыслу разделы на разных языках."""
     rows = [
         [InlineKeyboardButton(text=title, callback_data=f"rules_section:{index}")]
-        for index, (title, _body) in enumerate(RULES_SECTIONS)
+        for index, (title, _body) in enumerate(rules_sections())
     ]
-    rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_stats")])
+    rows.append([InlineKeyboardButton(text=i18n.t("character.button.back"), callback_data="back_to_stats")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def rules_section_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ К списку разделов", callback_data="show_rules")]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=i18n.t("rules.button.back_to_sections"), callback_data="show_rules")]]
+    )
 
 
 def _stat_line(stat: str, value) -> str:
@@ -295,8 +300,12 @@ def allocation_keyboard(character: dict, *, mode: str) -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == "show_rules")
 async def show_rules(callback: CallbackQuery) -> None:
+    # Локаль на этот момент — best-effort по профилю Telegram (bot/utils.py::
+    # set_locale_from_telegram_profile, docs/notes.md, блок 4): этот хендлер
+    # не запрашивает персонажа (нет api-параметра), rules_menu_title()/
+    # rules_sections() читают её напрямую из core.i18n.get_locale().
     await callback.message.edit_text(
-        f"📖 <b>{RULES_MENU_TITLE}</b>\n\nВыбери раздел:", reply_markup=rules_menu_keyboard()
+        i18n.t("rules.menu_header", title=rules_menu_title()), reply_markup=rules_menu_keyboard()
     )
     await callback.answer()
 
@@ -304,7 +313,7 @@ async def show_rules(callback: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("rules_section:"))
 async def show_rules_section(callback: CallbackQuery) -> None:
     index = int(callback.data.split(":", 1)[1])
-    title, body = RULES_SECTIONS[index]
+    title, body = rules_sections()[index]
     await callback.message.edit_text(f"<b>{title}</b>\n\n{body}", reply_markup=rules_section_keyboard())
     await callback.answer()
 

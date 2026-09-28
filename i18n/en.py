@@ -241,4 +241,8 @@ TRANSLATIONS: dict[str, str] = {
     "start.button.reset_yes": "🗑 Yes, delete",
     "start.button.cancel": "Cancel",
     "start.reset_done": "Character reset",
+
+    # --- /rules (bot/handlers/character.py + bot/rules_content.py, block 5) ---
+    "rules.menu_header": "📖 <b>{title}</b>\n\nChoose a section:",
+    "rules.button.back_to_sections": "⬅️ Back to sections",
 }
