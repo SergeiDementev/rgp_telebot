@@ -242,6 +242,12 @@ TRANSLATIONS: dict[str, str] = {
     "combat.ui.error.potion_already_used": "Зелье в этом бою уже использовано.",
     "combat.ui.error.potion_not_owned": "У тебя нет такого зелья.",
     "combat.ui.error.potion_generic": "Сейчас нельзя использовать зелье.",
+    # Гонка/устаревшая клавиатура — сервер отклонил действие 409, показываем
+    # актуальное состояние боя вместо молчания (docs/notes.md, найдено на
+    # проде — краш рендеринга оставлял бой в статусе, не совпадающем с тем,
+    # что ожидала последняя показанная клавиатура).
+    "combat.ui.error.battle_in_progress": "⚠️ Бой уже идёт — вот актуальное состояние:",
+    "combat.ui.error.battle_already_resolved": "Этот бой уже завершён.",
 
     # --- /language (bot/handlers/language.py, блок 4) ---
     # LANGUAGE_PROMPT_TEXT и подписи "Русский"/"English" сознательно не

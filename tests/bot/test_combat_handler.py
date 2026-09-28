@@ -218,6 +218,52 @@ async def test_confirm_fight_shows_attack_button_when_player_goes_first():
     assert button.callback_data == "take_turn:5"
 
 
+async def test_confirm_fight_shows_current_battle_state_on_conflict():
+    # docs/notes.md, блок 6 — найдено на проде: гонка (например, ход
+    # противника уже отрезолвился в предыдущем ответе) оставляла сессию не
+    # в том статусе, которого ожидал confirm_fight — сервер отвечал 409, а
+    # бот раньше молчал (необработанное исключение). Теперь — актуальный
+    # экран боя тем же способом, что и /start для потерянной клавиатуры.
+    callback = make_callback("confirm_fight:5")
+    api = AsyncMock()
+    api.confirm_combat.side_effect = ApiError(409, "unexpected session status: 'active'")
+    api.resume_combat_session.return_value = {
+        "status": "active", "current_turn": "player", "enemy_type": "wolf", "text": "❤️ Ты: 34/50   👹 Волк: 12/50",
+        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": False,
+    }
+
+    await confirm_fight(callback, api)
+
+    api.resume_combat_session.assert_awaited_once_with(1, 5)
+    text = callback.message.edit_text.call_args.args[0]
+    assert text == "⚠️ Бой уже идёт — вот актуальное состояние:\n\n❤️ Ты: 34/50   👹 Волк: 12/50"
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["take_turn:5", "take_turn_power:5"]
+    callback.answer.assert_awaited_once()
+
+
+async def test_confirm_fight_falls_back_to_stats_screen_when_battle_already_finished():
+    # Двойной 409 — сессия сдвинулась ДАЛЬШЕ, чем resume вообще может
+    # восстановить (бой уже закончился, api/routers/combat.py::
+    # resume_combat_session тоже отвечает 409 в этом случае). Показывать
+    # больше нечего — откатываемся на главный экран персонажа.
+    callback = make_callback("confirm_fight:5")
+    api = AsyncMock()
+    api.confirm_combat.side_effect = ApiError(409, "unexpected session status: 'finished'")
+    api.resume_combat_session.side_effect = ApiError(409, "combat session already finished")
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "level": 3}
+
+    await confirm_fight(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert text == "Этот бой уже завершён."
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "search_encounter" in callback_datas
+    callback.answer.assert_awaited_once()
+
+
 async def test_confirm_fight_shows_power_attack_button_next_to_attack():
     # docs/combat_mechanics.md §3a — доступен на любом ходу игрока, в любом
     # бою, сразу с первого хода, без каких-либо условий.
@@ -370,6 +416,26 @@ async def test_use_potion_success_shows_updated_turn_button():
     callback.answer.assert_awaited_once()
 
 
+async def test_use_potion_shows_current_battle_state_on_conflict():
+    # docs/notes.md, блок 6 — 409 от use_potion (сессия уже не "active"/не
+    # ход игрока) обрабатывался отдельно от already_used/not_owned (400),
+    # раньше падал необработанным исключением.
+    callback = make_callback("use_potion:5:small")
+    api = AsyncMock()
+    api.use_potion.side_effect = ApiError(409, "not your turn")
+    api.resume_combat_session.return_value = {
+        "status": "active", "current_turn": "enemy", "enemy_type": "wolf", "text": "❤️ Ты: 34/50   👹 Волк: 12/50",
+        "potions_small": 1, "potions_large": 0, "potion_used_this_battle": False,
+    }
+
+    await use_potion(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert text == "⚠️ Бой уже идёт — вот актуальное состояние:\n\n❤️ Ты: 34/50   👹 Волк: 12/50"
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert markup.inline_keyboard[0][0].text == "🛡️ Защищаться"
+
+
 async def test_use_potion_already_used_shows_alert_without_editing_message():
     callback = make_callback("use_potion:5:small")
     api = AsyncMock()
@@ -508,6 +574,26 @@ async def test_take_turn_active_shows_turn_button():
     button = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
     assert button.callback_data == "take_turn:5"
     assert button.text == "🛡️ Защищаться"
+
+
+async def test_take_turn_shows_current_battle_state_on_conflict():
+    # docs/notes.md, блок 6 — тот же класс гонки, что и у confirm_fight, но
+    # на кнопке хода (Атаковать/Защищаться) — самый частый случай в проде.
+    callback = make_callback("take_turn:5")
+    api = AsyncMock()
+    api.take_turn.side_effect = ApiError(409, "unexpected session status: 'awaiting_flee_decision'")
+    api.resume_combat_session.return_value = {
+        "status": "awaiting_flee_decision", "enemy_type": "wolf", "text": "⚠️ Твоё HP критически низкое!",
+        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": False,
+    }
+
+    await take_turn(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert text == "⚠️ Бой уже идёт — вот актуальное состояние:\n\n⚠️ Твоё HP критически низкое!"
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callback_datas == ["flee_decision_flee:5", "flee_decision_continue:5"]
 
 
 async def test_take_turn_finished_shows_post_battle_buttons():

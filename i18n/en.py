@@ -225,6 +225,8 @@ TRANSLATIONS: dict[str, str] = {
     "combat.ui.error.potion_already_used": "A potion has already been used this battle.",
     "combat.ui.error.potion_not_owned": "You don't have that potion.",
     "combat.ui.error.potion_generic": "You can't use a potion right now.",
+    "combat.ui.error.battle_in_progress": "⚠️ The battle is already in progress — here's the current state:",
+    "combat.ui.error.battle_already_resolved": "This battle has already ended.",
 
     # --- /language (bot/handlers/language.py, block 4) ---
     "language.confirmation": "✅ Language switched to English.",

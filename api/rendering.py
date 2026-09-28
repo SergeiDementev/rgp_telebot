@@ -129,7 +129,9 @@ def render_strike(
         dodge_verb = names["dodge_verb"]
         attack_label = _attack_label(power_attack, i18n.t("combat.strike.player_attack_label"))
     else:
-        attack_label = i18n.t("combat.strike.enemy_attack_label", name_gen_low=names["gen_low"])
+        attack_label = i18n.t(
+            "combat.strike.enemy_attack_label", name_gen_low=names["gen_low"], name_nom_cap=names["nom_cap"]
+        )
         dodge_label = i18n.t("combat.strike.player_dodge_label")
         damage_verb = i18n.t("combat.strike.enemy_damage_verb", name_nom_cap=names["nom_cap"])
         dodge_verb = i18n.t("combat.strike.player_dodge_verb")
@@ -225,7 +227,9 @@ def render_flee_opportunity_check(
         alive_adj = i18n.t("combat.flee_check.player_alive_adj")
     else:
         names = i18n.enemy_names(enemy_type)
-        hp_label = i18n.t("combat.flee_check.enemy_hp_label", name_gen_low=names["gen_low"])
+        hp_label = i18n.t(
+            "combat.flee_check.enemy_hp_label", name_gen_low=names["gen_low"], name_nom_low=names["nom_low"]
+        )
         prefix = i18n.t("combat.flee_check.enemy_prefix", name_nom_cap=names["nom_cap"])
         alive_adj = names["alive_adj"]
 

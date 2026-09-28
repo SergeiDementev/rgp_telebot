@@ -310,6 +310,41 @@ def _next_step_markup(session_id: int, response: dict, *, mode: str = "manual") 
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def _show_current_battle_state(callback: CallbackQuery, api: ApiClient, session_id: int) -> None:
+    """Гонка/устаревшая клавиатура (docs/notes.md, блок 6) — сервер отклонил
+    действие 409, потому что сессия уже не в статусе, который ожидала эта
+    кнопка (например, ответ на предыдущий ход ещё не успел отрисоваться, а
+    игрок уже нажал следующую кнопку, или в чате осталось старое сообщение
+    с клавиатурой). Раньше это падало необработанным исключением и выглядело
+    как зависание бота — вместо этого короткое объяснение и актуальный
+    экран боя, тем же способом, что и /start для потерянной клавиатуры
+    (bot/handlers/start.py::cmd_start, build_resume_text/build_resume_
+    keyboard, GET /combat/{id}/resume, docs/notes.md, п.48).
+
+    Бой мог за это время и вовсе завершиться — /resume тоже отвечает 409 в
+    этом случае ("combat session already finished", api/routers/
+    combat.py::resume_combat_session), тогда показывать уже нечего —
+    откатываемся на главный экран персонажа, тем же приглашением, что и
+    get_character_or_prompt_start использует для 404 (тот же принцип: не
+    молчать, показать что-то рабочее)."""
+    try:
+        resume = await api.resume_combat_session(callback.from_user.id, session_id)
+    except ApiError as error:
+        if error.status_code != 409:
+            raise
+        character = await get_character_or_prompt_start(callback, api)
+        if character is None:
+            return
+        await callback.message.edit_text(
+            i18n.t("combat.ui.error.battle_already_resolved"), reply_markup=stats_screen_keyboard(character)
+        )
+        await callback.answer()
+        return
+    text = f"{i18n.t('combat.ui.error.battle_in_progress')}\n\n{build_resume_text(resume)}"
+    await callback.message.edit_text(text, reply_markup=build_resume_keyboard(session_id, resume))
+    await callback.answer()
+
+
 @router.callback_query(F.data == "search_encounter")
 async def search_encounter(callback: CallbackQuery, api: ApiClient) -> None:
     try:
@@ -403,6 +438,9 @@ async def start_combat(callback: CallbackQuery, api: ApiClient) -> None:
     try:
         response = await api.start_combat(callback.from_user.id, session_id)
     except ApiError as error:
+        if error.status_code == 409:
+            await _show_current_battle_state(callback, api, session_id)
+            return
         if error.status_code != 403:
             raise
         await callback.answer(i18n.t("combat.ui.error.boss_unavailable"), show_alert=True)
@@ -415,7 +453,13 @@ async def start_combat(callback: CallbackQuery, api: ApiClient) -> None:
 @router.callback_query(F.data.startswith("confirm_fight:"))
 async def confirm_fight(callback: CallbackQuery, api: ApiClient) -> None:
     session_id = _session_id_from(callback.data)
-    response = await api.confirm_combat(callback.from_user.id, session_id, "fight")
+    try:
+        response = await api.confirm_combat(callback.from_user.id, session_id, "fight")
+    except ApiError as error:
+        if error.status_code != 409:
+            raise
+        await _show_current_battle_state(callback, api, session_id)
+        return
     await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
     await callback.answer()
 
@@ -440,7 +484,13 @@ async def confirm_fight_auto(callback: CallbackQuery, api: ApiClient) -> None:
     решили не заводить под это отдельную колонку в Character — этот вариант
     проще и без изменений в БД)."""
     session_id = _session_id_from(callback.data)
-    response = await api.confirm_combat(callback.from_user.id, session_id, "fight")
+    try:
+        response = await api.confirm_combat(callback.from_user.id, session_id, "fight")
+    except ApiError as error:
+        if error.status_code != 409:
+            raise
+        await _show_current_battle_state(callback, api, session_id)
+        return
     await callback.answer()
     await _run_autobattle(callback, api, session_id, response)
 
@@ -451,10 +501,13 @@ async def confirm_flee(callback: CallbackQuery, api: ApiClient) -> None:
     try:
         response = await api.confirm_combat(callback.from_user.id, session_id, "flee")
     except ApiError as error:
+        if error.status_code == 409:
+            await _show_current_battle_state(callback, api, session_id)
+            return
         if error.detail != "flee_not_allowed":
             raise
-        # Гонка/устаревшая клавиатура — у бота эта кнопка для босса и так не
-        # показывается (docs/notes.md, п.57), сервер отклонил на всякий случай.
+        # У бота эта кнопка для босса и так не показывается (docs/notes.md,
+        # п.57), сервер отклонил на всякий случай.
         await callback.answer(i18n.t("combat.ui.error.cant_flee"), show_alert=True)
         return
     await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard())
@@ -462,7 +515,13 @@ async def confirm_flee(callback: CallbackQuery, api: ApiClient) -> None:
 
 
 async def _take_turn(callback: CallbackQuery, api: ApiClient, session_id: int, *, power_attack: bool) -> None:
-    response = await api.take_turn(callback.from_user.id, session_id, power_attack=power_attack)
+    try:
+        response = await api.take_turn(callback.from_user.id, session_id, power_attack=power_attack)
+    except ApiError as error:
+        if error.status_code != 409:
+            raise
+        await _show_current_battle_state(callback, api, session_id)
+        return
     await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
     await callback.answer()
 
@@ -489,6 +548,9 @@ async def use_potion(callback: CallbackQuery, api: ApiClient) -> None:
     try:
         response = await api.use_potion(callback.from_user.id, session_id, size)
     except ApiError as error:
+        if error.status_code == 409:
+            await _show_current_battle_state(callback, api, session_id)
+            return
         message = i18n.t(USE_POTION_ERROR_KEYS.get(error.detail, "combat.ui.error.potion_generic"))
         await callback.answer(message, show_alert=True)
         return
@@ -499,7 +561,13 @@ async def use_potion(callback: CallbackQuery, api: ApiClient) -> None:
 @router.callback_query(F.data.startswith("flee_decision_flee:"))
 async def flee_decision_flee(callback: CallbackQuery, api: ApiClient) -> None:
     session_id = _session_id_from(callback.data)
-    response = await api.flee_decision(callback.from_user.id, session_id, "flee")
+    try:
+        response = await api.flee_decision(callback.from_user.id, session_id, "flee")
+    except ApiError as error:
+        if error.status_code != 409:
+            raise
+        await _show_current_battle_state(callback, api, session_id)
+        return
     await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard())
     await callback.answer()
 
@@ -507,7 +575,13 @@ async def flee_decision_flee(callback: CallbackQuery, api: ApiClient) -> None:
 @router.callback_query(F.data.startswith("flee_decision_continue:"))
 async def flee_decision_continue(callback: CallbackQuery, api: ApiClient) -> None:
     session_id = _session_id_from(callback.data)
-    response = await api.flee_decision(callback.from_user.id, session_id, "continue")
+    try:
+        response = await api.flee_decision(callback.from_user.id, session_id, "continue")
+    except ApiError as error:
+        if error.status_code != 409:
+            raise
+        await _show_current_battle_state(callback, api, session_id)
+        return
     await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response))
     await callback.answer()
 
@@ -518,7 +592,13 @@ async def flee_decision_continue_auto(callback: CallbackQuery, api: ApiClient) -
     п.34) — резолвит решение и сразу возобновляет автобой тем же циклом
     (_run_autobattle), а не отдаёт ход обратно вручную."""
     session_id = _session_id_from(callback.data)
-    response = await api.flee_decision(callback.from_user.id, session_id, "continue")
+    try:
+        response = await api.flee_decision(callback.from_user.id, session_id, "continue")
+    except ApiError as error:
+        if error.status_code != 409:
+            raise
+        await _show_current_battle_state(callback, api, session_id)
+        return
     await callback.answer()
     await _run_autobattle(callback, api, session_id, response)
 

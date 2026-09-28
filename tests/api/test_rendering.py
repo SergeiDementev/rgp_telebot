@@ -459,3 +459,64 @@ def test_render_boss_victory_en(en_locale):
 
 def test_render_fight_confirmed_en(en_locale):
     assert r.render_fight_confirmed() == "⚔️ You enter the fight!"
+
+
+# --- Регрессия: KeyError на en-локали в редко покрытых ветках --------
+# Обнаружено в проде (docs/notes.md) — render_strike(side_role="enemy") на
+# "en" падал с KeyError: 'name_nom_cap', потому что api/rendering.py
+# передавал в i18n.t() только name_gen_low (форму, нужную i18n/ru.py), а
+# i18n/en.py для того же ключа использует {name_nom_cap} — разные локали
+# законно используют разные грамматические формы одного и того же имени
+# противника (i18n/ru.py — падежи, i18n/en.py — нет склонения), но
+# существовавшие EN-тесты выше проверяли только side_role="player" для
+# каждой функции, не side_role="enemy" — ровно та ветка, что и упала.
+# Тест ниже — не по одному репрезентативному случаю на функцию, а прогон
+# ВСЕХ веток (оба enemy_type-зависимых side_role, оба roller_role
+# обстоятельства, все исходы) на обеих локалях: ловит именно класс
+# ошибки "шаблон одной локали требует форму, которую вызывающий код не
+# передал", а не полагается на то, что кто-то не забудет добавить
+# конкретный тест на конкретную новую ветку в будущем.
+def test_all_render_functions_succeed_across_every_branch_and_locale():
+    for locale in ("ru", "en"):
+        token = i18n.set_locale(locale)
+        try:
+            for enemy_type in ("mouse", "wolf", "boar", "boss"):
+                assert r.render_encounter(enemy_type, 5)
+                for first_role in ("player", "enemy"):
+                    assert r.render_initiative(enemy_type, 5, 3, first_role)
+                for roller_role in ("player", "enemy"):
+                    assert r.render_circumstance(enemy_type, 5, None, roller_role)
+                    assert r.render_circumstance(enemy_type, 5, "buff", roller_role)
+                    assert r.render_circumstance(enemy_type, 5, "debuff", roller_role)
+                for side_role in ("player", "enemy"):
+                    assert r.render_double_strike_check(enemy_type, side_role, 5, True)
+                    assert r.render_double_strike_check(enemy_type, side_role, 5, False)
+                    assert r.render_strike(enemy_type, side_role, 5, None, None, None, 0)
+                    assert r.render_strike(enemy_type, side_role, 5, 50, 5, True, 0)
+                    assert r.render_strike(enemy_type, side_role, 5, 50, 5, False, 10)
+                    assert r.render_strike(enemy_type, side_role, 5, 50, 5, False, 10, power_attack=True)
+                    assert r.render_compact_strike(enemy_type, side_role, 1, 5, None, None, None, 0)
+                    assert r.render_compact_strike(enemy_type, side_role, 1, 5, 50, 5, True, 0)
+                    assert r.render_compact_strike(enemy_type, side_role, 1, 5, 50, 5, False, 10)
+                    assert r.render_flee_opportunity_check(enemy_type, side_role, 10, 40, 5, True)
+                    assert r.render_flee_opportunity_check(enemy_type, side_role, 10, 40, 5, False)
+                    assert r.render_flee_attempt(enemy_type, side_role, 5, None, 0, False)
+                    assert r.render_flee_attempt(enemy_type, side_role, 5, 50, 10, True)
+                    assert r.render_flee_attempt(enemy_type, side_role, 5, 50, 10, False)
+                for result in ("victory", "defeat", "player_fled", "enemy_fled"):
+                    assert r.render_battle_end(
+                        enemy_type, result, reward=5, victory_points_total=10,
+                        hp_current=40, hp_max=60, hp_seconds_to_full=20,
+                    )
+                assert r.render_battle_end(
+                    enemy_type, "victory", reward=5, victory_points_total=10,
+                    hp_current=40, hp_max=60, hp_seconds_to_full=20, loot_dropped="wolf_fang",
+                )
+            assert r.render_boss_encounter()
+            assert r.render_boss_victory()
+            assert r.render_fight_confirmed()
+            assert r.render_hp_status("wolf", 30, 50, 10, 50)
+            assert r.render_potion_used("small", 10)
+            assert r.render_potion_used("large", 20)
+        finally:
+            i18n.reset_locale(token)
