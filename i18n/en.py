@@ -235,8 +235,7 @@ TRANSLATIONS: dict[str, str] = {
     "start.welcome": (
         "🧙 Welcome to the text RPG!\n\n"
         "Search for enemies, fight with dice rolls, level up your character. "
-        "The ultimate goal — grow strong enough to defeat the final boss.\n\n"
-        "🌐 /language — сменить язык / switch language"
+        "The ultimate goal — grow strong enough to defeat the final boss."
     ),
     "start.button.start_game": "✅ Start the game",
     "start.resume_prefix": "↩️ Resuming your battle:\n\n",
@@ -254,9 +253,4 @@ TRANSLATIONS: dict[str, str] = {
 
     # --- bot/handlers/fallback.py (block 6) ---
     "fallback.unknown_text": "The game is controlled only through the buttons under messages.",
-
-    # --- bot/main.py::_bot_commands (Telegram's system command menu, block 6) ---
-    "bot_commands.start": "Start/continue the game",
-    "bot_commands.language": "Change language",
-    "bot_commands.reset": "Reset character",
 }

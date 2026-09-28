@@ -15,13 +15,11 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramRetryAfter
-from aiogram.types import BotCommand
 from dotenv import load_dotenv
 
 from bot.client import ApiClient
 from bot.handlers import character, combat, fallback, language, start
 from bot.utils import set_locale_from_telegram_profile
-from core import i18n
 
 load_dotenv()
 
@@ -64,44 +62,21 @@ def _add_file_logging() -> None:
     logging.getLogger().addHandler(file_handler)
 
 
-def _bot_commands() -> list[BotCommand]:
-    """Три подписи команд на текущей локали (core.i18n.get_locale()) —
-    вызывающий код (_register_bot_commands) сам выставляет нужную локаль
-    перед каждым вызовом. /rules сюда не входит осознанно (docs/notes.md,
-    п.1) — не команда, кнопка на экране статов."""
-    return [
-        BotCommand(command="start", description=i18n.t("bot_commands.start")),
-        BotCommand(command="language", description=i18n.t("bot_commands.language")),
-        BotCommand(command="reset", description=i18n.t("bot_commands.reset")),
-    ]
+async def _clear_bot_commands(bot: Bot) -> None:
+    """Меню команд Telegram (иконка "/" рядом с полем ввода) — решено убрать
+    (docs/notes.md): основной путь в игре и так через кнопки на игровых
+    экранах (в т.ч. переключатель языка), не слэш-команды, а список команд
+    в интерфейсе оказался лишним шумом. Сами команды (/start, /language,
+    /reset) никуда не делись и по-прежнему работают при ручном вводе —
+    меняется только их видимость в этом системном списке.
 
-
-async def _register_bot_commands(bot: Bot) -> None:
-    """Системное меню команд Telegram (иконка "/" рядом с полем ввода) —
-    решение docs/notes.md, блок 6: показывается на языке КЛИЕНТА Telegram
-    (Bot API's language_code в set_my_commands), не на языке, явно
-    выбранном персонажем через /language. Обе локали — разные механизмы:
-    core.i18n.get_locale() выставляется заново на каждый апдейт (bot/
-    utils.py::set_locale_from_telegram_profile/character.language), а меню
-    команд правится один раз при старте бота, на уровне всего бота, не на
-    пользователя — Telegram не даёт способа адресовать его по нашему
-    собственному character.language, только по языку самого клиента
-    Telegram, который тот присылает с каждым апдейтом.
-
-    Три вызова: явный "ru", явный "en", и без language_code — дефолт для
-    любого другого языка клиента, тем же принципом, что и bot/utils.py::
-    detect_language() ("не ru -> en")."""
-    for locale in ("ru", "en"):
-        token = i18n.set_locale(locale)
-        try:
-            await bot.set_my_commands(_bot_commands(), language_code=locale)
-        finally:
-            i18n.reset_locale(token)
-    token = i18n.set_locale("en")
-    try:
-        await bot.set_my_commands(_bot_commands())
-    finally:
-        i18n.reset_locale(token)
+    Раньше здесь регистрировался список на три локали (docs/notes.md,
+    блок 6 — set_my_commands с language_code "ru"/"en"/дефолт). Явно
+    удаляем те же три регистрации, а не просто перестаём их обновлять —
+    иначе список, уже выставленный на серверах Telegram с прошлых
+    деплоев, остался бы висеть бесконечно, сам он не пропадёт."""
+    for locale in ("ru", "en", None):
+        await bot.delete_my_commands(language_code=locale)
 
 
 def build_dispatcher() -> Dispatcher:
@@ -136,7 +111,7 @@ async def main() -> None:
 
     bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     bot.session.middleware(_log_retry_after)
-    await _register_bot_commands(bot)
+    await _clear_bot_commands(bot)
     dp = build_dispatcher()
 
     async with ApiClient() as api:

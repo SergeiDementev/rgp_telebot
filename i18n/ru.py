@@ -259,8 +259,7 @@ TRANSLATIONS: dict[str, str] = {
     "start.welcome": (
         "🧙 Добро пожаловать в текстовую RPG!\n\n"
         "Ищи противников, сражайся на кубиках, качай персонажа. "
-        "Финальная цель — набраться сил и одолеть финального босса.\n\n"
-        "🌐 /language — сменить язык / switch language"
+        "Финальная цель — набраться сил и одолеть финального босса."
     ),
     "start.button.start_game": "✅ Начать игру",
     "start.resume_prefix": "↩️ Продолжаем начатый бой:\n\n",
@@ -281,9 +280,4 @@ TRANSLATIONS: dict[str, str] = {
 
     # --- bot/handlers/fallback.py (блок 6) ---
     "fallback.unknown_text": "Управление в игре — только кнопками под сообщениями.",
-
-    # --- bot/main.py::_bot_commands (системное меню команд Telegram, блок 6) ---
-    "bot_commands.start": "Начать/продолжить игру",
-    "bot_commands.language": "Сменить язык",
-    "bot_commands.reset": "Обнулить персонажа",
 }

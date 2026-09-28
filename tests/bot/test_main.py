@@ -9,8 +9,7 @@ from aiogram.exceptions import TelegramRetryAfter
 
 import bot.main as bot_main
 from bot.handlers import fallback
-from bot.main import _bot_commands, _register_bot_commands, build_dispatcher, main
-from core import i18n
+from bot.main import _clear_bot_commands, build_dispatcher, main
 
 pytestmark = pytest.mark.asyncio
 
@@ -89,70 +88,16 @@ async def test_add_file_logging_adds_rotating_handler_in_project_subdir(tmp_path
                 handler.close()
 
 
-async def test_bot_commands_ru():
-    token = i18n.set_locale("ru")
-    try:
-        descriptions = {c.command: c.description for c in _bot_commands()}
-        assert descriptions == {
-            "start": "Начать/продолжить игру",
-            "language": "Сменить язык",
-            "reset": "Обнулить персонажа",
-        }
-    finally:
-        i18n.reset_locale(token)
-
-
-async def test_bot_commands_en():
-    token = i18n.set_locale("en")
-    try:
-        descriptions = {c.command: c.description for c in _bot_commands()}
-        assert descriptions == {
-            "start": "Start/continue the game",
-            "language": "Change language",
-            "reset": "Reset character",
-        }
-    finally:
-        i18n.reset_locale(token)
-
-
-async def test_register_bot_commands_sets_ru_en_and_default():
-    # docs/notes.md, блок 6 — меню команд Telegram показывается по языку
-    # КЛИЕНТА (language_code в set_my_commands), не по character.language:
-    # три вызова — явный "ru", явный "en", и без language_code (дефолт для
-    # прочих языков клиента, на тех же текстах, что и en — тот же принцип,
-    # что и в bot/utils.py::detect_language(), "не ru -> en").
+async def test_clear_bot_commands_deletes_ru_en_and_default():
+    # docs/notes.md — меню команд Telegram (иконка "/") решено убрать: явно
+    # удаляем те же три регистрации, что раньше выставлял _register_bot_
+    # commands (блок 6) — "ru"/"en"/дефолт, — иначе список, уже выставленный
+    # на серверах Telegram с прошлых деплоев, остался бы висеть.
     bot = MagicMock()
-    bot.set_my_commands = AsyncMock()
+    bot.delete_my_commands = AsyncMock()
 
-    await _register_bot_commands(bot)
+    await _clear_bot_commands(bot)
 
-    assert bot.set_my_commands.await_count == 3
-    calls = bot.set_my_commands.call_args_list
-    ru_call = next(c for c in calls if c.kwargs.get("language_code") == "ru")
-    en_call = next(c for c in calls if c.kwargs.get("language_code") == "en")
-    default_call = next(c for c in calls if c.kwargs.get("language_code") is None)
-
-    ru_descriptions = {cmd.command: cmd.description for cmd in ru_call.args[0]}
-    en_descriptions = {cmd.command: cmd.description for cmd in en_call.args[0]}
-    default_descriptions = {cmd.command: cmd.description for cmd in default_call.args[0]}
-
-    assert ru_descriptions == {
-        "start": "Начать/продолжить игру",
-        "language": "Сменить язык",
-        "reset": "Обнулить персонажа",
-    }
-    assert en_descriptions == {
-        "start": "Start/continue the game",
-        "language": "Change language",
-        "reset": "Reset character",
-    }
-    assert default_descriptions == en_descriptions
-
-
-async def test_register_bot_commands_does_not_leak_locale():
-    bot = MagicMock()
-    bot.set_my_commands = AsyncMock()
-
-    await _register_bot_commands(bot)
-
-    assert i18n.get_locale() == i18n.DEFAULT_LOCALE
+    assert bot.delete_my_commands.await_count == 3
+    language_codes = {c.kwargs.get("language_code") for c in bot.delete_my_commands.call_args_list}
+    assert language_codes == {"ru", "en", None}
