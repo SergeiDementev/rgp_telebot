@@ -38,6 +38,8 @@ class CharacterOut(BaseModel):
     potions_large: int
     language: Language
     active_combat_session_id: Optional[int] = None
+    welcome_message_id: Optional[int] = None
+    main_message_id: Optional[int] = None
 
 
 class AllocatePointRequest(BaseModel):
@@ -65,4 +67,20 @@ class SetLanguageRequest(BaseModel):
 
 
 class SetLanguageResponse(BaseModel):
+    character: CharacterOut
+
+
+class SetMessageIdsRequest(BaseModel):
+    """Оба поля необязательны и независимы (docs/notes.md) — частичное
+    обновление: bot/handlers/start.py::cmd_start шлёт оба разом при (пере)
+    создании обеих постоянных сообщений, а bot/handlers/character.py::
+    toggle_language обновляет только main_message_id (self-healing на id
+    сообщения, на котором физически нажали), не трогая welcome_message_id.
+    Не переданное (None) поле — значение персонажа не меняется, не
+    сбрасывается в null."""
+    welcome_message_id: Optional[int] = None
+    main_message_id: Optional[int] = None
+
+
+class SetMessageIdsResponse(BaseModel):
     character: CharacterOut

@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aiogram.exceptions import TelegramBadRequest
 
 from bot.client import ApiError
 from bot.handlers.character import (
@@ -22,6 +23,7 @@ from bot.handlers.character import (
     toggle_language,
 )
 from bot.rules_content import rules_menu_title, rules_sections
+from bot.utils import welcome_text
 from core import i18n
 
 pytestmark = pytest.mark.asyncio
@@ -323,9 +325,8 @@ async def test_back_to_stats_shows_active_boss_button_at_level_one():
 
 async def test_toggle_language_switches_ru_to_en_and_rerenders_same_message():
     # docs/notes.md — переключатель на главном экране персонажа: ru -> en,
-    # тот же экран через edit_text (не новое сообщение, в отличие от
-    # /language, bot/handlers/language.py), без промежуточного подэкрана
-    # выбора языка.
+    # тот же экран через edit_text, без промежуточного подэкрана выбора
+    # языка (/language удалена целиком, docs/notes.md).
     callback = make_callback("toggle_language")
     api = AsyncMock()
     api.get_character.return_value = {**BASE_CHARACTER, "language": "ru"}
@@ -372,6 +373,68 @@ async def test_toggle_language_prompts_start_when_character_missing():
     await toggle_language(callback, api)
 
     api.set_language.assert_not_called()
+
+
+async def test_toggle_language_also_edits_welcome_message():
+    # docs/notes.md — переключатель должен дотянуться и до ВТОРОГО
+    # постоянного сообщения (welcome), не только до того, на котором
+    # физически нажали.
+    callback = make_callback("toggle_language")
+    callback.bot.edit_message_text = AsyncMock()
+    callback.message.chat.id = 42
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "language": "ru", "welcome_message_id": 10}
+    try:
+        await toggle_language(callback, api)
+
+        callback.bot.edit_message_text.assert_awaited_once_with(
+            welcome_text(), chat_id=42, message_id=10, reply_markup=None
+        )
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+async def test_toggle_language_skips_welcome_edit_when_id_unknown():
+    # welcome_message_id ещё None — первый /start после раскатки этого поля
+    # ещё не проходил, нечего редактировать.
+    callback = make_callback("toggle_language")
+    callback.bot.edit_message_text = AsyncMock()
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "language": "ru"}
+
+    await toggle_language(callback, api)
+
+    callback.bot.edit_message_text.assert_not_called()
+
+
+async def test_toggle_language_gracefully_continues_when_welcome_edit_fails():
+    # docs/notes.md — если редактирование welcome не удалось (недоступно/
+    # устарело), не роняем операцию: обновляем то, что получилось, и всё
+    # равно подтверждаем успех.
+    callback = make_callback("toggle_language")
+    callback.bot.edit_message_text = AsyncMock(
+        side_effect=TelegramBadRequest(method=MagicMock(), message="message to edit not found")
+    )
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "language": "ru", "welcome_message_id": 10}
+
+    await toggle_language(callback, api)  # не должно бросить исключение
+
+    callback.message.edit_text.assert_awaited_once()  # главный экран всё же обновлён
+    callback.answer.assert_awaited_once()
+
+
+async def test_toggle_language_self_heals_main_message_id():
+    # docs/notes.md — main_message_id всегда приводится в соответствие с
+    # сообщением, на котором физически нажали (дёшево — тот же вызов API,
+    # что и для языка), чтобы /start в следующий раз знал, что удалять.
+    callback = make_callback("toggle_language")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "language": "ru"}
+
+    await toggle_language(callback, api)
+
+    api.set_message_ids.assert_awaited_once_with(1, main_message_id=callback.message.message_id)
 
 
 async def test_allocate_levelup_spends_point_and_refreshes_screen():
@@ -441,6 +504,20 @@ async def test_finish_creation_shows_stats_screen_with_search_button():
     # Кнопка финального босса — всегда последняя и всегда активна
     # (docs/notes.md, пп.36, 58), даже на свежем 1 уровне.
     assert markup.inline_keyboard[-1][0].callback_data == "search_boss_encounter"
+
+
+async def test_finish_creation_saves_main_message_id_for_new_character():
+    # docs/notes.md — первое закрепление main_message_id за свежесозданным
+    # персонажем (тот же принцип, что и в bot/handlers/start.py::
+    # reset_confirm) — само сообщение остаётся тем же (edit), но это первый
+    # раз, когда у этой строки персонажа появляется main_message_id вообще.
+    callback = make_callback("finish_creation")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+
+    await finish_creation(callback, api)
+
+    api.set_message_ids.assert_awaited_once_with(1, main_message_id=callback.message.message_id)
 
 
 # --- Английская локаль (docs/notes.md, блок 3) ---------------------------

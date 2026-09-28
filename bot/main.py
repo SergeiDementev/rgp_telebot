@@ -18,7 +18,7 @@ from aiogram.exceptions import TelegramRetryAfter
 from dotenv import load_dotenv
 
 from bot.client import ApiClient
-from bot.handlers import character, combat, fallback, language, start
+from bot.handlers import character, combat, fallback, start
 from bot.utils import set_locale_from_telegram_profile
 
 load_dotenv()
@@ -65,10 +65,11 @@ def _add_file_logging() -> None:
 async def _clear_bot_commands(bot: Bot) -> None:
     """Меню команд Telegram (иконка "/" рядом с полем ввода) — решено убрать
     (docs/notes.md): основной путь в игре и так через кнопки на игровых
-    экранах (в т.ч. переключатель языка), не слэш-команды, а список команд
-    в интерфейсе оказался лишним шумом. Сами команды (/start, /language,
-    /reset) никуда не делись и по-прежнему работают при ручном вводе —
-    меняется только их видимость в этом системном списке.
+    экранах, не слэш-команды, а список команд в интерфейсе оказался лишним
+    шумом. Оставшиеся команды (/start, /reset — /language удалена целиком,
+    её заменила кнопка на главном экране персонажа, docs/notes.md) никуда
+    не делись и по-прежнему работают при ручном вводе — меняется только их
+    видимость в этом системном списке.
 
     Раньше здесь регистрировался список на три локали (docs/notes.md,
     блок 6 — set_my_commands с language_code "ru"/"en"/дефолт). Явно
@@ -91,7 +92,6 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(start.router)
     dp.include_router(character.router)
     dp.include_router(combat.router)
-    dp.include_router(language.router)
     # Последним (docs/notes.md) — ловит любой текст, не подошедший ни
     # одной команде/фильтру выше по цепочке.
     dp.include_router(fallback.router)

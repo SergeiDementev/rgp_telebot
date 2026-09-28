@@ -2,6 +2,7 @@
 
 from typing import Any, Awaitable, Callable, Optional, Union
 
+from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
@@ -65,6 +66,36 @@ async def set_locale_from_telegram_profile(
     return await handler(event, data)
 
 
+async def try_delete_message(bot: Bot, chat_id: int, message_id: int) -> None:
+    """Пытается удалить сообщение по id (docs/notes.md) — используется, когда
+    объекта Message под рукой нет (например, /start удаляет СТАРЫЕ постоянные
+    сообщения по сохранённым welcome_message_id/main_message_id перед тем,
+    как прислать новые, bot/handlers/start.py::cmd_start). Любая ошибка
+    Telegram (сообщение уже недоступно, устарело, чат другой) — не
+    пробрасывается дальше, просто пропускаем этот шаг для конкретного
+    сообщения, как и просили: не должно мешать создать новые."""
+    try:
+        await bot.delete_message(chat_id, message_id)
+    except TelegramBadRequest:
+        pass
+
+
+async def try_edit_message_text(
+    bot: Bot, chat_id: int, message_id: int, text: str, *, reply_markup: Optional[InlineKeyboardMarkup] = None
+) -> bool:
+    """Пытается отредактировать сообщение по id, не имея объекта Message под
+    рукой (docs/notes.md) — например, переключатель языка на главном экране
+    физически нажат на ОДНОМ постоянном сообщении, но должен дотянуться и до
+    ВТОРОГО (bot/handlers/character.py::toggle_language). Любая ошибка
+    Telegram — не бросается дальше, просто False, чтобы вызывающий код мог
+    graceful продолжить с тем, что получилось."""
+    try:
+        await bot.edit_message_text(text, chat_id=chat_id, message_id=message_id, reply_markup=reply_markup)
+        return True
+    except TelegramBadRequest:
+        return False
+
+
 async def safe_edit_text(message: Message, text: str, *, reply_markup: Optional[InlineKeyboardMarkup] = None) -> None:
     """edit_text, но не падает, если контент не изменился.
 
@@ -94,8 +125,8 @@ async def get_character_or_prompt_start(callback: CallbackQuery, api: ApiClient)
 
     Заодно выставляет текущую локаль (core.i18n.set_locale) по
     character["language"] (docs/notes.md, блок 3) — единственная общая
-    точка входа для character.py/combat.py/language.py, поэтому самое
-    естественное место сделать это один раз, без лишнего запроса к API.
+    точка входа для character.py/combat.py, поэтому самое естественное
+    место сделать это один раз, без лишнего запроса к API.
     bot/handlers/start.py не проходит через эту функцию (свой прямой
     api.get_character()) и выставляет локаль сама, тем же способом.
     `.get(..., DEFAULT_LOCALE)`, не прямой доступ по ключу — реальный API

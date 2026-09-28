@@ -31,7 +31,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from bot.client import ApiClient, ApiError
 from bot.rules_content import rules_menu_title, rules_sections
-from bot.utils import get_character_or_prompt_start, safe_edit_text
+from bot.utils import get_character_or_prompt_start, safe_edit_text, try_edit_message_text, welcome_text
 from core import i18n
 
 router = Router()
@@ -68,9 +68,8 @@ BUY_POTION_ERROR_KEYS = {
     "cap_reached": "character.buy_error.cap_reached",
 }
 
-# Названия языков в переключателе на главном экране (docs/notes.md) — те же
-# нативные названия, что и в bot/handlers/language.py::_language_keyboard,
-# не через core.i18n.t(): это имя языка, а не переводимая фраза (по-русски
+# Названия языков в переключателе на главном экране (docs/notes.md) — не
+# через core.i18n.t(): это имя языка, а не переводимая фраза (по-русски
 # "Русский" остаётся "Русский" независимо от текущей локали интерфейса).
 _LANGUAGE_NATIVE_NAMES = {"ru": "Русский", "en": "English"}
 
@@ -150,9 +149,8 @@ def _language_switch_button(character_language: str) -> InlineKeyboardButton:
     — привычный паттерн переключателей языка: должно быть понятно
     независимо от того, на каком языке сейчас экран. Только два
     поддерживаемых языка (core.i18n.SUPPORTED_LOCALES) — переключение
-    мгновенное, без промежуточного подэкрана выбора (в отличие от
-    bot/handlers/language.py::cmd_language, который остаётся рабочим
-    fallback-входом с явным выбором из двух кнопок)."""
+    мгновенное, без промежуточного подэкрана выбора. Единственный способ
+    сменить язык — /language удалена целиком (docs/notes.md)."""
     target = next(locale for locale in i18n.SUPPORTED_LOCALES if locale != character_language)
     return InlineKeyboardButton(text=f"🌐 {_LANGUAGE_NATIVE_NAMES[target]}", callback_data="toggle_language")
 
@@ -364,10 +362,25 @@ async def toggle_language(callback: CallbackQuery, api: ApiClient) -> None:
     """Переключатель языка на главном экране персонажа (docs/notes.md) —
     основной способ смены языка: та же кнопочная механика, что и у
     остальных кнопок этого экрана (edit_text того же сообщения, не новое
-    сообщение — в отличие от /language, которое по природе слэш-команд
-    Telegram всегда шлёт отдельное сообщение, bot/handlers/language.py).
-    Только два поддерживаемых языка (core.i18n.SUPPORTED_LOCALES) —
-    переключает сразу на противоположный, без промежуточного выбора."""
+    сообщение). Только два поддерживаемых языка (core.i18n.SUPPORTED_
+    LOCALES) — переключает сразу на противоположный, без промежуточного
+    выбора.
+
+    Обновляет ОБА постоянных сообщения игрока — то, на котором физически
+    нажали (callback.message — это main_message, кнопка живёт только на
+    stats_screen_keyboard), и welcome-сообщение по сохранённому
+    welcome_message_id (его самого под рукой нет, редактируем по id через
+    try_edit_message_text). Если редактирование welcome не удалось
+    (недоступно/устарело/ещё не было ни одного /start после раскатки этого
+    поля) — не роняем операцию, обновляем то, что получилось, и всё равно
+    подтверждаем успех через callback.answer() (как и просили).
+
+    Заодно self-heal main_message_id (docs/notes.md) — если персонаж попал
+    сюда, минуя явный /start (например, сразу после создания через
+    finish_creation, где id уже закреплён отдельно, но на случай будущих
+    путей без этого) или id устарел, здесь он в любом случае приводится в
+    соответствие с текущим сообщением: дёшево (тот же вызов API, что и для
+    языка), а /start в следующий раз будет знать, что удалять."""
     character = await get_character_or_prompt_start(callback, api)
     if character is None:
         return
@@ -376,11 +389,17 @@ async def toggle_language(callback: CallbackQuery, api: ApiClient) -> None:
     await api.set_language(character["id"], new_language)
     # Локаль на этот момент — от СТАРОГО character["language"] (выставлена
     # get_character_or_prompt_start выше); экран должен перерисоваться на
-    # НОВОМ языке, тот же принцип, что и в bot/handlers/language.py::
-    # set_language.
+    # НОВОМ языке.
     i18n.set_locale(new_language)
     character["language"] = new_language
+
     await safe_edit_text(callback.message, render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
+
+    welcome_message_id = character.get("welcome_message_id")
+    if welcome_message_id is not None:
+        await try_edit_message_text(callback.bot, callback.message.chat.id, welcome_message_id, welcome_text())
+
+    await api.set_message_ids(character["id"], main_message_id=callback.message.message_id)
     await callback.answer()
 
 
@@ -428,6 +447,13 @@ async def finish_creation(callback: CallbackQuery, api: ApiClient) -> None:
     if character is None:
         return
     await callback.message.edit_text(render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
+    # docs/notes.md — первое закрепление main_message_id за этим персонажем
+    # (тот же принцип, что и в bot/handlers/start.py::reset_confirm): само
+    # сообщение — edit, не новый message_id, но именно здесь у СВЕЖЕГО
+    # персонажа (start_game) main_message_id ещё None. welcome_message_id не
+    # трогаем — отдельного приветственного сообщения в этом флоу нет, оно
+    # появится только на следующем явном /start.
+    await api.set_message_ids(character["id"], main_message_id=callback.message.message_id)
     await callback.answer()
 
 

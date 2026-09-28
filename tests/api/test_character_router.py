@@ -450,3 +450,57 @@ def test_set_language_rejects_unknown_language(db_session_factory):
     response = client.post(f"/character/{character_id}/set_language", json={"language": "de"})
 
     assert response.status_code == 422
+
+
+def test_new_character_has_no_message_ids(db_session_factory):
+    client = make_client(db_session_factory)
+    response = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"})
+    assert response.json()["welcome_message_id"] is None
+    assert response.json()["main_message_id"] is None
+
+
+def test_set_message_ids_updates_both_fields(db_session_factory):
+    client = make_client(db_session_factory)
+    character_id = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()["id"]
+
+    response = client.post(
+        f"/character/{character_id}/set_message_ids",
+        json={"welcome_message_id": 111, "main_message_id": 222},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["character"]["welcome_message_id"] == 111
+    assert response.json()["character"]["main_message_id"] == 222
+
+
+def test_set_message_ids_partial_update_leaves_other_field_untouched(db_session_factory):
+    # docs/notes.md — bot/handlers/character.py::toggle_language обновляет
+    # только main_message_id, не трогая welcome_message_id.
+    client = make_client(db_session_factory)
+    character_id = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()["id"]
+    client.post(
+        f"/character/{character_id}/set_message_ids",
+        json={"welcome_message_id": 111, "main_message_id": 222},
+    )
+
+    response = client.post(f"/character/{character_id}/set_message_ids", json={"main_message_id": 333})
+
+    assert response.json()["character"]["welcome_message_id"] == 111
+    assert response.json()["character"]["main_message_id"] == 333
+
+
+def test_set_message_ids_persists_across_reads(db_session_factory):
+    client = make_client(db_session_factory)
+    character_id = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()["id"]
+    client.post(f"/character/{character_id}/set_message_ids", json={"welcome_message_id": 111, "main_message_id": 222})
+
+    response = client.get("/character/1")
+
+    assert response.json()["welcome_message_id"] == 111
+    assert response.json()["main_message_id"] == 222
+
+
+def test_set_message_ids_character_not_found(db_session_factory):
+    client = make_client(db_session_factory)
+    response = client.post("/character/999/set_message_ids", json={"main_message_id": 1})
+    assert response.status_code == 404

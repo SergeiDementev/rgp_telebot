@@ -228,9 +228,6 @@ TRANSLATIONS: dict[str, str] = {
     "combat.ui.error.battle_in_progress": "⚠️ The battle is already in progress — here's the current state:",
     "combat.ui.error.battle_already_resolved": "This battle has already ended.",
 
-    # --- /language (bot/handlers/language.py, block 4) ---
-    "language.confirmation": "✅ Language switched to English.",
-
     # --- /start, /reset (bot/handlers/start.py + bot/utils.py, block 4) ---
     "start.welcome": (
         "🧙 Welcome to the text RPG!\n\n"

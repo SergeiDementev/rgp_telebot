@@ -20,7 +20,7 @@ async def test_build_dispatcher_registers_all_handler_routers():
     # роутеры хендлеров — модульные синглтоны, общие для всех тестов
     # в процессе.
     dp = build_dispatcher()
-    assert len(dp.sub_routers) == 5
+    assert len(dp.sub_routers) == 4
     # docs/notes.md — заглушка на нераспознанный текст должна идти
     # последней, иначе она перехватила бы сообщения раньше конкретных
     # команд.

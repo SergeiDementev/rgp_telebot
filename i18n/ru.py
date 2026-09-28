@@ -249,12 +249,6 @@ TRANSLATIONS: dict[str, str] = {
     "combat.ui.error.battle_in_progress": "⚠️ Бой уже идёт — вот актуальное состояние:",
     "combat.ui.error.battle_already_resolved": "Этот бой уже завершён.",
 
-    # --- /language (bot/handlers/language.py, блок 4) ---
-    # LANGUAGE_PROMPT_TEXT и подписи "Русский"/"English" сознательно не
-    # переведены через t() — показываются до выбора языка, см. докстринг
-    # модуля.
-    "language.confirmation": "✅ Язык переключён на русский.",
-
     # --- /start, /reset (bot/handlers/start.py + bot/utils.py, блок 4) ---
     "start.welcome": (
         "🧙 Добро пожаловать в текстовую RPG!\n\n"

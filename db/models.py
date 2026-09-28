@@ -70,6 +70,18 @@ class Character(Base):
     # текущую локаль (core/i18n.py) на время обработки запроса.
     language = Column(String, nullable=False, default="ru")
 
+    # message_id двух постоянных сообщений игрока в Telegram — приветствия и
+    # главного игрового экрана (docs/notes.md). Nullable — у персонажа, ещё
+    # ни разу не прошедшего /start после раскатки этого поля, их не будет;
+    # заполняются впервые при следующем /start (bot/handlers/start.py::
+    # cmd_start), который также удаляет и пересоздаёт оба сообщения при
+    # повторном вызове вместо накопления истории чата. chat_id отдельно не
+    # хранится — бот работает только в приватных чатах, где Telegram
+    # гарантирует chat_id == telegram_user_id (тот же принцип, что и во
+    # всём остальном API — X-Telegram-User-Id, не chat_id).
+    welcome_message_id = Column(Integer, nullable=True)
+    main_message_id = Column(Integer, nullable=True)
+
 
 class CombatSession(Base):
     __tablename__ = "combat_sessions"

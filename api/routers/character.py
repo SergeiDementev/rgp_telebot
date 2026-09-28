@@ -22,6 +22,8 @@ from api.schemas.character import (
     SellLootResponse,
     SetLanguageRequest,
     SetLanguageResponse,
+    SetMessageIdsRequest,
+    SetMessageIdsResponse,
 )
 from core import economy as ec
 from core import progression as pr
@@ -72,6 +74,8 @@ def _to_character_out(character: Character, active_combat_session_id: int | None
         potions_large=character.potions_large,
         language=character.language,
         active_combat_session_id=active_combat_session_id,
+        welcome_message_id=character.welcome_message_id,
+        main_message_id=character.main_message_id,
     )
 
 
@@ -250,3 +254,26 @@ def set_language(character_id: int, payload: SetLanguageRequest, db: Session = D
     db.commit()
     db.refresh(character)
     return SetLanguageResponse(character=_to_character_out(character))
+
+
+@router.post("/{character_id}/set_message_ids", response_model=SetMessageIdsResponse)
+def set_message_ids(
+    character_id: int, payload: SetMessageIdsRequest, db: Session = Depends(get_db)
+) -> SetMessageIdsResponse:
+    """Запоминает message_id двух постоянных сообщений игрока в Telegram —
+    приветствия и главного игрового экрана (docs/notes.md). Частичное
+    обновление (см. докстринг SetMessageIdsRequest) — только переданные
+    (не None) поля меняются, остальные остаются как есть. Тот же паттерн,
+    что и set_language выше: этот роутер не рендерит игровой текст, поэтому
+    без get_localized_character."""
+    character = db.get(Character, character_id)
+    if character is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+
+    if payload.welcome_message_id is not None:
+        character.welcome_message_id = payload.welcome_message_id
+    if payload.main_message_id is not None:
+        character.main_message_id = payload.main_message_id
+    db.commit()
+    db.refresh(character)
+    return SetMessageIdsResponse(character=_to_character_out(character))

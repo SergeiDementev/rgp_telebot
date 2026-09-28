@@ -12,6 +12,8 @@ from bot.utils import (
     safe_edit_text,
     set_locale_from_telegram_profile,
     start_game_keyboard,
+    try_delete_message,
+    try_edit_message_text,
     welcome_text,
 )
 from core import i18n
@@ -189,3 +191,46 @@ async def test_set_locale_from_telegram_profile_defaults_to_en_when_code_missing
         assert seen_locale["value"] == "en"
     finally:
         i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+@pytest.mark.asyncio
+async def test_try_delete_message_calls_bot_delete_message():
+    bot = MagicMock()
+    bot.delete_message = AsyncMock()
+
+    await try_delete_message(bot, 42, 111)
+
+    bot.delete_message.assert_awaited_once_with(42, 111)
+
+
+@pytest.mark.asyncio
+async def test_try_delete_message_swallows_telegram_bad_request():
+    # docs/notes.md — сообщение уже недоступно/устарело/чат другой: не
+    # должно мешать создать новые (bot/handlers/start.py::cmd_start).
+    bot = MagicMock()
+    bot.delete_message = AsyncMock(side_effect=TelegramBadRequest(method=MagicMock(), message="message to delete not found"))
+
+    await try_delete_message(bot, 42, 111)  # не должно бросить исключение
+
+
+@pytest.mark.asyncio
+async def test_try_edit_message_text_returns_true_on_success():
+    bot = MagicMock()
+    bot.edit_message_text = AsyncMock()
+
+    result = await try_edit_message_text(bot, 42, 111, "hello", reply_markup="markup")
+
+    assert result is True
+    bot.edit_message_text.assert_awaited_once_with("hello", chat_id=42, message_id=111, reply_markup="markup")
+
+
+@pytest.mark.asyncio
+async def test_try_edit_message_text_returns_false_on_telegram_bad_request():
+    # docs/notes.md — переключатель языка должен дотянуться и до второго
+    # постоянного сообщения, но не падать, если оно недоступно.
+    bot = MagicMock()
+    bot.edit_message_text = AsyncMock(side_effect=TelegramBadRequest(method=MagicMock(), message="message to edit not found"))
+
+    result = await try_edit_message_text(bot, 42, 111, "hello")
+
+    assert result is False

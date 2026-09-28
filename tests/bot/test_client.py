@@ -98,6 +98,28 @@ async def test_set_language_sends_language_in_body():
     assert result["character"]["language"] == "en"
 
 
+async def test_set_message_ids_sends_both_ids_in_body():
+    handler, captured = _echo_handler(200, {"character": {"welcome_message_id": 111, "main_message_id": 222}})
+    client = make_client(handler)
+
+    result = await client.set_message_ids(1, welcome_message_id=111, main_message_id=222)
+
+    assert captured["path"] == "/character/1/set_message_ids"
+    assert captured["json"] == {"welcome_message_id": 111, "main_message_id": 222}
+    assert result["character"]["main_message_id"] == 222
+
+
+async def test_set_message_ids_omits_unset_field_from_body():
+    # docs/notes.md — частичное обновление: bot/handlers/character.py::
+    # toggle_language передаёт только main_message_id.
+    handler, captured = _echo_handler(200, {"character": {"main_message_id": 333}})
+    client = make_client(handler)
+
+    await client.set_message_ids(1, main_message_id=333)
+
+    assert captured["json"] == {"main_message_id": 333}
+
+
 async def test_delete_character_handles_204_no_content():
     captured = {}
 

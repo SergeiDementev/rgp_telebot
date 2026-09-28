@@ -102,6 +102,20 @@ class ApiClient:
             "POST", f"/character/{character_id}/set_language", json={"language": language}
         )
 
+    async def set_message_ids(
+        self, character_id: int, *, welcome_message_id: Optional[int] = None, main_message_id: Optional[int] = None
+    ) -> dict:
+        """docs/notes.md — запоминает message_id двух постоянных сообщений
+        игрока (приветствия/главного экрана). Частичное обновление — не
+        переданное (None) поле на сервере не меняется, не путать с явным
+        сбросом в null (см. api/schemas/character.py::SetMessageIdsRequest)."""
+        payload = {}
+        if welcome_message_id is not None:
+            payload["welcome_message_id"] = welcome_message_id
+        if main_message_id is not None:
+            payload["main_message_id"] = main_message_id
+        return await self._request("POST", f"/character/{character_id}/set_message_ids", json=payload)
+
     async def delete_character(self, telegram_user_id: int, reason: str) -> None:
         """`reason` — "manual_reset" | "boss_victory" (docs/notes.md, п.41):
         персонаж не удаляется физически, а архивируется (is_active=False) —

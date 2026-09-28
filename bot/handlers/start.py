@@ -18,7 +18,12 @@ from bot.handlers.character import (
     stats_screen_keyboard,
 )
 from bot.handlers.combat import build_resume_keyboard, build_resume_text
-from bot.utils import detect_language, start_game_keyboard, welcome_text  # noqa: F401 — welcome_text реэкспортируется для тестов
+from bot.utils import (  # noqa: F401 — welcome_text реэкспортируется для тестов
+    detect_language,
+    start_game_keyboard,
+    try_delete_message,
+    welcome_text,
+)
 from core import i18n
 
 router = Router()
@@ -68,10 +73,22 @@ async def cmd_start(message: Message, api: ApiClient) -> None:
     # значение от set_locale_from_telegram_profile.
     i18n.set_locale(character.get("language", i18n.DEFAULT_LOCALE))
 
+    # docs/notes.md — повторный /start удаляет оба старых постоянных
+    # сообщения (приветствие + главный экран) и создаёт новые вместо
+    # накопления истории чата. У персонажа, ещё ни разу не проходившего
+    # /start после раскатки этого поля, их не будет (None) — try_delete_
+    # message тогда просто не вызывается, ничего удалять не пытаемся.
+    old_welcome_id = character.get("welcome_message_id")
+    old_main_id = character.get("main_message_id")
+    if old_welcome_id is not None:
+        await try_delete_message(message.bot, message.chat.id, old_welcome_id)
+    if old_main_id is not None:
+        await try_delete_message(message.bot, message.chat.id, old_main_id)
+
     # §1: персонаж уже есть — повторный /start не пересоздаёт его. Баннер
     # шлём в любом случае, даже при восстановлении боя ниже — то же самое
     # первое сообщение, что игрок всегда видит на /start.
-    await message.answer(welcome_text())
+    welcome_message = await message.answer(welcome_text())
 
     # docs/notes.md, п.48 — незавершённый бой не теряется, если сообщение с
     # его клавиатурой пропало (например, игрок удалил чат в Telegram):
@@ -80,13 +97,16 @@ async def cmd_start(message: Message, api: ApiClient) -> None:
     active_session_id = character.get("active_combat_session_id")
     if active_session_id is not None:
         resume = await api.resume_combat_session(message.from_user.id, active_session_id)
-        await message.answer(
+        main_message = await message.answer(
             f"{resume_battle_prefix()}{build_resume_text(resume)}",
             reply_markup=build_resume_keyboard(active_session_id, resume),
         )
-        return
+    else:
+        main_message = await message.answer(render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
 
-    await message.answer(render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
+    await api.set_message_ids(
+        character["id"], welcome_message_id=welcome_message.message_id, main_message_id=main_message.message_id
+    )
 
 
 @router.callback_query(F.data == "start_game")
@@ -154,4 +174,12 @@ async def reset_confirm(callback: CallbackQuery, api: ApiClient) -> None:
         render_allocation_screen(character, title=creation_screen_title(), mode="creation"),
         reply_markup=allocation_keyboard(character, mode="creation"),
     )
+    # docs/notes.md — это НОВАЯ строка персонажа (старая архивирована выше),
+    # welcome_message_id/main_message_id у неё ещё None. Само сообщение —
+    # edit, не новый Telegram-message_id, но это первое закрепление
+    # main_message_id за этим персонажем: то самое "создание нового
+    # персонажа после /reset" из списка мест, требующих синхронизации.
+    # welcome_message_id не трогаем — отдельного приветственного сообщения
+    # в этом флоу не было (он приходит только явным следующим /start).
+    await api.set_message_ids(character["id"], main_message_id=callback.message.message_id)
     await callback.answer(i18n.t("start.reset_done"))

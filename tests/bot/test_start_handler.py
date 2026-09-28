@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aiogram.exceptions import TelegramBadRequest
 
 from bot.client import ApiError
 from bot.handlers.start import (
@@ -23,7 +24,9 @@ pytestmark = pytest.mark.asyncio
 def make_message(user_id: int = 1) -> MagicMock:
     message = MagicMock()
     message.from_user.id = user_id
+    message.chat.id = user_id
     message.answer = AsyncMock()
+    message.bot.delete_message = AsyncMock()
     return message
 
 
@@ -54,7 +57,7 @@ async def test_cmd_start_existing_user_shows_welcome_then_stats():
     message = make_message()
     api = AsyncMock()
     api.get_character.return_value = {
-        "nickname": "Hero", "level": 2, "hp_current": 40.0, "hp_max": 60.0,
+        "id": 1, "nickname": "Hero", "level": 2, "hp_current": 40.0, "hp_max": 60.0,
         "strength": 5, "agility": 3, "luck": 2, "victory_points": 15, "points_to_next_level": 5,
     }
 
@@ -72,7 +75,7 @@ async def test_cmd_start_resumes_active_battle_instead_of_stats_screen():
     # CombatSession в БД остаётся активной, /start восстанавливает экран боя.
     message = make_message()
     api = AsyncMock()
-    api.get_character.return_value = {"nickname": "Hero", "active_combat_session_id": 5}
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "active_combat_session_id": 5}
     api.resume_combat_session.return_value = {
         "status": "active", "current_turn": "player", "enemy_type": "wolf", "text": "❤️ Ты: 34/50   👹 Волк: 12/50",
         "potions_small": 0, "potions_large": 0, "potion_used_this_battle": False,
@@ -99,6 +102,80 @@ async def test_cmd_start_reraises_non_404_errors():
 
     with pytest.raises(ApiError):
         await cmd_start(message, api)
+
+
+_STATS_FIELDS = {
+    "nickname": "Hero", "level": 2, "hp_current": 40.0, "hp_max": 60.0,
+    "strength": 5, "agility": 3, "luck": 2, "victory_points": 15, "points_to_next_level": 5,
+}
+
+
+async def test_cmd_start_deletes_old_messages_before_sending_new_ones():
+    # docs/notes.md — повторный /start удаляет оба старых постоянных
+    # сообщения вместо накопления истории чата.
+    message = make_message()
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, **_STATS_FIELDS, "welcome_message_id": 10, "main_message_id": 20}
+
+    await cmd_start(message, api)
+
+    assert message.bot.delete_message.await_count == 2
+    deleted_ids = {call.args[1] for call in message.bot.delete_message.call_args_list}
+    assert deleted_ids == {10, 20}
+
+
+async def test_cmd_start_skips_deletion_when_no_saved_message_ids():
+    # Первый /start после раскатки этого поля, или совсем новый персонаж —
+    # welcome_message_id/main_message_id ещё None, нечего удалять.
+    message = make_message()
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, **_STATS_FIELDS}
+
+    await cmd_start(message, api)
+
+    message.bot.delete_message.assert_not_called()
+
+
+async def test_cmd_start_deletion_failure_does_not_prevent_new_messages():
+    # docs/notes.md — ошибки удаления (сообщение уже недоступно, чат другой
+    # и т.п.) не приводят к падению, просто пропускаем этот шаг.
+    message = make_message()
+    message.bot.delete_message.side_effect = TelegramBadRequest(
+        method=MagicMock(), message="message to delete not found"
+    )
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, **_STATS_FIELDS, "welcome_message_id": 10, "main_message_id": 20}
+
+    await cmd_start(message, api)  # не должно бросить исключение
+
+    assert message.answer.await_count == 2
+    api.set_message_ids.assert_awaited_once()
+
+
+async def test_cmd_start_saves_new_message_ids_after_sending():
+    message = make_message()
+    message.answer.side_effect = [MagicMock(message_id=100), MagicMock(message_id=200)]
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, **_STATS_FIELDS}
+
+    await cmd_start(message, api)
+
+    api.set_message_ids.assert_awaited_once_with(1, welcome_message_id=100, main_message_id=200)
+
+
+async def test_cmd_start_saves_message_ids_for_resume_branch_too():
+    message = make_message()
+    message.answer.side_effect = [MagicMock(message_id=100), MagicMock(message_id=200)]
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "active_combat_session_id": 5}
+    api.resume_combat_session.return_value = {
+        "status": "active", "current_turn": "player", "enemy_type": "wolf", "text": "...",
+        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": False,
+    }
+
+    await cmd_start(message, api)
+
+    api.set_message_ids.assert_awaited_once_with(1, welcome_message_id=100, main_message_id=200)
 
 
 async def test_start_game_creates_character_when_missing():
@@ -206,6 +283,24 @@ async def test_reset_confirm_deletes_character_and_shows_creation_screen():
     callback.answer.assert_awaited_once()
 
 
+async def test_reset_confirm_saves_main_message_id_for_new_character():
+    # docs/notes.md — новая строка персонажа (старая архивирована), первое
+    # закрепление main_message_id за ней. welcome_message_id не трогаем —
+    # отдельного приветственного сообщения в этом флоу нет.
+    callback = make_callback(full_name="Hero")
+    callback.data = "reset_confirm:manual_reset"
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru"}
+    api.create_character.return_value = {
+        "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
+        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+    }
+
+    await reset_confirm(callback, api)
+
+    api.set_message_ids.assert_awaited_once_with(2, main_message_id=callback.message.message_id)
+
+
 async def test_reset_confirm_carries_over_existing_language_choice():
     # docs/notes.md — язык переносится со старого персонажа, а не
     # переопределяется заново по language_code профиля: явный выбор через
@@ -231,7 +326,7 @@ async def test_cmd_start_shows_stats_in_character_language():
     message = make_message()
     api = AsyncMock()
     api.get_character.return_value = {
-        "nickname": "Hero", "level": 2, "hp_current": 40.0, "hp_max": 60.0,
+        "id": 1, "nickname": "Hero", "level": 2, "hp_current": 40.0, "hp_max": 60.0,
         "strength": 5, "agility": 3, "luck": 2, "victory_points": 15, "points_to_next_level": 5,
         "language": "en",
     }
