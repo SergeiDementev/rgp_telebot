@@ -6,6 +6,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot.client import ApiClient, ApiError
+from core import i18n
 
 # WELCOME_TEXT/start_game_keyboard живут здесь, а не в bot/handlers/start.py
 # (откуда их естественно было бы ожидать), потому что get_character_or_
@@ -62,12 +63,25 @@ async def get_character_or_prompt_start(callback: CallbackQuery, api: ApiClient)
     то же приглашение "Начать игру", что и при самом первом /start
     (bot/handlers/start.py::cmd_start). Возвращает None, если персонажа нет
     (экран уже отредактирован здесь, вызывающий хендлер должен сразу
-    return), иначе — сам персонаж."""
+    return), иначе — сам персонаж.
+
+    Заодно выставляет текущую локаль (core.i18n.set_locale) по
+    character["language"] (docs/notes.md, блок 3) — единственная общая
+    точка входа для character.py/combat.py/language.py, поэтому самое
+    естественное место сделать это один раз, без лишнего запроса к API.
+    bot/handlers/start.py не проходит через эту функцию (свой прямой
+    api.get_character()) и выставляет локаль сама, тем же способом.
+    `.get(..., DEFAULT_LOCALE)`, не прямой доступ по ключу — реальный API
+    всегда отдаёт language (обязательное поле, api/schemas/character.py),
+    но часть моков в тестах его не имитирует и это не повод падать здесь с
+    KeyError."""
     try:
-        return await api.get_character(callback.from_user.id)
+        character = await api.get_character(callback.from_user.id)
     except ApiError as error:
         if error.status_code != 404:
             raise
         await safe_edit_text(callback.message, WELCOME_TEXT, reply_markup=start_game_keyboard())
         await callback.answer()
         return None
+    i18n.set_locale(character.get("language", i18n.DEFAULT_LOCALE))
+    return character

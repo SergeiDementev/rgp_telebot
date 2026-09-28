@@ -154,4 +154,48 @@ TRANSLATIONS: dict[str, str] = {
     "combat.battle_end.regen_line": "⏳ Full recovery in: ~{hp_seconds_to_full} sec.",
 
     "combat.boss_victory": "🎉 You have defeated the {name_acc_cap}!\n\nThe adventure is over. Thanks for playing!",
+
+    # --- Character screen (bot/handlers/character.py, docs/notes.md, block 3) ---
+    "character.menu_title": "👤 Player Menu",
+    "character.creation_title": "🧙 Hero Creation",
+    "character.button.refresh": "🔄 Refresh",
+    "character.button.search_encounter": "🔍 Search for an enemy",
+    "character.button.rules": "📜 Rules",
+    "character.button.boss": "⚔️ Final Boss",
+    "character.button.back": "⬅️ Back",
+    "character.button.reset": "🗑 Reset character",
+    "character.button.sell_loot": "💰 Sell all loot",
+    "character.button.start_adventure": "✅ Start the adventure",
+    "character.allocate_button": "+1 {name}",
+
+    "character.stat.strength": "Strength",
+    "character.stat.agility": "Agility",
+    "character.stat.luck": "Luck",
+    "character.stat.vitality": "Vitality",
+    "character.stat_line": "{emoji} {name}: {value}",
+    "character.vitality_line": "❤️ {name}: {value}  (HP max: {hp_max})",
+
+    "character.level_line": "🏅 Level: {level}",
+    "character.hp_line": "❤️ HP: {hp_current}/{hp_max}",
+    "character.victory_points_line": "🏆 Victory points: {victory_points} (to next level: {points_to_next_level})",
+    "character.unspent_points_line": "Points left: {unspent_stat_points}",
+    "character.unspent_points_available_line": "Stat points available: {unspent_stat_points}",
+    "character.gold_line": "💰 Gold: {gold}",
+
+    "character.loot_line": "📦 Loot: {items}",
+    "character.loot_empty": "📦 Loot: none yet",
+    "character.potions_line": "🧪 Potions: {items}",
+    "character.potions_empty": "🧪 Potions: none yet",
+    "character.loot_item_single": "{name} ({price} gold)",
+    "character.loot_item_multiple": "{name} ×{count} ({total_price} gold)",
+    "character.potion_count": "{name} ×{count}",
+
+    "character.potion_cap_reached": "already at max",
+    "character.potion_price": "{price} gold",
+    "character.buy_potion_button": "🧪 Buy {name} ({status})",
+
+    "character.buy_error.not_enough_gold": "Not enough gold.",
+    "character.buy_error.cap_reached": "Already at the maximum for this potion size.",
+    "character.buy_error.generic": "Couldn't buy the potion.",
+    "character.allocate_error.no_points": "No stat points left",
 }

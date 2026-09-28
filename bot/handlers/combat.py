@@ -22,10 +22,12 @@ from bot.handlers.character import (
     LARGE_POTION_CAP,
     SMALL_POTION_CAP,
     boss_button,
+    menu_screen_title,
     render_stats_screen,
     stats_screen_keyboard,
 )
 from bot.utils import get_character_or_prompt_start, safe_edit_text
+from core import i18n
 
 _timing_logger = logging.getLogger("bot.combat_timing")
 
@@ -124,13 +126,20 @@ def _flee_choice_keyboard(session_id: int, *, mode: str = "manual") -> InlineKey
 def _post_battle_keyboard() -> InlineKeyboardMarkup:
     """Кнопка финального босса (см. bot/handlers/character.py::boss_button)
     активна на любом уровне (docs/notes.md, п.58) — уровень сюда больше не
-    нужен."""
+    нужен.
+
+    Первые четыре кнопки — тот же набор навигации экрана персонажа, что и
+    bot/handlers/character.py::stats_screen_keyboard (docs/notes.md,
+    блок 3) — переиспользуют её i18n-ключи/menu_screen_title() вместо своих
+    копий текста, чтобы не разъезжаться при переводе. Только "🔄 Обновить"
+    ведёт на другой callback_data (refresh_after_battle, не refresh_stats) —
+    подпись кнопки при этом та же самая."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_after_battle")],
-            [InlineKeyboardButton(text="🔍 Искать противника", callback_data="search_encounter")],
-            [InlineKeyboardButton(text="👤 Меню игрока", callback_data="open_allocation")],
-            [InlineKeyboardButton(text="📜 Правила", callback_data="show_rules")],
+            [InlineKeyboardButton(text=i18n.t("character.button.refresh"), callback_data="refresh_after_battle")],
+            [InlineKeyboardButton(text=i18n.t("character.button.search_encounter"), callback_data="search_encounter")],
+            [InlineKeyboardButton(text=menu_screen_title(), callback_data="open_allocation")],
+            [InlineKeyboardButton(text=i18n.t("character.button.rules"), callback_data="show_rules")],
             [boss_button()],
         ]
     )

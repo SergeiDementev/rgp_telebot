@@ -10,9 +10,16 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot.client import ApiClient, ApiError
-from bot.handlers.character import allocation_keyboard, render_allocation_screen, render_stats_screen, stats_screen_keyboard
+from bot.handlers.character import (
+    allocation_keyboard,
+    creation_screen_title,
+    render_allocation_screen,
+    render_stats_screen,
+    stats_screen_keyboard,
+)
 from bot.handlers.combat import build_resume_keyboard, build_resume_text
 from bot.utils import WELCOME_TEXT, detect_language, start_game_keyboard  # noqa: F401 — WELCOME_TEXT реэкспортируется для тестов
+from core import i18n
 
 router = Router()
 
@@ -51,6 +58,11 @@ async def cmd_start(message: Message, api: ApiClient) -> None:
         await message.answer(WELCOME_TEXT, reply_markup=start_game_keyboard())
         return
 
+    # docs/notes.md, блок 3 — экраны ниже (render_stats_screen и т.п.) идут
+    # через core.i18n.t(), поэтому локаль нужно выставить до их вызова; сам
+    # WELCOME_TEXT не переведён (вне рамок блока), локаль на него не влияет.
+    i18n.set_locale(character.get("language", i18n.DEFAULT_LOCALE))
+
     # §1: персонаж уже есть — повторный /start не пересоздаёт его. Баннер
     # шлём в любом случае, даже при восстановлении боя ниже — то же самое
     # первое сообщение, что игрок всегда видит на /start.
@@ -85,8 +97,9 @@ async def start_game(callback: CallbackQuery, api: ApiClient) -> None:
         language = detect_language(callback.from_user.language_code)
         character = await api.create_character(callback.from_user.id, callback.from_user.full_name, language)
 
+    i18n.set_locale(character.get("language", i18n.DEFAULT_LOCALE))
     await callback.message.edit_text(
-        render_allocation_screen(character, title="🧙 Создание героя", mode="creation"),
+        render_allocation_screen(character, title=creation_screen_title(), mode="creation"),
         reply_markup=allocation_keyboard(character, mode="creation"),
     )
     await callback.answer()
@@ -131,8 +144,9 @@ async def reset_confirm(callback: CallbackQuery, api: ApiClient) -> None:
     character = await api.create_character(
         callback.from_user.id, callback.from_user.full_name, old_character["language"]
     )
+    i18n.set_locale(character.get("language", i18n.DEFAULT_LOCALE))
     await callback.message.edit_text(
-        render_allocation_screen(character, title="🧙 Создание героя", mode="creation"),
+        render_allocation_screen(character, title=creation_screen_title(), mode="creation"),
         reply_markup=allocation_keyboard(character, mode="creation"),
     )
     await callback.answer("Персонаж обнулён")

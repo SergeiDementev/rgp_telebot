@@ -6,7 +6,23 @@
 только заголовок и кнопка выхода (§5). Различие живёт в callback_data
 ("allocate:<stat>" / "create_allocate:<stat>"), не в состоянии на сервере —
 бот сам ничего не хранит между сообщениями.
-"""
+
+Двуязычность (docs/notes.md, блок 3) — текст экрана статов/прокачки идёт
+через core.i18n.t(), как и боевой текст в api/rendering.py (блок 2). Импорт
+core.i18n из bot/ — осознанное отступление от "бот не импортирует core/"
+(тонкий клиент, docs/README.md): та фраза — про игровую логику/вычисления
+(core/economy.py и т.п., которые бот принципиально дублирует, а не
+импортирует, см. SMALL_POTION_PRICE ниже), не про инфраструктуру текста.
+core/i18n.py — чистый lookup по ключу, ничего не считает и не хранит игровое
+состояние; дублировать саму реализацию t()/ContextVar в bot/ было бы просто
+копипастой одного и того же кода, без выигрыша в разделении процессов (bot/
+и api/ и так уже общаются только по HTTP, откуда и не зависят друг от
+друга рантаймом — этот импорт остаётся compile-time зависимостью от общего
+пакета в том же репозитории, не HTTP-вызовом).
+
+Текущую локаль на время обработки колбэка выставляет bot/utils.py::
+get_character_or_prompt_start (общая точка входа для всех хендлеров ниже) —
+см. её докстринг."""
 
 import html
 
@@ -16,12 +32,14 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from bot.client import ApiClient, ApiError
 from bot.rules_content import RULES_MENU_TITLE, RULES_SECTIONS
 from bot.utils import get_character_or_prompt_start, safe_edit_text
+from core import i18n
 
 router = Router()
 
 # Дублирует core/economy.py (docs/notes.md, п.30) — бот принципиально не
-# импортирует core/ (тонкий клиент, см. docs/README.md), но подписи кнопок
-# покупки должны показывать цену/кап без лишнего запроса к API. При
+# импортирует core/ ради игровых вычислений (тонкий клиент, см. docs/
+# README.md; core.i18n — исключение, см. докстринг модуля), но подписи
+# кнопок покупки должны показывать цену/кап без лишнего запроса к API. При
 # изменении цен/капов в core/economy.py синхронизировать вручную — тот же
 # паттерн, что уже есть для DODGE_K и т.п. между scripts/simulate_combat.py
 # и api/routers/combat.py.
@@ -30,17 +48,12 @@ LARGE_POTION_PRICE = 50
 SMALL_POTION_CAP = 5
 LARGE_POTION_CAP = 3
 
-LOOT_ITEM_NAMES_RU = {
-    "mouse_pelt": "Мышиная шкурка",
-    "mouse_tail": "Мышиный хвост",
-    "wolf_fang": "Клык волка",
-    "wolf_pelt": "Шкура волка",
-    "boar_tusk": "Клык кабана",
-    "boar_hide": "Шкура кабана",
-}
-
 # Цена продажи за штуку (core/economy.py::LOOT_ITEM_PRICES) — для строки
 # лута на экране "Меню игрока" (docs/notes.md), та же дублирующая логика.
+# Названия предметов (не числа) — i18n.loot_item_names() (docs/notes.md,
+# блок 3): в отличие от цены, это переводимый текст, а не игровой баланс —
+# тот же словарь, что уже унифицирован на стороне api/rendering.py в
+# блоке 2 (i18n/ru.py, i18n/en.py), отдельной копии на боте больше нет.
 LOOT_ITEM_PRICES = {
     "mouse_pelt": 2,
     "mouse_tail": 5,
@@ -50,12 +63,10 @@ LOOT_ITEM_PRICES = {
     "boar_hide": 50,
 }
 
-BUY_POTION_ERROR_MESSAGES = {
-    "not_enough_gold": "Не хватает золота.",
-    "cap_reached": "Уже максимум зелий этого размера.",
+BUY_POTION_ERROR_KEYS = {
+    "not_enough_gold": "character.buy_error.not_enough_gold",
+    "cap_reached": "character.buy_error.cap_reached",
 }
-
-MENU_SCREEN_TITLE = "👤 Меню игрока"
 
 # Дублирует core/progression.py::BOSS_LEVEL_REQUIREMENT (docs/notes.md,
 # п.58) — только для подписи кнопки "⚔️ Бросить вызов" на экране входа в
@@ -64,6 +75,31 @@ MENU_SCREEN_TITLE = "👤 Меню игрока"
 # гейтит ничего — рассинхрон дал бы неверную подсказку в тексте кнопки, не
 # сломанную игру.
 BOSS_LEVEL_REQUIREMENT = 9
+
+_STAT_EMOJI = {"strength": "💪", "agility": "🤸", "luck": "🍀"}
+_STAT_NAME_KEYS = {
+    "strength": "character.stat.strength",
+    "agility": "character.stat.agility",
+    "luck": "character.stat.luck",
+    "vitality": "character.stat.vitality",
+}
+
+
+def menu_screen_title() -> str:
+    """"👤 Меню игрока" — заголовок и подпись кнопки одновременно (экран
+    прокачки вне создания персонажа). Функция, не константа — значение
+    зависит от текущей локали (core.i18n.get_locale()), выставленной на
+    время обработки колбэка. Публичная (без ведущего "_") — переиспользуется
+    из bot/handlers/combat.py::_post_battle_keyboard (docs/notes.md, блок 3):
+    тот же набор кнопок навигации экрана персонажа, показанный после боя."""
+    return i18n.t("character.menu_title")
+
+
+def creation_screen_title() -> str:
+    """"🧙 Создание героя" — заголовок экрана прокачки при создании
+    персонажа. Публичная — переиспользуется из bot/handlers/start.py
+    (start_game/reset_confirm ведут на тот же экран создания)."""
+    return i18n.t("character.creation_title")
 
 
 def render_stats_screen(character: dict) -> str:
@@ -75,16 +111,22 @@ def render_stats_screen(character: dict) -> str:
     parse_mode=HTML (bot/main.py). Без экранирования `<`/`>`/`&` в имени,
     не образующие валидный Telegram-тег, роняют отправку целиком
     ("can't parse entities") — self-DoS через собственный профиль."""
-    return (
-        f"🧙 {html.escape(character['nickname'])}\n"
-        f"🏅 Уровень: {character['level']}\n"
-        f"❤️ HP: {character['hp_current']:.0f}/{character['hp_max']:.0f}\n"
-        f"💪 Сила: {character['strength']}\n"
-        f"🤸 Ловкость: {character['agility']}\n"
-        f"🍀 Удача: {character['luck']}\n"
-        f"🏆 Победные очки: {character['victory_points']} "
-        f"(до след. уровня: {character['points_to_next_level']})"
-    )
+    lines = [
+        f"🧙 {html.escape(character['nickname'])}",
+        i18n.t("character.level_line", level=character["level"]),
+        i18n.t(
+            "character.hp_line",
+            hp_current=f"{character['hp_current']:.0f}", hp_max=f"{character['hp_max']:.0f}",
+        ),
+        _stat_line("strength", character["strength"]),
+        _stat_line("agility", character["agility"]),
+        _stat_line("luck", character["luck"]),
+        i18n.t(
+            "character.victory_points_line",
+            victory_points=character["victory_points"], points_to_next_level=character["points_to_next_level"],
+        ),
+    ]
+    return "\n".join(lines)
 
 
 def boss_button() -> InlineKeyboardButton:
@@ -94,16 +136,16 @@ def boss_button() -> InlineKeyboardButton:
     зелий всегда; порог уровня проверяется сервером позже, на "⚔️ Бросить
     вызов" (POST /combat/{id}/start), не здесь. Публичная (без ведущего "_")
     — переиспользуется из bot/handlers/combat.py, не только здесь."""
-    return InlineKeyboardButton(text="⚔️ Финальный босс", callback_data="search_boss_encounter")
+    return InlineKeyboardButton(text=i18n.t("character.button.boss"), callback_data="search_boss_encounter")
 
 
 def stats_screen_keyboard(character: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_stats")],
-            [InlineKeyboardButton(text="🔍 Искать противника", callback_data="search_encounter")],
-            [InlineKeyboardButton(text=MENU_SCREEN_TITLE, callback_data="open_allocation")],
-            [InlineKeyboardButton(text="📜 Правила", callback_data="show_rules")],
+            [InlineKeyboardButton(text=i18n.t("character.button.refresh"), callback_data="refresh_stats")],
+            [InlineKeyboardButton(text=i18n.t("character.button.search_encounter"), callback_data="search_encounter")],
+            [InlineKeyboardButton(text=menu_screen_title(), callback_data="open_allocation")],
+            [InlineKeyboardButton(text=i18n.t("character.button.rules"), callback_data="show_rules")],
             [boss_button()],
         ]
     )
@@ -111,7 +153,10 @@ def stats_screen_keyboard(character: dict) -> InlineKeyboardMarkup:
 
 def rules_menu_keyboard() -> InlineKeyboardMarkup:
     """content/rules.md целиком не влезает в лимит сообщения Telegram (4096
-    символов) — показываем меню разделов, а не текст сразу (bot/rules_content.py)."""
+    символов) — показываем меню разделов, а не текст сразу (bot/rules_content.py).
+
+    Текст правил — не в этом блоке (docs/notes.md, блок 3): длинный контент
+    другого характера, отдельный следующий блок."""
     rows = [
         [InlineKeyboardButton(text=title, callback_data=f"rules_section:{index}")]
         for index, (title, _body) in enumerate(RULES_SECTIONS)
@@ -124,26 +169,41 @@ def rules_section_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ К списку разделов", callback_data="show_rules")]])
 
 
+def _stat_line(stat: str, value) -> str:
+    return i18n.t("character.stat_line", emoji=_STAT_EMOJI[stat], name=i18n.t(_STAT_NAME_KEYS[stat]), value=value)
+
+
+def _vitality_line(vitality, hp_max) -> str:
+    return i18n.t(
+        "character.vitality_line",
+        name=i18n.t(_STAT_NAME_KEYS["vitality"]), value=vitality, hp_max=f"{hp_max:.0f}",
+    )
+
+
 def _render_loot_item(name: str, count: int) -> str:
-    display_name = LOOT_ITEM_NAMES_RU.get(name, name)
+    display_name = i18n.loot_item_names().get(name, name)
     price = LOOT_ITEM_PRICES.get(name, 0)
     if count == 1:
-        return f"{display_name} ({price} зол.)"
-    return f"{display_name} ×{count} ({price * count} зол.)"
+        return i18n.t("character.loot_item_single", name=display_name, price=price)
+    return i18n.t("character.loot_item_multiple", name=display_name, count=count, total_price=price * count)
 
 
 def _render_loot_line(loot: dict) -> str:
     items = [_render_loot_item(name, count) for name, count in loot.items() if count > 0]
-    return f"📦 Лут: {', '.join(items)}" if items else "📦 Лут: пока нет"
+    if not items:
+        return i18n.t("character.loot_empty")
+    return i18n.t("character.loot_line", items=", ".join(items))
 
 
 def _render_potions_line(potions_small: int, potions_large: int) -> str:
     parts = []
     if potions_small > 0:
-        parts.append(f"Малое ×{potions_small}")
+        parts.append(i18n.t("character.potion_count", name=i18n.t("combat.potion.small_label"), count=potions_small))
     if potions_large > 0:
-        parts.append(f"Большое ×{potions_large}")
-    return f"🧪 Зелья: {', '.join(parts)}" if parts else "🧪 Зелья: пока нет"
+        parts.append(i18n.t("character.potion_count", name=i18n.t("combat.potion.large_label"), count=potions_large))
+    if not parts:
+        return i18n.t("character.potions_empty")
+    return i18n.t("character.potions_line", items=", ".join(parts))
 
 
 def render_allocation_screen(character: dict, *, title: str, mode: str) -> str:
@@ -155,41 +215,51 @@ def render_allocation_screen(character: dict, *, title: str, mode: str) -> str:
         return "\n".join(
             [
                 title,
-                f"Осталось очков: {character['unspent_stat_points']}",
+                i18n.t("character.unspent_points_line", unspent_stat_points=character["unspent_stat_points"]),
                 "",
-                f"💪 Сила: {character['strength']}",
-                f"🤸 Ловкость: {character['agility']}",
-                f"🍀 Удача: {character['luck']}",
-                f"❤️ Здоровье: {character['vitality']}  (HP max: {character['hp_max']:.0f})",
+                _stat_line("strength", character["strength"]),
+                _stat_line("agility", character["agility"]),
+                _stat_line("luck", character["luck"]),
+                _vitality_line(character["vitality"], character["hp_max"]),
             ]
         )
 
     lines = [
-        f"🏅 Уровень: {character['level']}",
-        f"💪 Сила: {character['strength']}",
-        f"🤸 Ловкость: {character['agility']}",
-        f"🍀 Удача: {character['luck']}",
-        f"❤️ Здоровье: {character['vitality']}  (HP max: {character['hp_max']:.0f})",
+        i18n.t("character.level_line", level=character["level"]),
+        _stat_line("strength", character["strength"]),
+        _stat_line("agility", character["agility"]),
+        _stat_line("luck", character["luck"]),
+        _vitality_line(character["vitality"], character["hp_max"]),
         "",
-        f"🏆 Победные очки: {character['victory_points']} (до след. уровня: {character['points_to_next_level']})",
+        i18n.t(
+            "character.victory_points_line",
+            victory_points=character["victory_points"], points_to_next_level=character["points_to_next_level"],
+        ),
     ]
     if character["unspent_stat_points"] > 0:
-        lines.append(f"Доступно очков прокачки: {character['unspent_stat_points']}")
+        lines.append(i18n.t("character.unspent_points_available_line", unspent_stat_points=character["unspent_stat_points"]))
     lines.append("")
-    lines.append(f"💰 Золото: {character['gold']}")
+    lines.append(i18n.t("character.gold_line", gold=character["gold"]))
     lines.append("")
     lines.append(_render_loot_line(character["loot"]))
     lines.append(_render_potions_line(character["potions_small"], character["potions_large"]))
     return "\n".join(lines)
 
 
+def _stat_button(prefix: str, stat: str) -> InlineKeyboardButton:
+    name = i18n.t(_STAT_NAME_KEYS[stat])
+    return InlineKeyboardButton(text=i18n.t("character.allocate_button", name=name), callback_data=f"{prefix}:{stat}")
+
+
 def _buy_potion_button(size: str, potions_owned: int) -> InlineKeyboardButton:
     if size == "large":
-        name, price, cap = "большое", LARGE_POTION_PRICE, LARGE_POTION_CAP
+        name, price, cap = i18n.t("combat.potion.large_label").lower(), LARGE_POTION_PRICE, LARGE_POTION_CAP
     else:
-        name, price, cap = "малое", SMALL_POTION_PRICE, SMALL_POTION_CAP
-    status = "уже максимум" if potions_owned >= cap else f"{price} зол."
-    return InlineKeyboardButton(text=f"🧪 Купить {name} ({status})", callback_data=f"buy_potion:{size}")
+        name, price, cap = i18n.t("combat.potion.small_label").lower(), SMALL_POTION_PRICE, SMALL_POTION_CAP
+    status = i18n.t("character.potion_cap_reached") if potions_owned >= cap else i18n.t("character.potion_price", price=price)
+    return InlineKeyboardButton(
+        text=i18n.t("character.buy_potion_button", name=name, status=status), callback_data=f"buy_potion:{size}"
+    )
 
 
 def allocation_keyboard(character: dict, *, mode: str) -> InlineKeyboardMarkup:
@@ -204,32 +274,22 @@ def allocation_keyboard(character: dict, *, mode: str) -> InlineKeyboardMarkup:
     prefix = "create_allocate" if mode == "creation" else "allocate"
     rows = []
     if character["unspent_stat_points"] > 0:
-        rows.append(
-            [
-                InlineKeyboardButton(text="+1 Сила", callback_data=f"{prefix}:strength"),
-                InlineKeyboardButton(text="+1 Ловкость", callback_data=f"{prefix}:agility"),
-            ]
-        )
-        rows.append(
-            [
-                InlineKeyboardButton(text="+1 Удача", callback_data=f"{prefix}:luck"),
-                InlineKeyboardButton(text="+1 Здоровье", callback_data=f"{prefix}:vitality"),
-            ]
-        )
+        rows.append([_stat_button(prefix, "strength"), _stat_button(prefix, "agility")])
+        rows.append([_stat_button(prefix, "luck"), _stat_button(prefix, "vitality")])
     if mode == "creation":
-        rows.append([InlineKeyboardButton(text="✅ Начать приключение", callback_data="finish_creation")])
+        rows.append([InlineKeyboardButton(text=i18n.t("character.button.start_adventure"), callback_data="finish_creation")])
         return InlineKeyboardMarkup(inline_keyboard=rows)
 
     if any(count > 0 for count in character["loot"].values()):
-        rows.append([InlineKeyboardButton(text="💰 Продать весь лут", callback_data="sell_loot")])
+        rows.append([InlineKeyboardButton(text=i18n.t("character.button.sell_loot"), callback_data="sell_loot")])
     # Каждая кнопка зелья — своей строкой, не парой в одной (docs/notes.md):
     # текст с ценой не помещался при двух кнопках в ряд.
     rows.append([_buy_potion_button("small", character["potions_small"])])
     rows.append([_buy_potion_button("large", character["potions_large"])])
-    rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_stats")])
+    rows.append([InlineKeyboardButton(text=i18n.t("character.button.back"), callback_data="back_to_stats")])
     # Только на экране "Меню игрока", не при создании — во время creation
     # ещё нечего обнулять (docs/notes.md, п.12).
-    rows.append([InlineKeyboardButton(text="🗑 Обнулить персонажа", callback_data="reset_request")])
+    rows.append([InlineKeyboardButton(text=i18n.t("character.button.reset"), callback_data="reset_request")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -255,7 +315,7 @@ async def open_allocation(callback: CallbackQuery, api: ApiClient) -> None:
     if character is None:
         return
     await callback.message.edit_text(
-        render_allocation_screen(character, title=MENU_SCREEN_TITLE, mode="levelup"),
+        render_allocation_screen(character, title=menu_screen_title(), mode="levelup"),
         reply_markup=allocation_keyboard(character, mode="levelup"),
     )
     await callback.answer()
@@ -280,11 +340,11 @@ async def allocate_levelup(callback: CallbackQuery, api: ApiClient) -> None:
     try:
         result = await api.allocate_point(character["id"], stat)
     except ApiError:
-        await callback.answer("Не осталось свободных очков", show_alert=True)
+        await callback.answer(i18n.t("character.allocate_error.no_points"), show_alert=True)
         return
     updated = result["character"]
     await callback.message.edit_text(
-        render_allocation_screen(updated, title=MENU_SCREEN_TITLE, mode="levelup"),
+        render_allocation_screen(updated, title=menu_screen_title(), mode="levelup"),
         reply_markup=allocation_keyboard(updated, mode="levelup"),
     )
     await callback.answer()
@@ -299,11 +359,11 @@ async def allocate_creation(callback: CallbackQuery, api: ApiClient) -> None:
     try:
         result = await api.allocate_point(character["id"], stat)
     except ApiError:
-        await callback.answer("Не осталось свободных очков", show_alert=True)
+        await callback.answer(i18n.t("character.allocate_error.no_points"), show_alert=True)
         return
     updated = result["character"]
     await callback.message.edit_text(
-        render_allocation_screen(updated, title="🧙 Создание героя", mode="creation"),
+        render_allocation_screen(updated, title=creation_screen_title(), mode="creation"),
         reply_markup=allocation_keyboard(updated, mode="creation"),
     )
     await callback.answer()
@@ -326,7 +386,7 @@ async def sell_loot(callback: CallbackQuery, api: ApiClient) -> None:
     result = await api.sell_loot(character["id"])
     updated = result["character"]
     await callback.message.edit_text(
-        render_allocation_screen(updated, title=MENU_SCREEN_TITLE, mode="levelup"),
+        render_allocation_screen(updated, title=menu_screen_title(), mode="levelup"),
         reply_markup=allocation_keyboard(updated, mode="levelup"),
     )
     await callback.answer()
@@ -341,12 +401,12 @@ async def buy_potion(callback: CallbackQuery, api: ApiClient) -> None:
     try:
         result = await api.buy_potion(character["id"], size)
     except ApiError as error:
-        message = BUY_POTION_ERROR_MESSAGES.get(error.detail, "Не удалось купить зелье.")
+        message = i18n.t(BUY_POTION_ERROR_KEYS.get(error.detail, "character.buy_error.generic"))
         await callback.answer(message, show_alert=True)
         return
     updated = result["character"]
     await callback.message.edit_text(
-        render_allocation_screen(updated, title=MENU_SCREEN_TITLE, mode="levelup"),
+        render_allocation_screen(updated, title=menu_screen_title(), mode="levelup"),
         reply_markup=allocation_keyboard(updated, mode="levelup"),
     )
     await callback.answer()

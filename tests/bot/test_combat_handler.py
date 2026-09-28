@@ -26,6 +26,7 @@ from bot.handlers.combat import (
     take_turn_power,
     use_potion,
 )
+from core import i18n
 
 pytestmark = pytest.mark.asyncio
 
@@ -623,6 +624,29 @@ async def test_refresh_after_battle_omits_timer_when_hp_full():
 
     text = callback.message.edit_text.call_args.args[0]
     assert text == "❤️ HP: 50/50"
+
+
+async def test_refresh_after_battle_keyboard_labels_follow_locale_en():
+    # docs/notes.md, блок 3 — _post_battle_keyboard переиспользует
+    # i18n-ключи экрана персонажа (bot/handlers/character.py), поэтому
+    # переключается вместе с ними — через bot/utils.py::
+    # get_character_or_prompt_start и character["language"] (не через
+    # предварительный i18n.set_locale() снаружи: хендлер сам выставляет
+    # локаль на каждый вызов, из свежепришедшего character). Текст самого
+    # сообщения (HP/таймер) — собственный текст combat.py, вне рамок
+    # блока 3, не переведён.
+    callback = make_callback("refresh_after_battle")
+    api = AsyncMock()
+    api.get_character.return_value = {
+        "hp_current": 15.0, "hp_max": 50.0, "hp_seconds_to_full": 35.0, "level": 3, "language": "en",
+    }
+    try:
+        await refresh_after_battle(callback, api)
+        markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+        labels = [btn.text for row in markup.inline_keyboard for btn in row]
+        assert labels[:4] == ["🔄 Refresh", "🔍 Search for an enemy", "👤 Player Menu", "📜 Rules"]
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
 
 
 async def test_build_resume_keyboard_awaiting_initiative():

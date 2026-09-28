@@ -15,6 +15,7 @@ from bot.handlers.start import (
     reset_request,
     start_game,
 )
+from core import i18n
 
 pytestmark = pytest.mark.asyncio
 
@@ -221,6 +222,62 @@ async def test_reset_confirm_carries_over_existing_language_choice():
     await reset_confirm(callback, api)
 
     api.create_character.assert_awaited_once_with(callback.from_user.id, "Hero", "en")
+
+
+async def test_cmd_start_shows_stats_in_character_language():
+    # docs/notes.md, блок 3 — cmd_start сам выставляет локаль (не проходит
+    # через bot/utils.py::get_character_or_prompt_start, у него свой прямой
+    # api.get_character()), прежде чем звать render_stats_screen.
+    message = make_message()
+    api = AsyncMock()
+    api.get_character.return_value = {
+        "nickname": "Hero", "level": 2, "hp_current": 40.0, "hp_max": 60.0,
+        "strength": 5, "agility": 3, "luck": 2, "victory_points": 15, "points_to_next_level": 5,
+        "language": "en",
+    }
+    try:
+        await cmd_start(message, api)
+        second_call = message.answer.call_args_list[1]
+        assert "🏅 Level: 2" in second_call.args[0]
+        assert "💪 Strength: 5" in second_call.args[0]
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+async def test_start_game_renders_creation_screen_in_character_language():
+    callback = make_callback(full_name="Hero", language_code="en-US")
+    api = AsyncMock()
+    api.get_character.side_effect = ApiError(404, "not found")
+    api.create_character.return_value = {
+        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
+        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "language": "en",
+    }
+    try:
+        await start_game(callback, api)
+        text = callback.message.edit_text.call_args.args[0]
+        assert "🧙 Hero Creation" in text
+        assert "💪 Strength: 3" in text
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+async def test_reset_confirm_renders_creation_screen_in_carried_over_language():
+    callback = make_callback(full_name="Hero")
+    callback.data = "reset_confirm:manual_reset"
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "en"}
+    api.create_character.return_value = {
+        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
+        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "language": "en",
+    }
+    try:
+        await reset_confirm(callback, api)
+        text = callback.message.edit_text.call_args.args[0]
+        assert "🧙 Hero Creation" in text
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
 
 
 async def test_reset_confirm_passes_boss_victory_reason():

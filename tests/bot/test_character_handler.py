@@ -8,6 +8,7 @@ from bot.client import ApiError
 from bot.handlers.character import (
     allocate_creation,
     allocate_levelup,
+    allocation_keyboard,
     back_to_stats,
     buy_potion,
     finish_creation,
@@ -17,8 +18,10 @@ from bot.handlers.character import (
     sell_loot,
     show_rules,
     show_rules_section,
+    stats_screen_keyboard,
 )
 from bot.rules_content import RULES_MENU_TITLE, RULES_SECTIONS
+from core import i18n
 
 pytestmark = pytest.mark.asyncio
 
@@ -383,3 +386,90 @@ async def test_finish_creation_shows_stats_screen_with_search_button():
     # Кнопка финального босса — всегда последняя и всегда активна
     # (docs/notes.md, пп.36, 58), даже на свежем 1 уровне.
     assert markup.inline_keyboard[-1][0].callback_data == "search_boss_encounter"
+
+
+# --- Английская локаль (docs/notes.md, блок 3) ---------------------------
+# По одному репрезентативному тесту на статы/прокачку/кнопки — не полное
+# дублирование русских тестов выше (см. тот же принцип в
+# tests/api/test_rendering.py, блок 2) — плюс один сквозной тест хендлера,
+# проверяющий сам механизм переключения локали по character["language"].
+
+
+@pytest.fixture
+def en_locale():
+    token = i18n.set_locale("en")
+    try:
+        yield
+    finally:
+        i18n.reset_locale(token)
+
+
+async def test_render_stats_screen_en(en_locale):
+    character = {**BASE_CHARACTER, "level": 2, "hp_current": 40.0, "hp_max": 60.0, "strength": 5}
+    text = render_stats_screen(character)
+    assert text == (
+        "🧙 Hero\n"
+        "🏅 Level: 2\n"
+        "❤️ HP: 40/60\n"
+        "💪 Strength: 5\n"
+        "🤸 Agility: 3\n"
+        "🍀 Luck: 1\n"
+        "🏆 Victory points: 0 (to next level: 8)"
+    )
+
+
+async def test_render_allocation_screen_creation_en(en_locale):
+    text = render_allocation_screen({**BASE_CHARACTER, "unspent_stat_points": 5}, title="🧙 Hero Creation", mode="creation")
+    assert text == (
+        "🧙 Hero Creation\n"
+        "Points left: 5\n"
+        "\n"
+        "💪 Strength: 3\n"
+        "🤸 Agility: 3\n"
+        "🍀 Luck: 1\n"
+        "❤️ Vitality: 3  (HP max: 50)"
+    )
+
+
+async def test_render_allocation_screen_levelup_en(en_locale):
+    character = {**BASE_CHARACTER, "unspent_stat_points": 0, "loot": {"wolf_fang": 3}, "potions_small": 2}
+    text = render_allocation_screen(character, title="👤 Player Menu", mode="levelup")
+    assert "🏅 Level: 1" in text
+    assert "🏆 Victory points: 0 (to next level: 8)" in text
+    assert "Stat points available" not in text  # unspent_stat_points == 0
+    assert "💰 Gold: 0" in text
+    assert "📦 Loot: Wolf fang ×3 (24 gold)" in text
+    assert "🧪 Potions: Small ×2" in text
+
+
+async def test_stats_screen_keyboard_labels_en(en_locale):
+    markup = stats_screen_keyboard(BASE_CHARACTER)
+    labels = [btn.text for row in markup.inline_keyboard for btn in row]
+    assert labels == ["🔄 Refresh", "🔍 Search for an enemy", "👤 Player Menu", "📜 Rules", "⚔️ Final Boss"]
+
+
+async def test_allocation_keyboard_buy_potion_labels_en(en_locale):
+    markup = allocation_keyboard(BASE_CHARACTER, mode="levelup")
+    buttons = {btn.callback_data: btn.text for row in markup.inline_keyboard for btn in row}
+    assert buttons["buy_potion:small"] == "🧪 Buy small (8 gold)"
+    assert buttons["buy_potion:large"] == "🧪 Buy large (50 gold)"
+    assert buttons["back_to_stats"] == "⬅️ Back"
+    assert buttons["reset_request"] == "🗑 Reset character"
+
+
+async def test_open_allocation_renders_in_character_language(en_locale):
+    # Сквозной тест механизма (docs/notes.md, блок 3): хендлер сам вызывает
+    # get_character_or_prompt_start, которая выставляет локаль по
+    # character["language"] — фикстура en_locale здесь лишь задаёт
+    # начальное значение, важна именно проверка, что оно пришло от сервера,
+    # а не осталось от фикстуры.
+    callback = make_callback("open_allocation")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "language": "en"}
+
+    await open_allocation(callback, api)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert text.startswith("🏅 Level:")
+    assert "💰 Gold: 0" in text
+    assert "📦 Loot: none yet" in text

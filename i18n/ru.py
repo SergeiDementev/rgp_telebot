@@ -166,4 +166,48 @@ TRANSLATIONS: dict[str, str] = {
     "combat.battle_end.regen_line": "⏳ Полное восстановление через: ~{hp_seconds_to_full} сек.",
 
     "combat.boss_victory": "🎉 Ты повергнул {name_acc_cap}!\n\nПриключение окончено. Спасибо, что играл(а)!",
+
+    # --- Экран персонажа (bot/handlers/character.py, docs/notes.md, блок 3) ---
+    "character.menu_title": "👤 Меню игрока",
+    "character.creation_title": "🧙 Создание героя",
+    "character.button.refresh": "🔄 Обновить",
+    "character.button.search_encounter": "🔍 Искать противника",
+    "character.button.rules": "📜 Правила",
+    "character.button.boss": "⚔️ Финальный босс",
+    "character.button.back": "⬅️ Назад",
+    "character.button.reset": "🗑 Обнулить персонажа",
+    "character.button.sell_loot": "💰 Продать весь лут",
+    "character.button.start_adventure": "✅ Начать приключение",
+    "character.allocate_button": "+1 {name}",
+
+    "character.stat.strength": "Сила",
+    "character.stat.agility": "Ловкость",
+    "character.stat.luck": "Удача",
+    "character.stat.vitality": "Здоровье",
+    "character.stat_line": "{emoji} {name}: {value}",
+    "character.vitality_line": "❤️ {name}: {value}  (HP max: {hp_max})",
+
+    "character.level_line": "🏅 Уровень: {level}",
+    "character.hp_line": "❤️ HP: {hp_current}/{hp_max}",
+    "character.victory_points_line": "🏆 Победные очки: {victory_points} (до след. уровня: {points_to_next_level})",
+    "character.unspent_points_line": "Осталось очков: {unspent_stat_points}",
+    "character.unspent_points_available_line": "Доступно очков прокачки: {unspent_stat_points}",
+    "character.gold_line": "💰 Золото: {gold}",
+
+    "character.loot_line": "📦 Лут: {items}",
+    "character.loot_empty": "📦 Лут: пока нет",
+    "character.potions_line": "🧪 Зелья: {items}",
+    "character.potions_empty": "🧪 Зелья: пока нет",
+    "character.loot_item_single": "{name} ({price} зол.)",
+    "character.loot_item_multiple": "{name} ×{count} ({total_price} зол.)",
+    "character.potion_count": "{name} ×{count}",
+
+    "character.potion_cap_reached": "уже максимум",
+    "character.potion_price": "{price} зол.",
+    "character.buy_potion_button": "🧪 Купить {name} ({status})",
+
+    "character.buy_error.not_enough_gold": "Не хватает золота.",
+    "character.buy_error.cap_reached": "Уже максимум зелий этого размера.",
+    "character.buy_error.generic": "Не удалось купить зелье.",
+    "character.allocate_error.no_points": "Не осталось свободных очков",
 }
