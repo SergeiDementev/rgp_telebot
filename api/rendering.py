@@ -2,7 +2,7 @@
 
 core/combat_mechanics.py считает факты и не знает о тексте вообще. Это —
 единственное место, где решается, как бой выглядит для игрока; при
-появлении второго фронтенда/локализации меняется только этот файл.
+появлении второго фронтенда меняется только этот файл.
 
 Форматирование бросков — по правилу gameplay_loop_mvp.md §9: любой бросок
 кубика показывает выпавшее число, а не только словесный итог
@@ -13,75 +13,44 @@ core/combat_mechanics.py считает факты и не знает о тек�
 "не вышло!", то "не смог!"; пример обстоятельства на грани 2 подписан как
 buff, хотя по таблице §8 грани 1-3 — debuff) — здесь выбрана одна
 последовательная формулировка на каждый случай, не обе сразу.
+
+Двуязычность (docs/notes.md, блок 2) — сами строки живут в i18n/ru.py и
+i18n/en.py (core.i18n.t()), этот модуль решает только КАКОЙ ключ и с
+какими грамматическими формами противника вызвать в каждой ветке (выбор
+падежа/рода — часть структуры боя, не текста, поэтому остаётся здесь).
+i18n.enemy_names(enemy_type) отдаёт словарь форм для текущей локали — в
+ru.py формы разные (падежи/род), в en.py все формы совпадают с одним
+именем (английский не склоняется), поэтому вызывающий код ниже не
+ветвится по локали вообще, только по структуре боя.
 """
 
 from typing import Optional
 
+from core import i18n
 from core.combat_mechanics import POWER_ATTACK_DAMAGE_MULTIPLIER
 
-# Дублирует bot/handlers/character.py::LOOT_ITEM_NAMES_RU (docs/notes.md,
-# п.30/31) — бот и api не делят импорты (разные процессы, общаются только
-# по HTTP), а показ добычи в конце боя рендерится здесь же, где и весь
-# остальной текст боя, поэтому своя копия. Синхронизировать вручную при
-# добавлении новых предметов в core/economy.py::LOOT_TABLE.
-LOOT_ITEM_NAMES_RU = {
-    "mouse_pelt": "Мышиная шкурка",
-    "mouse_tail": "Мышиный хвост",
-    "wolf_fang": "Клык волка",
-    "wolf_pelt": "Шкура волка",
-    "boar_tusk": "Клык кабана",
-    "boar_hide": "Шкура кабана",
-}
 
-ENEMY_NAMES = {
-    "mouse": {
-        "nom_cap": "Мышь", "nom_low": "мышь",
-        "acc_cap": "Мышь", "acc_low": "мышь",
-        "gen_low": "мыши",
-        "ins_cap": "Мышью",
-        # Мышь — существительное женского рода: формы глаголов/прилагательных,
-        # относящихся к противнику, должны с ним согласовываться (docs/notes.md).
-        "dodge_verb": "увернулась",
-        "alive_adj": "живой",
-        "fled_verb": "сбежала",
-    },
-    "wolf": {
-        "nom_cap": "Волк", "nom_low": "волк",
-        "acc_cap": "Волка", "acc_low": "волка",
-        "gen_low": "волка",
-        "ins_cap": "Волком",
-        "dodge_verb": "увернулся",
-        "alive_adj": "живым",
-        "fled_verb": "сбежал",
-    },
-    "boar": {
-        "nom_cap": "Кабан", "nom_low": "кабан",
-        "acc_cap": "Кабана", "acc_low": "кабана",
-        "gen_low": "кабана",
-        "ins_cap": "Кабаном",
-        "dodge_verb": "увернулся",
-        "alive_adj": "живым",
-        "fled_verb": "сбежал",
-    },
-    "boss": {
-        "nom_cap": "Лесной Король", "nom_low": "лесной король",
-        "acc_cap": "Лесного Короля", "acc_low": "лесного короля",
-        "gen_low": "лесного короля",
-        "ins_cap": "Лесным Королём",
-        "dodge_verb": "увернулся",
-        "alive_adj": "живым",
-        # Никогда не рендерится по-настоящему — can_flee=false в
-        # content/enemies.json (docs/notes.md, п.36) гарантирует, что бросок
-        # на побег для боевой стороны "enemy" не происходит вообще, но поле
-        # держим ради целостности словаря (та же форма, что и у остальных).
-        "fled_verb": "сбежал",
-    },
-}
+def _name_kwargs(names: dict) -> dict:
+    """Именованные плейсхолдеры под все грамматические формы противника
+    сразу — конкретный t()-шаблон использует только нужные ему форматы,
+    остальные str.format() молча игнорирует. Не включает dodge_verb/
+    alive_adj — их берут напрямую там, где нужно (они не всегда
+    относятся к противнику: например, dodge_verb для собственного
+    уворота игрока — фиксированное слово, не форма из ENEMY_NAMES)."""
+    return {
+        "name_nom_cap": names["nom_cap"],
+        "name_nom_low": names["nom_low"],
+        "name_acc_cap": names["acc_cap"],
+        "name_acc_low": names["acc_low"],
+        "name_gen_low": names["gen_low"],
+        "name_ins_cap": names["ins_cap"],
+        "fled_verb": names["fled_verb"],
+    }
 
 
 def render_encounter(enemy_type: str, roll: int) -> str:
-    names = ENEMY_NAMES[enemy_type]
-    return f"🎲 Бросок: {roll} → {names['nom_cap']}!\n\nТы наткнулся на {names['acc_low']}."
+    names = i18n.enemy_names(enemy_type)
+    return i18n.t("encounter.found", roll=roll, **_name_kwargs(names))
 
 
 def render_boss_encounter() -> str:
@@ -89,35 +58,33 @@ def render_boss_encounter() -> str:
     случайный ростер поиска (§6), поэтому без формата "🎲 Бросок: N → ..." у
     render_encounter: игрок выбирает эту встречу целенаправленно кнопкой, не
     кубиком."""
-    return "👑 Ты входишь в чертог Лесного Короля. Отступать некуда — он уже смотрит на тебя."
+    names = i18n.enemy_names("boss")
+    return i18n.t("encounter.boss", **_name_kwargs(names))
 
 
 def render_initiative(enemy_type: str, player_roll: int, enemy_roll: int, first_role: str) -> str:
-    names = ENEMY_NAMES[enemy_type]
+    names = i18n.enemy_names(enemy_type)
+    nk = _name_kwargs(names)
     if first_role == "player":
-        return f"🎲 Инициатива: ты — {player_roll}, {names['nom_low']} — {enemy_roll}. Ты ходишь первым!"
-    return f"🎲 Инициатива: {names['nom_low']} — {enemy_roll}, ты — {player_roll}. {names['nom_cap']} атакует первым!"
+        return i18n.t("combat.initiative.player_first", player_roll=player_roll, enemy_roll=enemy_roll, **nk)
+    return i18n.t("combat.initiative.enemy_first", player_roll=player_roll, enemy_roll=enemy_roll, **nk)
 
 
 def render_circumstance(enemy_type: str, roll: int, outcome, roller_role: str) -> str:
     if outcome is None:
-        return f"🎲 Обстоятельство: {roll} → без происшествий."
+        return i18n.t("combat.circumstance.none", roll=roll)
 
-    names = ENEMY_NAMES[enemy_type]
-    if outcome == "buff":
-        flavor, direction, multiplier = "⚡ Прилив адреналина!", "увеличена", "×1.2"
-    else:
-        flavor, direction, multiplier = "⚡ Скользкая земля", "уменьшена", "×0.8"
-
-    subject = "Твоя Сила" if roller_role == "player" else f"Сила {names['gen_low']}"
-    return f"🎲 Обстоятельство: {roll} → {flavor}\n{subject} {direction} на этот бой ({multiplier})"
+    names = i18n.enemy_names(enemy_type)
+    key = f"combat.circumstance.{outcome}_{roller_role}"
+    return i18n.t(key, roll=roll, name_gen_low=names["gen_low"], name_nom_low=names["nom_low"])
 
 
 def render_double_strike_check(enemy_type: str, side_role: str, luck_roll: int, triggered: bool) -> str:
-    prefix = "Твоя проверка удачи" if side_role == "player" else f"{ENEMY_NAMES[enemy_type]['nom_cap']} проверяет удачу"
-    if triggered:
-        return f"🎲 {prefix}: {luck_roll} → ✨ УДАЧА! Двойной удар!"
-    return f"🎲 {prefix}: {luck_roll} → двойного удара нет."
+    suffix = "triggered" if triggered else "missed"
+    if side_role == "player":
+        return i18n.t(f"combat.double_strike.player_{suffix}", luck_roll=luck_roll)
+    names = i18n.enemy_names(enemy_type)
+    return i18n.t(f"combat.double_strike.enemy_{suffix}", luck_roll=luck_roll, name_nom_cap=names["nom_cap"])
 
 
 def _attack_label(power_attack: bool, normal_label: str) -> str:
@@ -125,15 +92,15 @@ def _attack_label(power_attack: bool, normal_label: str) -> str:
     мощный удар, иначе обычная подпись вызывающей функции (у полной и
     компактной формы разный текст для обычной атаки — "🗡️ Твоя атака" /
     "🗡️ Удар" — но один и тот же для мощного удара)."""
-    return "💥 Мощный удар" if power_attack else normal_label
+    return i18n.t("combat.strike.power_label") if power_attack else normal_label
 
 
 def _damage_suffix(percent: int, power_attack: bool) -> str:
     """§3a: хвост строки атаки после "→" — процент силы, при мощном ударе с
     пометкой множителя урона (POWER_ATTACK_DAMAGE_MULTIPLIER, не хардкод)."""
     if power_attack:
-        return f"{percent}% силы, урон ×{POWER_ATTACK_DAMAGE_MULTIPLIER:g}!"
-    return f"{percent}% силы."
+        return i18n.t("combat.strike.damage_percent_power", percent=percent, multiplier=f"{POWER_ATTACK_DAMAGE_MULTIPLIER:g}")
+    return i18n.t("combat.strike.damage_percent", percent=percent)
 
 
 def render_strike(
@@ -154,27 +121,30 @@ def render_strike(
     core.combat_mechanics.POWER_ATTACK_DAMAGE_MULTIPLIER, не хардкод) —
     уворот и урон уже посчитаны вызывающим кодом с учётом множителя, здесь
     только отображение."""
-    names = ENEMY_NAMES[enemy_type]
+    names = i18n.enemy_names(enemy_type)
     power_attack = power_attack and side_role == "player"  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
     if side_role == "player":
-        dodge_label, damage_verb = f"{names['nom_cap']} уворачивается", "Ты наносишь"
+        dodge_label = i18n.t("combat.strike.enemy_dodge_label", name_nom_cap=names["nom_cap"])
+        damage_verb = i18n.t("combat.strike.player_damage_verb")
         dodge_verb = names["dodge_verb"]
-        attack_label = _attack_label(power_attack, "🗡️ Твоя атака")
+        attack_label = _attack_label(power_attack, i18n.t("combat.strike.player_attack_label"))
     else:
-        attack_label, dodge_label, damage_verb = f"🗡️ Атака {names['gen_low']}", "Твой уворот", f"{names['nom_cap']} наносит"
-        dodge_verb = "увернулся"
+        attack_label = i18n.t("combat.strike.enemy_attack_label", name_gen_low=names["gen_low"])
+        dodge_label = i18n.t("combat.strike.player_dodge_label")
+        damage_verb = i18n.t("combat.strike.enemy_damage_verb", name_nom_cap=names["nom_cap"])
+        dodge_verb = i18n.t("combat.strike.player_dodge_verb")
 
     if attack_percent is None:
-        return f"{attack_label}: {attack_roll} → промах!"
+        return i18n.t("combat.strike.miss", attack_label=attack_label, attack_roll=attack_roll)
 
     percent_part = _damage_suffix(attack_percent, power_attack)
-    lines = [f"{attack_label}: {attack_roll} → {percent_part}"]
+    lines = [i18n.t("combat.strike.header", attack_label=attack_label, attack_roll=attack_roll, percent_part=percent_part)]
     if dodged:
-        lines.append(f"🛡️ {dodge_label}: {dodge_roll} → {dodge_verb}!")
-        lines.append("✅ Урон полностью пропущен.")
+        lines.append(i18n.t("combat.strike.dodge_success", dodge_label=dodge_label, dodge_roll=dodge_roll, dodge_verb=dodge_verb))
+        lines.append(i18n.t("combat.strike.damage_avoided"))
     else:
-        lines.append(f"🛡️ {dodge_label}: {dodge_roll} → не вышло!")
-        lines.append(f"💥 {damage_verb} {damage:.0f} урона.")
+        lines.append(i18n.t("combat.strike.dodge_fail", dodge_label=dodge_label, dodge_roll=dodge_roll))
+        lines.append(i18n.t("combat.strike.damage_dealt", damage_verb=damage_verb, damage=f"{damage:.0f}"))
     return "\n".join(lines)
 
 
@@ -192,25 +162,30 @@ def render_compact_strike(
     """Компактная (однострочная) форма удара — используется внутри двойного
     удара. power_attack — см. render_strike, тот же принцип (только игрок,
     только подпись/эмодзи/пометка множителя)."""
-    names = ENEMY_NAMES[enemy_type]
+    names = i18n.enemy_names(enemy_type)
     power_attack = power_attack and side_role == "player"  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
     if side_role == "player":
-        dodge_label, dodge_verb = f"{names['nom_cap']} уворачивается", names["dodge_verb"]
-        strike_label = _attack_label(power_attack, "🗡️ Удар")
+        dodge_label = i18n.t("combat.strike.enemy_dodge_label", name_nom_cap=names["nom_cap"])
+        dodge_verb = names["dodge_verb"]
+        strike_label = _attack_label(power_attack, i18n.t("combat.compact_strike.attack_label"))
     else:
-        dodge_label, dodge_verb = "Ты уворачиваешься", "увернулся"
-        strike_label = "🗡️ Удар"
+        dodge_label = i18n.t("combat.compact_strike.player_dodge_label")
+        dodge_verb = i18n.t("combat.strike.player_dodge_verb")
+        strike_label = i18n.t("combat.compact_strike.attack_label")
 
     if attack_percent is None:
-        return f"{strike_label} {strike_number}: {attack_roll} → промах."
+        return i18n.t("combat.compact_strike.miss", strike_label=strike_label, strike_number=strike_number, attack_roll=attack_roll)
 
     percent_part = _damage_suffix(attack_percent, power_attack)
-    parts = [f"{strike_label} {strike_number}: {attack_roll} → {percent_part}"]
+    parts = [i18n.t(
+        "combat.compact_strike.header",
+        strike_label=strike_label, strike_number=strike_number, attack_roll=attack_roll, percent_part=percent_part,
+    )]
     if dodged:
-        parts.append(f"🛡️ {dodge_label}: {dodge_roll} → {dodge_verb}!")
+        parts.append(i18n.t("combat.strike.dodge_success", dodge_label=dodge_label, dodge_roll=dodge_roll, dodge_verb=dodge_verb))
     else:
-        parts.append(f"🛡️ {dodge_label}: {dodge_roll} → не вышло!")
-        parts.append(f"💥 {damage:.0f} урона.")
+        parts.append(i18n.t("combat.strike.dodge_fail", dodge_label=dodge_label, dodge_roll=dodge_roll))
+        parts.append(i18n.t("combat.compact_strike.damage", damage=f"{damage:.0f}"))
     return " ".join(parts)
 
 
@@ -218,8 +193,8 @@ def render_potion_used(size: str, heal: float) -> str:
     """Автоматическое исцеление зельем в начале хода игрока (docs/notes.md,
     п.31) — не бросок, поэтому без "🎲"; показывает сам факт и сколько
     вылечило, тем же принципом прозрачности, что и остальной бой."""
-    label = "Большое" if size == "large" else "Малое"
-    return f"🧪 {label} зелье: +{heal:.0f} HP."
+    label = i18n.t("combat.potion.large_label") if size == "large" else i18n.t("combat.potion.small_label")
+    return i18n.t("combat.potion.used", label=label, heal=f"{heal:.0f}")
 
 
 def render_hp_status(
@@ -230,8 +205,13 @@ def render_hp_status(
     enemy_hp_max: float,
 ) -> str:
     """Шапка статуса HP — печатается первой строкой в каждом сообщении боя."""
-    names = ENEMY_NAMES[enemy_type]
-    return f"❤️ Ты: {player_hp:.0f}/{player_hp_max:.0f}   👹 {names['nom_cap']}: {enemy_hp:.0f}/{enemy_hp_max:.0f}"
+    names = i18n.enemy_names(enemy_type)
+    return i18n.t(
+        "combat.hp_status",
+        player_hp=f"{player_hp:.0f}", player_hp_max=f"{player_hp_max:.0f}",
+        name_nom_cap=names["nom_cap"],
+        enemy_hp=f"{enemy_hp:.0f}", enemy_hp_max=f"{enemy_hp_max:.0f}",
+    )
 
 
 def render_flee_opportunity_check(
@@ -240,16 +220,22 @@ def render_flee_opportunity_check(
     """Чья это проверка, должно быть видно сразу — иначе не отличить свою
     проверку на побег от проверки моба (см. docs/notes.md, п.6)."""
     if side_role == "player":
-        hp_label, prefix, alive_adj = "Твоё HP критически низкое", "Твоя проверка удачи на побег", "живым"
+        hp_label = i18n.t("combat.flee_check.player_hp_label")
+        prefix = i18n.t("combat.flee_check.player_prefix")
+        alive_adj = i18n.t("combat.flee_check.player_alive_adj")
     else:
-        names = ENEMY_NAMES[enemy_type]
-        hp_label = f"HP {names['gen_low']} критически низкое"
-        prefix = f"{names['nom_cap']} проверяет удачу на побег"
+        names = i18n.enemy_names(enemy_type)
+        hp_label = i18n.t("combat.flee_check.enemy_hp_label", name_gen_low=names["gen_low"])
+        prefix = i18n.t("combat.flee_check.enemy_prefix", name_nom_cap=names["nom_cap"])
         alive_adj = names["alive_adj"]
 
     if triggered:
-        return f"⚠️ {hp_label}! ({current_hp:.0f}/{max_hp:.0f})\n🍀 {prefix}: {luck_roll} → есть шанс уйти {alive_adj}!"
-    return f"🍀 {prefix}: {luck_roll} → шанса уйти нет в этот раз."
+        return i18n.t(
+            "combat.flee_check.triggered",
+            hp_label=hp_label, current_hp=f"{current_hp:.0f}", max_hp=f"{max_hp:.0f}",
+            prefix=prefix, luck_roll=luck_roll, alive_adj=alive_adj,
+        )
+    return i18n.t("combat.flee_check.not_triggered", prefix=prefix, luck_roll=luck_roll)
 
 
 def render_flee_attempt(
@@ -264,33 +250,32 @@ def render_flee_attempt(
     Многострочный формат (как у render_strike), а не одна строка: сообщение
     сразу следом идёт заголовок итога боя (render_battle_end), и в одну
     строку бросок на его фоне терялся (см. docs/notes.md, п.7)."""
-    names = ENEMY_NAMES[enemy_type]
+    names = i18n.enemy_names(enemy_type)
+    nk = _name_kwargs(names)
+    damage_str = f"{damage:.0f}"
     if fleeing_role == "player":
-        header = f"🏃 Ты пытаешься сбежать — {names['nom_low']} бьёт без ответа!"
-        attack_label = f"Атака {names['gen_low']}"
         if attack_percent is None:
-            return f"{header}\n🎲 {attack_label}: {attack_roll} → промах!\n✅ Тебе удаётся уйти чисто."
+            return i18n.t("combat.flee_attempt.player_miss", attack_roll=attack_roll, **nk)
         if defeated:
-            return (
-                f"{header}\n🎲 {attack_label}: {attack_roll} → {attack_percent}% силы."
-                f"\n💀 Удар настигает тебя ({damage:.0f} урона)."
+            return i18n.t(
+                "combat.flee_attempt.player_caught",
+                attack_roll=attack_roll, attack_percent=attack_percent, damage=damage_str, **nk,
             )
-        return (
-            f"{header}\n🎲 {attack_label}: {attack_roll} → {attack_percent}% силы."
-            f"\n💥 {damage:.0f} урона вдогонку, но ты вырываешься."
+        return i18n.t(
+            "combat.flee_attempt.player_survives",
+            attack_roll=attack_roll, attack_percent=attack_percent, damage=damage_str, **nk,
         )
 
-    header = f"🏃 {names['nom_cap']} пытается сбежать — твой удар без ответа!"
     if attack_percent is None:
-        return f"{header}\n🎲 Твоя атака: {attack_roll} → промах!\n{names['nom_cap']} убегает."
+        return i18n.t("combat.flee_attempt.enemy_miss", attack_roll=attack_roll, **nk)
     if defeated:
-        return (
-            f"{header}\n🎲 Твоя атака: {attack_roll} → {attack_percent}% силы."
-            f"\n💀 Добиваешь {names['acc_low']} на бегу ({damage:.0f} урона)."
+        return i18n.t(
+            "combat.flee_attempt.enemy_caught",
+            attack_roll=attack_roll, attack_percent=attack_percent, damage=damage_str, **nk,
         )
-    return (
-        f"{header}\n🎲 Твоя атака: {attack_roll} → {attack_percent}% силы."
-        f"\n💥 {damage:.0f} урона, но {names['nom_low']} вырывается."
+    return i18n.t(
+        "combat.flee_attempt.enemy_survives",
+        attack_roll=attack_roll, attack_percent=attack_percent, damage=damage_str, **nk,
     )
 
 
@@ -304,19 +289,18 @@ def render_battle_end(
     hp_seconds_to_full: float,
     loot_dropped: Optional[str] = None,
 ) -> str:
-    names = ENEMY_NAMES[enemy_type]
+    names = i18n.enemy_names(enemy_type)
+    nk = _name_kwargs(names)
+    reward_line = None
     if result == "victory":
-        header = f"⚔️ Бой окончен! Ты победил {names['acc_cap']}."
-        reward_line = f"🏆 +{reward} победных очков (всего: {victory_points_total})"
+        header = i18n.t("combat.battle_end.victory_header", **nk)
+        reward_line = i18n.t("combat.battle_end.reward_line", reward=reward, victory_points_total=victory_points_total)
     elif result == "defeat":
-        header = f"💀 Ты пал в бою с {names['ins_cap']}..."
-        reward_line = None
+        header = i18n.t("combat.battle_end.defeat_header", **nk)
     elif result == "player_fled":
-        header = f"🏃 Тебе удалось уйти от боя с {names['ins_cap']}."
-        reward_line = None
+        header = i18n.t("combat.battle_end.player_fled_header", **nk)
     elif result == "enemy_fled":
-        header = f"🏃 {names['nom_cap']} {names['fled_verb']}, добить не удалось."
-        reward_line = None
+        header = i18n.t("combat.battle_end.enemy_fled_header", **nk)
     else:
         raise ValueError(f"unknown battle result: {result!r}")
 
@@ -325,17 +309,18 @@ def render_battle_end(
         lines.append(reward_line)
     if result == "victory":
         if loot_dropped:
-            lines.append(f"🎁 Добыча: {LOOT_ITEM_NAMES_RU.get(loot_dropped, loot_dropped)}")
+            loot_name = i18n.loot_item_names().get(loot_dropped, loot_dropped)
+            lines.append(i18n.t("combat.battle_end.loot_line", loot_name=loot_name))
         else:
             # Лут — не гарантирован (core.economy.resolve_loot_drop может
             # выкатить "nothing"), явная строка вместо молчания — иначе
             # игрок не может отличить "лута не было в принципе" от того,
             # что о нём просто забыли показать (docs/notes.md).
-            lines.append("😕 Упс, не повезло с добычей...")
+            lines.append(i18n.t("combat.battle_end.no_loot_line"))
     lines.append("")
-    lines.append(f"❤️ HP: {hp_current:.0f}/{hp_max:.0f}")
+    lines.append(i18n.t("combat.battle_end.hp_line", hp_current=f"{hp_current:.0f}", hp_max=f"{hp_max:.0f}"))
     if hp_seconds_to_full > 0:
-        lines.append(f"⏳ Полное восстановление через: ~{hp_seconds_to_full:.0f} сек.")
+        lines.append(i18n.t("combat.battle_end.regen_line", hp_seconds_to_full=f"{hp_seconds_to_full:.0f}"))
     return "\n".join(lines)
 
 
@@ -345,4 +330,5 @@ def render_boss_victory() -> str:
     (победные очки за неё не начисляются — персонаж всё равно обнуляется
     следующим нажатием, очки ему больше не нужны), с отдельным
     поздравительным заголовком вместо стандартного "Бой окончен!"."""
-    return "🎉 Ты повергнул Лесного Короля!\n\nПриключение окончено. Спасибо, что играл(а)!"
+    names = i18n.enemy_names("boss")
+    return i18n.t("combat.boss_victory", name_acc_cap=names["acc_cap"])

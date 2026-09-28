@@ -45,19 +45,40 @@ def reset_locale(token: contextvars.Token) -> None:
     _current_locale.reset(token)
 
 
-def t(key: str, **kwargs) -> str:
-    """Текст по ключу для текущей локали (get_locale()), с подстановкой
-    kwargs через str.format(). Неизвестный ключ — KeyError, не молчаливый
-    fallback на пустую строку: пока словари в i18n/ru.py и i18n/en.py не
-    наполнены (блоки 2-5), любой реальный вызов t() должен падать заметно,
-    не тихо показывать игроку пустоту."""
+def _locale_module():
+    """Модуль i18n/ru.py или i18n/en.py для текущей локали — общая точка
+    входа для t()/enemy_names()/loot_item_names(), чтобы выбор каталога по
+    get_locale() не дублировался в каждой из них."""
     from i18n import en as _en
     from i18n import ru as _ru
 
-    catalogs = {"ru": _ru.TRANSLATIONS, "en": _en.TRANSLATIONS}
-    catalog = catalogs.get(get_locale(), catalogs[DEFAULT_LOCALE])
-    template = catalog[key]
+    modules = {"ru": _ru, "en": _en}
+    return modules.get(get_locale(), modules[DEFAULT_LOCALE])
+
+
+def t(key: str, **kwargs) -> str:
+    """Текст по ключу для текущей локали (get_locale()), с подстановкой
+    kwargs через str.format(). Неизвестный ключ — KeyError, не молчаливый
+    fallback на пустую строку: любой реальный вызов t() должен падать
+    заметно, не тихо показывать игроку пустоту."""
+    template = _locale_module().TRANSLATIONS[key]
     return template.format(**kwargs) if kwargs else template
+
+
+def enemy_names(enemy_type: str) -> dict:
+    """Грамматические формы имени противника для текущей локали
+    (docs/notes.md, блок 2) — общий набор ключей в обеих локалях
+    (nom_cap/nom_low/acc_cap/acc_low/gen_low/ins_cap/dodge_verb/
+    alive_adj/fled_verb): в ru.py формы разные (падежи/род), в en.py всё
+    совпадает с одним именем (английский не склоняется) — api/rendering.py
+    читает оба словаря одинаково, без ветвления по локали."""
+    return _locale_module().ENEMY_NAMES[enemy_type]
+
+
+def loot_item_names() -> dict:
+    """Названия предметов добычи для текущей локали (api/rendering.py —
+    строка добычи в конце боя)."""
+    return _locale_module().LOOT_ITEM_NAMES
 
 
 def plural_ru(n: int, one: str, few: str, many: str) -> str:
