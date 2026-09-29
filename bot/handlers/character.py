@@ -31,7 +31,13 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from bot.client import ApiClient, ApiError
 from bot.rules_content import rules_menu_title, rules_sections
-from bot.utils import get_character_or_prompt_start, safe_edit_text, try_edit_message_text, welcome_text
+from bot.utils import (
+    get_character_or_prompt_start,
+    safe_edit_text,
+    start_game_keyboard,
+    try_edit_message_text,
+    welcome_text,
+)
 from core import i18n
 
 router = Router()
@@ -411,7 +417,21 @@ async def allocate_levelup(callback: CallbackQuery, api: ApiClient) -> None:
         return
     try:
         result = await api.allocate_point(character["id"], stat)
-    except ApiError:
+    except ApiError as error:
+        # docs/notes.md — ревизия двуязычности нашла, что этот except
+        # раньше ловил ApiError целиком и всегда показывал "нет
+        # свободных очков", маскируя 404 (гонка с параллельным /reset —
+        # персонаж уже не существует) и любые прочие сбои API под
+        # обычную игровую ошибку. 404 — тот же грациозный путь, что и
+        # у get_character_or_prompt_start (bot/utils.py) при отсутствии
+        # персонажа; всё остальное, кроме ожидаемого 400 "нет очков",
+        # не глотаем — пробрасываем дальше.
+        if error.status_code == 404:
+            await safe_edit_text(callback.message, welcome_text(), reply_markup=start_game_keyboard())
+            await callback.answer()
+            return
+        if error.status_code != 400:
+            raise
         await callback.answer(i18n.t("character.allocate_error.no_points"), show_alert=True)
         return
     updated = result["character"]
@@ -430,7 +450,14 @@ async def allocate_creation(callback: CallbackQuery, api: ApiClient) -> None:
         return
     try:
         result = await api.allocate_point(character["id"], stat)
-    except ApiError:
+    except ApiError as error:
+        # docs/notes.md — см. пояснение в allocate_levelup выше, тот же фикс.
+        if error.status_code == 404:
+            await safe_edit_text(callback.message, welcome_text(), reply_markup=start_game_keyboard())
+            await callback.answer()
+            return
+        if error.status_code != 400:
+            raise
         await callback.answer(i18n.t("character.allocate_error.no_points"), show_alert=True)
         return
     updated = result["character"]

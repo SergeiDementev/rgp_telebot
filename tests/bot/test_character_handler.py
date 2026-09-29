@@ -468,6 +468,63 @@ async def test_allocate_levelup_no_points_shows_alert_without_editing_message():
     assert callback.answer.call_args.kwargs.get("show_alert") is True
 
 
+async def test_allocate_levelup_prompts_start_on_404_race_with_reset():
+    # docs/notes.md — ревизия двуязычности: раньше `except ApiError` без
+    # проверки status_code глотал ЛЮБУЮ ошибку и всегда показывал "нет
+    # свободных очков", даже 404 (гонка — персонаж уже архивирован
+    # параллельным /reset между get_character_or_prompt_start и
+    # allocate_point). Теперь 404 ведёт на тот же экран приглашения, что и
+    # get_character_or_prompt_start.
+    callback = make_callback("allocate:strength")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+    api.allocate_point.side_effect = ApiError(404, "character not found")
+
+    await allocate_levelup(callback, api)
+
+    callback.message.edit_text.assert_awaited_once()
+    args, kwargs = callback.message.edit_text.call_args
+    assert args[0] == welcome_text()
+    assert kwargs["reply_markup"] is not None
+    callback.answer.assert_awaited_once()
+
+
+async def test_allocate_levelup_reraises_unexpected_errors():
+    # Ничего, кроме ожидаемых 400/404, молча не глотаем.
+    callback = make_callback("allocate:strength")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+    api.allocate_point.side_effect = ApiError(500, "boom")
+
+    with pytest.raises(ApiError):
+        await allocate_levelup(callback, api)
+
+
+async def test_allocate_creation_prompts_start_on_404_race_with_reset():
+    callback = make_callback("create_allocate:strength")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+    api.allocate_point.side_effect = ApiError(404, "character not found")
+
+    await allocate_creation(callback, api)
+
+    callback.message.edit_text.assert_awaited_once()
+    args, kwargs = callback.message.edit_text.call_args
+    assert args[0] == welcome_text()
+    assert kwargs["reply_markup"] is not None
+    callback.answer.assert_awaited_once()
+
+
+async def test_allocate_creation_reraises_unexpected_errors():
+    callback = make_callback("create_allocate:strength")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
+    api.allocate_point.side_effect = ApiError(500, "boom")
+
+    with pytest.raises(ApiError):
+        await allocate_creation(callback, api)
+
+
 async def test_allocate_creation_uses_creation_screen():
     callback = make_callback("create_allocate:vitality")
     api = AsyncMock()

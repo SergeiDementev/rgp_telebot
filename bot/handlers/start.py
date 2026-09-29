@@ -76,37 +76,60 @@ async def cmd_start(message: Message, api: ApiClient) -> None:
     # docs/notes.md — повторный /start удаляет оба старых постоянных
     # сообщения (приветствие + главный экран) и создаёт новые вместо
     # накопления истории чата. У персонажа, ещё ни разу не проходившего
-    # /start после раскатки этого поля, их не будет (None) — try_delete_
-    # message тогда просто не вызывается, ничего удалять не пытаемся.
+    # /start после раскатки этого поля, их не будет (None).
     old_welcome_id = character.get("welcome_message_id")
     old_main_id = character.get("main_message_id")
-    if old_welcome_id is not None:
-        await try_delete_message(message.bot, message.chat.id, old_welcome_id)
-    if old_main_id is not None:
-        await try_delete_message(message.bot, message.chat.id, old_main_id)
 
-    # §1: персонаж уже есть — повторный /start не пересоздаёт его. Баннер
-    # шлём в любом случае, даже при восстановлении боя ниже — то же самое
-    # первое сообщение, что игрок всегда видит на /start.
-    welcome_message = await message.answer(welcome_text())
-
-    # docs/notes.md, п.48 — незавершённый бой не теряется, если сообщение с
-    # его клавиатурой пропало (например, игрок удалил чат в Telegram):
-    # CombatSession в БД остаётся активной, /start восстанавливает экран
-    # вместо обычного меню персонажа.
+    # docs/notes.md, ревизия двуязычности — старые сообщения удаляются
+    # ПОСЛЕ того, как новые отправлены и их id сохранены в БД, не до
+    # (раньше было наоборот). Если отправка нового сообщения сорвётся
+    # (сетевой сбой на самом Telegram-запросе, не бизнес-ошибка вида
+    # TelegramBadRequest — тот ожидаемый случай уже покрыт
+    # try_delete_message ниже), БД должна по-прежнему указывать на ещё
+    # РЕАЛЬНО существующие старые сообщения, а не на уже удалённые. Со
+    # старым порядком (сначала удалить, потом слать) ровно в этом сценарии
+    # на мгновение возникало состояние "id в БД есть, а сообщения уже нет" —
+    # текущий порядок исключает это состояние целиком, без необходимости
+    # ничего откатывать в БД на None при сбое: если отправка не удалась, БД
+    # просто не переписывается вообще, а старые сообщения остаются на
+    # месте.
     active_session_id = character.get("active_combat_session_id")
     if active_session_id is not None:
+        # docs/notes.md, п.48 — незавершённый бой не теряется, если
+        # сообщение с его клавиатурой пропало (например, игрок удалил чат в
+        # Telegram): CombatSession в БД остаётся активной, /start
+        # восстанавливает экран вместо обычного меню персонажа.
         resume = await api.resume_combat_session(message.from_user.id, active_session_id)
-        main_message = await message.answer(
-            f"{resume_battle_prefix()}{build_resume_text(resume)}",
-            reply_markup=build_resume_keyboard(active_session_id, resume),
-        )
+        main_content = f"{resume_battle_prefix()}{build_resume_text(resume)}"
+        main_markup = build_resume_keyboard(active_session_id, resume)
     else:
-        main_message = await message.answer(render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
+        main_content = render_stats_screen(character)
+        main_markup = stats_screen_keyboard(character)
+
+    try:
+        # §1: персонаж уже есть — повторный /start не пересоздаёт его.
+        # Баннер шлём в любом случае, даже при восстановлении боя выше — то
+        # же самое первое сообщение, что игрок всегда видит на /start.
+        welcome_message = await message.answer(welcome_text())
+        main_message = await message.answer(main_content, reply_markup=main_markup)
+    except Exception:
+        # Best-effort: та же связь, что подвела отправку выше, может всё же
+        # оказаться жива для короткого сообщения без клавиатуры — но если и
+        # эта попытка сорвётся, второй сбой не маскируем повторным try.
+        try:
+            await message.answer(i18n.t("start.error.send_failed"))
+        except Exception:
+            pass
+        raise
 
     await api.set_message_ids(
         character["id"], welcome_message_id=welcome_message.message_id, main_message_id=main_message.message_id
     )
+
+    if old_welcome_id is not None:
+        await try_delete_message(message.bot, message.chat.id, old_welcome_id)
+    if old_main_id is not None:
+        await try_delete_message(message.bot, message.chat.id, old_main_id)
 
 
 @router.callback_query(F.data == "start_game")

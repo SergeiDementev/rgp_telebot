@@ -110,9 +110,12 @@ _STATS_FIELDS = {
 }
 
 
-async def test_cmd_start_deletes_old_messages_before_sending_new_ones():
+async def test_cmd_start_deletes_old_messages_after_sending_new_ones():
     # docs/notes.md — повторный /start удаляет оба старых постоянных
-    # сообщения вместо накопления истории чата.
+    # сообщения вместо накопления истории чата. Порядок — отправить и
+    # сохранить в БД id новых сообщений, ПОТОМ удалить старые (ревизия
+    # двуязычности: не наоборот, см. test_cmd_start_leaves_old_messages_
+    # and_db_untouched_when_send_fails ниже — какой сценарий это решает).
     message = make_message()
     api = AsyncMock()
     api.get_character.return_value = {"id": 1, **_STATS_FIELDS, "welcome_message_id": 10, "main_message_id": 20}
@@ -122,6 +125,7 @@ async def test_cmd_start_deletes_old_messages_before_sending_new_ones():
     assert message.bot.delete_message.await_count == 2
     deleted_ids = {call.args[1] for call in message.bot.delete_message.call_args_list}
     assert deleted_ids == {10, 20}
+    api.set_message_ids.assert_awaited_once()
 
 
 async def test_cmd_start_skips_deletion_when_no_saved_message_ids():
@@ -150,6 +154,55 @@ async def test_cmd_start_deletion_failure_does_not_prevent_new_messages():
 
     assert message.answer.await_count == 2
     api.set_message_ids.assert_awaited_once()
+
+
+async def test_cmd_start_leaves_old_messages_and_db_untouched_when_send_fails():
+    # docs/notes.md — ревизия двуязычности: если отправка НОВОГО сообщения
+    # рвётся сетевым сбоем (не TelegramBadRequest — та бизнес-ошибка не
+    # такая; здесь любая Exception), старые сообщения не должны удаляться,
+    # а БД не должна переписываться на id несуществующих сообщений. Порядок
+    # "отправить+сохранить, потом удалить" гарантирует это без отдельного
+    # отката: раз отправка не удалась, до удаления/сохранения просто не
+    # доходит.
+    message = make_message()
+    message.answer.side_effect = [RuntimeError("connection reset"), AsyncMock()]
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, **_STATS_FIELDS, "welcome_message_id": 10, "main_message_id": 20}
+
+    with pytest.raises(RuntimeError):
+        await cmd_start(message, api)
+
+    message.bot.delete_message.assert_not_called()
+    api.set_message_ids.assert_not_called()
+
+
+async def test_cmd_start_notifies_user_best_effort_when_send_fails():
+    message = make_message()
+    message.answer.side_effect = [RuntimeError("connection reset"), AsyncMock()]
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, **_STATS_FIELDS}
+
+    with pytest.raises(RuntimeError):
+        await cmd_start(message, api)
+
+    # 1-я попытка (welcome) падает, 2-я вызов message.answer — уже сама
+    # best-effort попытка уведомить об ошибке (не вторая часть исходной
+    # пары welcome/main — до неё дело не доходит).
+    assert message.answer.await_count == 2
+    second_call = message.answer.call_args_list[1]
+    assert second_call.args[0] == i18n.t("start.error.send_failed")
+
+
+async def test_cmd_start_second_send_failure_does_not_mask_first_error():
+    # Если даже best-effort уведомление тоже не проходит — не маскируем
+    # исходную ошибку своей собственной.
+    message = make_message()
+    message.answer.side_effect = RuntimeError("connection reset")
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, **_STATS_FIELDS}
+
+    with pytest.raises(RuntimeError):
+        await cmd_start(message, api)
 
 
 async def test_cmd_start_saves_new_message_ids_after_sending():

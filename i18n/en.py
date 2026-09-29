@@ -244,6 +244,7 @@ TRANSLATIONS: dict[str, str] = {
     "start.button.reset_yes": "🗑 Yes, delete",
     "start.button.cancel": "Cancel",
     "start.reset_done": "Character reset",
+    "start.error.send_failed": "⚠️ Couldn't send the message — likely a temporary connection issue. Try /start again in a minute.",
 
     # --- /rules (bot/handlers/character.py + bot/rules_content.py, block 5) ---
     "rules.menu_header": "📖 <b>{title}</b>\n\nChoose a section:",

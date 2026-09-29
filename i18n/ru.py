@@ -55,11 +55,12 @@ ENEMY_NAMES = {
     },
 }
 
-# Дублирует bot/handlers/character.py::LOOT_ITEM_NAMES_RU (docs/notes.md,
-# п.30/31) — бот и api не делят импорты (разные процессы, общаются только
-# по HTTP), а показ добычи в конце боя рендерится здесь же, где и весь
-# остальной текст боя, поэтому своя копия. Синхронизировать вручную при
-# добавлении новых предметов в core/economy.py::LOOT_TABLE.
+# Единственный источник названий лута (docs/notes.md, блок 3) — раньше
+# существовала отдельная копия bot/handlers/character.py::LOOT_ITEM_NAMES_RU,
+# но она удалена: bot/ теперь читает эти же названия через
+# core.i18n.loot_item_names(), отдельного словаря на боте больше нет.
+# Синхронизировать вручную при добавлении новых предметов в
+# core/economy.py::LOOT_TABLE.
 LOOT_ITEM_NAMES = {
     "mouse_pelt": "Мышиная шкурка",
     "mouse_tail": "Мышиный хвост",
@@ -265,6 +266,10 @@ TRANSLATIONS: dict[str, str] = {
     "start.button.reset_yes": "🗑 Да, удалить",
     "start.button.cancel": "Отмена",
     "start.reset_done": "Персонаж обнулён",
+    # Ревизия двуязычности — best-effort уведомление, если отправка новых
+    # постоянных сообщений в /start сорвалась (bot/handlers/start.py::
+    # cmd_start).
+    "start.error.send_failed": "⚠️ Не удалось отправить сообщение — похоже, временный сбой связи. Попробуй /start ещё раз через минуту.",
 
     # --- /rules (bot/handlers/character.py + bot/rules_content.py, блок 5) ---
     # Сам текст правил — content/rules.md/rules.en.md, отдельные файлы, не
