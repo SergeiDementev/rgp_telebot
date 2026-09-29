@@ -182,7 +182,6 @@ def apply_circumstance_strength_modifier(
 ) -> float:
     """§8: модификатор относителен к кидающему (buff усиливает его, debuff ослабляет)."""
     return strength * resolve_circumstance_multiplier(outcome, modifier_percent)
-    return strength
 
 
 class StrikeResult(NamedTuple):

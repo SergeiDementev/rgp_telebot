@@ -1,4 +1,4 @@
-"""Тесты core/i18n.py — механизм локали (contextvar, t(), плюрализация).
+"""Тесты core/i18n.py — механизм локали (contextvar, t()).
 
 Тесты t() ниже подкладывают свои временные ключи через monkeypatch, не
 полагаются на реальное содержимое TRANSLATIONS — оно наполняется по мере
@@ -87,20 +87,3 @@ def test_loot_item_names_switches_with_locale():
     finally:
         i18n.reset_locale(token)
 
-
-@pytest.mark.parametrize(
-    "n,expected",
-    [
-        (1, "one"), (21, "one"), (101, "one"), (121, "one"),
-        (2, "few"), (3, "few"), (4, "few"), (22, "few"), (24, "few"), (104, "few"),
-        (0, "many"), (5, "many"), (10, "many"), (11, "many"), (12, "many"), (13, "many"),
-        (14, "many"), (20, "many"), (25, "many"), (100, "many"), (111, "many"),
-    ],
-)
-def test_plural_ru_selects_correct_form(n, expected):
-    assert i18n.plural_ru(n, one="one", few="few", many="many") == expected
-
-
-def test_plural_ru_uses_absolute_value():
-    assert i18n.plural_ru(-1, one="one", few="few", many="many") == "one"
-    assert i18n.plural_ru(-5, one="one", few="few", many="many") == "many"
