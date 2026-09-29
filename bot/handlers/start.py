@@ -20,6 +20,7 @@ from bot.handlers.character import (
 from bot.handlers.combat import build_resume_keyboard, build_resume_text
 from bot.utils import (  # noqa: F401 — welcome_text реэкспортируется для тестов
     detect_language,
+    get_character_or_prompt_start,
     start_game_keyboard,
     try_delete_message,
     user_lock,
@@ -167,18 +168,43 @@ async def start_game(callback: CallbackQuery, api: ApiClient) -> None:
 
 
 @router.message(Command("reset"))
-async def cmd_reset(message: Message) -> None:
+async def cmd_reset(message: Message, api: ApiClient) -> None:
     """Обнулить персонажа — в основном для тестирования, но без ограничения
     на окружение (docs/notes.md). Необратимо, поэтому только через
-    подтверждение, а не с одного нажатия."""
+    подтверждение, а не с одного нажатия.
+
+    docs/notes.md, ревизия двуязычности — подтягивает точную локаль
+    персонажа (character.language), не best-effort язык клиента Telegram:
+    без этого подтверждение могло "залипать" на старом языке после
+    переключения кнопкой. Не через get_character_or_prompt_start — та на
+    404 показывает приглашение "Начать игру" и не отправляет ничего
+    дальше, а здесь нужно показать подтверждение сброса в любом случае
+    (несуществующего персонажа реально обнулить нечем, но это не новая
+    проблема этого фикса — reset_confirm и раньше падал на своём
+    api.get_character() при подтверждении)."""
+    try:
+        character = await api.get_character(message.from_user.id)
+    except ApiError as error:
+        if error.status_code != 404:
+            raise
+    else:
+        i18n.set_locale(character.get("language", i18n.DEFAULT_LOCALE))
     await message.answer(reset_confirm_text(), reply_markup=_reset_confirm_keyboard())
 
 
 @router.callback_query(F.data == "reset_request")
-async def reset_request(callback: CallbackQuery) -> None:
+async def reset_request(callback: CallbackQuery, api: ApiClient) -> None:
     """То же подтверждение, что и /reset, но с кнопки на экране прокачки
     (bot/handlers/character.py) — редактируем то же сообщение, а не шлём
-    новое, как остальные экраны вне боя."""
+    новое, как остальные экраны вне боя.
+
+    docs/notes.md, ревизия двуязычности — запрашивает персонажа ради
+    точной локали (тот же фикс, что и у show_rules в bot/handlers/
+    character.py): без этого подтверждение залипало на языке клиента
+    Telegram вместо только что выбранного языка персонажа."""
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
     await callback.message.edit_text(reset_confirm_text(), reply_markup=_reset_confirm_keyboard())
     await callback.answer()
 

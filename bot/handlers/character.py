@@ -323,11 +323,16 @@ def allocation_keyboard(character: dict, *, mode: str) -> InlineKeyboardMarkup:
 
 
 @router.callback_query(F.data == "show_rules")
-async def show_rules(callback: CallbackQuery) -> None:
-    # Локаль на этот момент — best-effort по профилю Telegram (bot/utils.py::
-    # set_locale_from_telegram_profile, docs/notes.md, блок 4): этот хендлер
-    # не запрашивает персонажа (нет api-параметра), rules_menu_title()/
-    # rules_sections() читают её напрямую из core.i18n.get_locale().
+async def show_rules(callback: CallbackQuery, api: ApiClient) -> None:
+    # docs/notes.md, ревизия двуязычности — раньше локаль здесь была
+    # best-effort по профилю Telegram (set_locale_from_telegram_profile),
+    # не по character.language: если игрок переключил язык персонажа
+    # кнопкой, а язык клиента Telegram остался прежним, раздел правил
+    # "залипал" на старом языке. Теперь запрашивает персонажа, как и
+    # остальные экраны вне боя.
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
     await callback.message.edit_text(
         i18n.t("rules.menu_header", title=rules_menu_title()), reply_markup=rules_menu_keyboard()
     )
@@ -335,7 +340,13 @@ async def show_rules(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data.startswith("rules_section:"))
-async def show_rules_section(callback: CallbackQuery) -> None:
+async def show_rules_section(callback: CallbackQuery, api: ApiClient) -> None:
+    # docs/notes.md, ревизия двуязычности — тот же фикс, что и в show_rules
+    # выше: без запроса персонажа локаль здесь залипала на языке клиента
+    # Telegram, не персонажа.
+    character = await get_character_or_prompt_start(callback, api)
+    if character is None:
+        return
     index = int(callback.data.split(":", 1)[1])
     title, body = rules_sections()[index]
     await callback.message.edit_text(f"<b>{title}</b>\n\n{body}", reply_markup=rules_section_keyboard())

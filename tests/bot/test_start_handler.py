@@ -335,8 +335,10 @@ async def test_start_game_reuses_existing_character_without_recreating():
 
 async def test_cmd_reset_asks_for_confirmation():
     message = make_message()
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru"}
 
-    await cmd_reset(message)
+    await cmd_reset(message, api)
 
     message.answer.assert_awaited_once()
     args, kwargs = message.answer.call_args
@@ -349,13 +351,45 @@ async def test_cmd_reset_asks_for_confirmation():
     assert "back_to_stats" in callback_datas
 
 
+async def test_cmd_reset_uses_character_language_over_telegram_client():
+    # docs/notes.md, ревизия двуязычности — та же "залипающая" локаль, что
+    # и в show_rules (bot/handlers/character.py): ambient язык клиента
+    # Telegram — EN, но персонаж явно переключил на RU кнопкой.
+    i18n.set_locale("en")
+    message = make_message()
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru"}
+    try:
+        await cmd_reset(message, api)
+        args, _kwargs = message.answer.call_args
+        assert "Точно обнулить" in args[0]
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+async def test_cmd_reset_tolerates_missing_character():
+    # /reset набран раньше, чем /start — персонажа ещё нет вообще; всё
+    # равно показываем подтверждение (реальный 404 при попытке подтвердить
+    # ловит reset_confirm на своём api.get_character(), не новая проблема
+    # этого фикса), просто без переопределения локали.
+    message = make_message()
+    api = AsyncMock()
+    api.get_character.side_effect = ApiError(404, "not found")
+
+    await cmd_reset(message, api)
+
+    message.answer.assert_awaited_once()
+
+
 async def test_reset_request_edits_message_with_confirmation():
     # Кнопка "🗑 Обнулить персонажа" на экране прокачки (bot/handlers/
     # character.py, mode="levelup") — то же подтверждение, что и /reset, но
     # редактирует сообщение, а не шлёт новое.
     callback = make_callback()
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru"}
 
-    await reset_request(callback)
+    await reset_request(callback, api)
 
     callback.message.edit_text.assert_awaited_once()
     args, kwargs = callback.message.edit_text.call_args
@@ -365,6 +399,30 @@ async def test_reset_request_edits_message_with_confirmation():
     assert "reset_confirm:manual_reset" in callback_datas
     assert "back_to_stats" in callback_datas
     callback.answer.assert_awaited_once()
+
+
+async def test_reset_request_uses_character_language_over_telegram_client():
+    i18n.set_locale("en")
+    callback = make_callback()
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru"}
+    try:
+        await reset_request(callback, api)
+        args, _kwargs = callback.message.edit_text.call_args
+        assert "Точно обнулить" in args[0]
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+async def test_reset_request_prompts_start_when_character_missing():
+    callback = make_callback()
+    api = AsyncMock()
+    api.get_character.side_effect = ApiError(404, "not found")
+
+    await reset_request(callback, api)
+
+    callback.message.edit_text.assert_awaited_once()
+    assert callback.message.edit_text.call_args.args[0] == welcome_text()
 
 
 async def test_reset_confirm_deletes_character_and_shows_creation_screen():

@@ -53,8 +53,10 @@ async def test_show_rules_edits_same_message_with_section_menu():
     # влезает в лимит сообщения Telegram (4096), поэтому это меню разделов,
     # не сам текст правил (docs/notes.md, п.4).
     callback = make_callback("show_rules")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
 
-    await show_rules(callback)
+    await show_rules(callback, api)
 
     callback.message.edit_text.assert_awaited_once()
     text = callback.message.edit_text.call_args.args[0]
@@ -66,10 +68,26 @@ async def test_show_rules_edits_same_message_with_section_menu():
     callback.answer.assert_awaited_once()
 
 
+async def test_show_rules_prompts_start_when_character_missing():
+    # docs/notes.md, ревизия двуязычности — теперь запрашивает персонажа
+    # (ради точной локали), значит проходит через тот же 404-путь, что и
+    # остальные экраны вне боя.
+    callback = make_callback("show_rules")
+    api = AsyncMock()
+    api.get_character.side_effect = ApiError(404, "not found")
+
+    await show_rules(callback, api)
+
+    callback.message.edit_text.assert_awaited_once()
+    assert callback.message.edit_text.call_args.args[0] == welcome_text()
+
+
 async def test_show_rules_section_shows_section_text_with_back_to_menu():
     callback = make_callback("rules_section:2")
+    api = AsyncMock()
+    api.get_character.return_value = BASE_CHARACTER
 
-    await show_rules_section(callback)
+    await show_rules_section(callback, api)
 
     callback.message.edit_text.assert_awaited_once()
     text = callback.message.edit_text.call_args.args[0]
@@ -79,6 +97,37 @@ async def test_show_rules_section_shows_section_text_with_back_to_menu():
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[0][0].callback_data == "show_rules"
     callback.answer.assert_awaited_once()
+
+
+async def test_show_rules_uses_character_language_over_telegram_client():
+    # docs/notes.md — баг-репорт: "после переключения с английского на
+    # русский, раздел правила ... остаётся на английском". Ambient локаль
+    # (best-effort язык клиента Telegram) — EN, но персонаж явно
+    # переключил на RU кнопкой; раньше show_rules не запрашивал персонажа
+    # вообще и полностью полагался на ambient значение.
+    i18n.set_locale("en")
+    callback = make_callback("show_rules")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "language": "ru"}
+    try:
+        await show_rules(callback, api)
+        text = callback.message.edit_text.call_args.args[0]
+        assert "Выбери раздел:" in text
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+
+async def test_show_rules_section_uses_character_language_over_telegram_client():
+    i18n.set_locale("en")
+    callback = make_callback("rules_section:0")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "language": "ru"}
+    try:
+        await show_rules_section(callback, api)
+        text = callback.message.edit_text.call_args.args[0]
+        assert "Введение" in text
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
 
 
 async def test_open_allocation_shows_levelup_screen():
@@ -708,9 +757,16 @@ async def test_open_allocation_renders_in_character_language(en_locale):
 
 async def test_show_rules_en(en_locale):
     # docs/notes.md, блок 5 — меню разделов правил на текущей локали.
+    # docs/notes.md, ревизия двуязычности — локаль теперь от
+    # character["language"] в ответе api.get_character(), не от en_locale
+    # (та лишь задаёт начальное ambient-значение, реальный источник —
+    # запрос персонажа, тот же фикс, что и test_open_allocation_renders_
+    # in_character_language выше).
     callback = make_callback("show_rules")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "language": "en"}
 
-    await show_rules(callback)
+    await show_rules(callback, api)
 
     text = callback.message.edit_text.call_args.args[0]
     assert "Game Rules" in text
@@ -722,8 +778,10 @@ async def test_show_rules_en(en_locale):
 
 async def test_show_rules_section_en(en_locale):
     callback = make_callback("rules_section:0")
+    api = AsyncMock()
+    api.get_character.return_value = {**BASE_CHARACTER, "language": "en"}
 
-    await show_rules_section(callback)
+    await show_rules_section(callback, api)
 
     text = callback.message.edit_text.call_args.args[0]
     assert "1. Introduction" in text
