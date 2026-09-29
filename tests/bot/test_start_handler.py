@@ -1,5 +1,6 @@
 """Тесты bot/handlers/start.py — Message/CallbackQuery подменены MagicMock."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -126,6 +127,59 @@ async def test_cmd_start_deletes_old_messages_after_sending_new_ones():
     deleted_ids = {call.args[1] for call in message.bot.delete_message.call_args_list}
     assert deleted_ids == {10, 20}
     api.set_message_ids.assert_awaited_once()
+
+
+async def test_cmd_start_concurrent_calls_are_serialized_and_use_fresh_state():
+    # docs/notes.md — ревизия двуязычности: двойной быстрый /start без
+    # лока — обе гонки читают одни и те же старые id (10/20), шлют 4
+    # сообщения вместо 2, и каждая гонка пытается удалить исходные 10/20 —
+    # первая пара НОВЫХ сообщений (сохранённая первой гонкой) никогда не
+    # удаляется, остаётся висеть в чате. С локом на пользователя
+    # (bot/utils.py::user_lock) вторая гонка ждёт первую и перечитывает
+    # состояние заново — значит удаляет уже id, сохранённые ПЕРВОЙ гонкой,
+    # а не исходные 10/20 дважды.
+    state = {"welcome_message_id": 10, "main_message_id": 20}
+    next_message_id = iter(range(100, 200))
+    sent_message_ids = []
+    deleted_ids = []
+    message = make_message()
+
+    async def fake_get_character(_user_id):
+        await asyncio.sleep(0)
+        return {"id": 1, **_STATS_FIELDS, **state}
+
+    async def fake_answer(*_args, **_kwargs):
+        await asyncio.sleep(0)
+        message_id = next(next_message_id)
+        sent_message_ids.append(message_id)
+        return MagicMock(message_id=message_id)
+
+    async def fake_set_message_ids(_character_id, **kwargs):
+        await asyncio.sleep(0)
+        state.update({key: value for key, value in kwargs.items() if value is not None})
+
+    async def fake_delete_message(_chat_id, message_id):
+        await asyncio.sleep(0)
+        deleted_ids.append(message_id)
+
+    api = AsyncMock()
+    api.get_character.side_effect = fake_get_character
+    api.set_message_ids.side_effect = fake_set_message_ids
+    message.answer.side_effect = fake_answer
+    message.bot.delete_message.side_effect = fake_delete_message
+
+    await asyncio.gather(cmd_start(message, api), cmd_start(message, api))
+
+    assert message.answer.await_count == 4
+    assert message.bot.delete_message.await_count == 4
+    # 10/20 удалены ровно по разу (первой гонкой) — без сериализации обе
+    # гонки прочитали бы одни и те же 10/20 и удалили бы их по два раза.
+    assert deleted_ids.count(10) == 1
+    assert deleted_ids.count(20) == 1
+    # Финальное состояние в "БД" — id именно ВТОРОЙ (последней) пары
+    # сообщений, обе из которых реально были отправлены.
+    assert state["welcome_message_id"] in sent_message_ids
+    assert state["main_message_id"] in sent_message_ids
 
 
 async def test_cmd_start_skips_deletion_when_no_saved_message_ids():
@@ -370,6 +424,73 @@ async def test_reset_confirm_carries_over_existing_language_choice():
     await reset_confirm(callback, api)
 
     api.create_character.assert_awaited_once_with(callback.from_user.id, "Hero", "en")
+
+
+async def test_reset_confirm_deletes_orphaned_previous_main_message():
+    # docs/notes.md, №86 закрыт — подтверждение через /reset-команду
+    # (cmd_reset шлёт отдельное сообщение с подтверждением, не по
+    # сохранённому main_message_id, в отличие от кнопки "🗑 Обнулить
+    # персонажа"/reset_request, которая редактирует то же main-сообщение).
+    # Раньше прежнее main-сообщение (id=20) в этом случае просто теряло
+    # свой id из БД (перезаписан на id ЭТОГО, другого сообщения) и
+    # оставалось сиротой в чате навсегда.
+    callback = make_callback(full_name="Hero")
+    callback.data = "reset_confirm:manual_reset"
+    callback.message.message_id = 999  # id сообщения-подтверждения от /reset, не main
+    callback.message.chat.id = 1
+    callback.bot.delete_message = AsyncMock()
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru", "main_message_id": 20}
+    api.create_character.return_value = {
+        "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
+        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+    }
+
+    await reset_confirm(callback, api)
+
+    callback.bot.delete_message.assert_awaited_once_with(1, 20)
+
+
+async def test_reset_confirm_does_not_delete_when_confirmation_is_the_main_message():
+    # Путь через кнопку "🗑 Обнулить персонажа" — reset_request отредактировал
+    # ТО ЖЕ main-сообщение (bot/handlers/start.py::reset_request), значит
+    # old main_message_id уже равен callback.message.message_id: удалять
+    # нечего, это не сирота.
+    callback = make_callback(full_name="Hero")
+    callback.data = "reset_confirm:manual_reset"
+    callback.message.message_id = 20
+    callback.message.chat.id = 1
+    callback.bot.delete_message = AsyncMock()
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru", "main_message_id": 20}
+    api.create_character.return_value = {
+        "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
+        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+    }
+
+    await reset_confirm(callback, api)
+
+    callback.bot.delete_message.assert_not_called()
+
+
+async def test_reset_confirm_skips_deletion_when_no_previous_main_message():
+    # Первый /reset после раскатки этого поля, или персонаж ещё ни разу не
+    # проходил /start — main_message_id ещё None, нечего удалять.
+    callback = make_callback(full_name="Hero")
+    callback.data = "reset_confirm:manual_reset"
+    callback.message.message_id = 999
+    callback.message.chat.id = 1
+    callback.bot.delete_message = AsyncMock()
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru"}
+    api.create_character.return_value = {
+        "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
+        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+    }
+
+    await reset_confirm(callback, api)
+
+    callback.bot.delete_message.assert_not_called()
 
 
 async def test_cmd_start_shows_stats_in_character_language():

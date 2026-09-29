@@ -36,6 +36,7 @@ from bot.utils import (
     safe_edit_text,
     start_game_keyboard,
     try_edit_message_text,
+    user_lock,
     welcome_text,
 )
 from core import i18n
@@ -386,27 +387,40 @@ async def toggle_language(callback: CallbackQuery, api: ApiClient) -> None:
     finish_creation, где id уже закреплён отдельно, но на случай будущих
     путей без этого) или id устарел, здесь он в любом случае приводится в
     соответствие с текущим сообщением: дёшево (тот же вызов API, что и для
-    языка), а /start в следующий раз будет знать, что удалять."""
-    character = await get_character_or_prompt_start(callback, api)
-    if character is None:
-        return
-    current = character.get("language", i18n.DEFAULT_LOCALE)
-    new_language = next(locale for locale in i18n.SUPPORTED_LOCALES if locale != current)
-    await api.set_language(character["id"], new_language)
-    # Локаль на этот момент — от СТАРОГО character["language"] (выставлена
-    # get_character_or_prompt_start выше); экран должен перерисоваться на
-    # НОВОМ языке.
-    i18n.set_locale(new_language)
-    character["language"] = new_language
+    языка), а /start в следующий раз будет знать, что удалять.
 
-    await safe_edit_text(callback.message, render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
+    docs/notes.md, ревизия двуязычности — весь цикл "прочитать текущий
+    язык -> переключить -> записать" под локом на пользователя
+    (bot/utils.py::user_lock). Без этого двойной быстрый тап читает ОДНО и
+    то же исходное значение языка в обеих гонках и оба переключают в одну
+    и ту же сторону — итог непредсказуем (может остаться как было вместо
+    ожидаемого "туда-обратно"). Вторая гонка теперь ждёт первую и стартует
+    с её результатом (свежий get_character_or_prompt_start ниже уже внутри
+    лока), так что два быстрых тапа предсказуемо переключают язык дважды
+    подряд (обратно к исходному)."""
+    async with user_lock(callback.from_user.id):
+        character = await get_character_or_prompt_start(callback, api)
+        if character is None:
+            return
+        current = character.get("language", i18n.DEFAULT_LOCALE)
+        new_language = next(locale for locale in i18n.SUPPORTED_LOCALES if locale != current)
+        await api.set_language(character["id"], new_language)
+        # Локаль на этот момент — от СТАРОГО character["language"]
+        # (выставлена get_character_or_prompt_start выше); экран должен
+        # перерисоваться на НОВОМ языке.
+        i18n.set_locale(new_language)
+        character["language"] = new_language
 
-    welcome_message_id = character.get("welcome_message_id")
-    if welcome_message_id is not None:
-        await try_edit_message_text(callback.bot, callback.message.chat.id, welcome_message_id, welcome_text())
+        await safe_edit_text(
+            callback.message, render_stats_screen(character), reply_markup=stats_screen_keyboard(character)
+        )
 
-    await api.set_message_ids(character["id"], main_message_id=callback.message.message_id)
-    await callback.answer()
+        welcome_message_id = character.get("welcome_message_id")
+        if welcome_message_id is not None:
+            await try_edit_message_text(callback.bot, callback.message.chat.id, welcome_message_id, welcome_text())
+
+        await api.set_message_ids(character["id"], main_message_id=callback.message.message_id)
+        await callback.answer()
 
 
 @router.callback_query(F.data.startswith("allocate:"))

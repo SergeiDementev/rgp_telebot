@@ -1,5 +1,6 @@
 """Тесты bot/handlers/character.py — экран статов и прокачка."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -405,6 +406,40 @@ async def test_toggle_language_skips_welcome_edit_when_id_unknown():
     await toggle_language(callback, api)
 
     callback.bot.edit_message_text.assert_not_called()
+
+
+async def test_toggle_language_concurrent_taps_apply_sequentially():
+    # docs/notes.md — ревизия двуязычности: двойной быстрый тап без лока —
+    # обе гонки читают ОДНО и то же исходное значение языка ("ru") и обе
+    # переключают в одну и ту же сторону ("en") — итог непредсказуем,
+    # застревает на "en" вместо ожидаемого "туда-обратно". С локом на
+    # пользователя (bot/utils.py::user_lock) вторая гонка ждёт первую и
+    # переключает уже поверх ЕЁ результата.
+    state = {"language": "ru"}
+    applied = []
+
+    async def fake_get_character(_user_id):
+        await asyncio.sleep(0)
+        return {**BASE_CHARACTER, **state}
+
+    async def fake_set_language(_character_id, language):
+        await asyncio.sleep(0)
+        applied.append(language)
+        state["language"] = language
+
+    callback = make_callback("toggle_language")
+    callback.message.chat.id = 1
+    api = AsyncMock()
+    api.get_character.side_effect = fake_get_character
+    api.set_language.side_effect = fake_set_language
+
+    try:
+        await asyncio.gather(toggle_language(callback, api), toggle_language(callback, api))
+    finally:
+        i18n.set_locale(i18n.DEFAULT_LOCALE)
+
+    assert applied == ["en", "ru"]
+    assert state["language"] == "ru"
 
 
 async def test_toggle_language_gracefully_continues_when_welcome_edit_fails():

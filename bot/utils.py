@@ -1,5 +1,7 @@
 """Общие мелкие утилиты для хендлеров бота."""
 
+import asyncio
+from collections import defaultdict
 from typing import Any, Awaitable, Callable, Optional, Union
 
 from aiogram import Bot
@@ -109,6 +111,41 @@ async def safe_edit_text(message: Message, text: str, *, reply_markup: Optional[
     except TelegramBadRequest as error:
         if "message is not modified" not in error.message:
             raise
+
+
+# docs/notes.md — ревизия двуязычности нашла три гонки с одной причиной:
+# несколько хендлеров делают цикл "прочитать состояние персонажа (в т.ч.
+# welcome_message_id/main_message_id) -> изменить -> записать" без всякой
+# защиты от того, что тот же игрок нажмёт кнопку/пошлёт команду второй раз
+# до завершения первого вызова (двойной тап). In-process asyncio.Lock на
+# telegram_user_id технически достаточен: docker-compose.yml запускает
+# сервис `bot` ЕДИНСТВЕННЫМ инстансом (одна команда `python -m bot.main`,
+# без deploy.replicas и без второго bot-сервиса) — все апдейты одного
+# пользователя обрабатываются в одном и том же процессе/event loop, внешний
+# межпроцессный лок (Redis и т.п.) не нужен. Если это когда-нибудь
+# изменится (несколько инстансов бота), этот механизм придётся заменить —
+# тогда же стоит пересмотреть и само допущение.
+#
+# defaultdict, не явная очистка по TTL/по завершении использования — лок на
+# каждого нового telegram_user_id создаётся один раз и живёт до перезапуска
+# процесса; на масштабе этого бота (не миллионы пользователей) это не
+# больше нескольких КБ памяти за всё время жизни процесса, специально не
+# усложняем ради этого.
+_user_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
+
+
+def user_lock(telegram_user_id: int) -> asyncio.Lock:
+    """Лок на пользователя (docs/notes.md) — оборачивает весь путь "прочитать
+    состояние -> изменить -> записать" в хендлерах, где повторный/
+    конкурентный вызов того же игрока мог бы иначе прочитать УСТАРЕВШЕЕ
+    состояние (welcome_message_id/main_message_id, character.language) и
+    записать поверх него результат, потеряв изменения первого вызова.
+    Второй конкурентный вызов ждёт первого и продолжает уже с актуальным
+    состоянием (свежий api.get_character() внутри `async with` этого лока),
+    а не отклоняется — так по каждому из трёх мест это и разумнее (не
+    дублировать сообщения при двойном /start, применить оба переключения
+    языка последовательно и т.п., см. docs/notes.md)."""
+    return _user_locks[telegram_user_id]
 
 
 async def get_character_or_prompt_start(callback: CallbackQuery, api: ApiClient) -> Optional[dict]:
