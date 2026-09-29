@@ -548,6 +548,7 @@ async def test_confirm_flee_shows_post_battle_buttons():
     assert "search_encounter" in callback_datas
     assert "open_allocation" in callback_datas
     assert "show_rules" in callback_datas
+    assert "toggle_language" in callback_datas  # docs/notes.md — баг-репорт, кнопки языка не было
     assert "search_boss_encounter" in callback_datas  # docs/notes.md, пп.37, 58 — тоже на постбоевой клавиатуре
 
 
@@ -599,6 +600,8 @@ async def test_take_turn_shows_current_battle_state_on_conflict():
 async def test_take_turn_finished_shows_post_battle_buttons():
     # docs/notes.md, п.58 — кнопка финального босса на постбоевом экране
     # всегда активна, независимо от уровня.
+    # docs/notes.md — баг-репорт: постбоевой экран показывал остальные
+    # кнопки меню персонажа, но не переключатель языка ("toggle_language").
     callback = make_callback("take_turn:5")
     api = AsyncMock()
     api.take_turn.return_value = {"status": "finished", "result": "victory", "text": "⚔️ Ты победил!"}
@@ -608,8 +611,28 @@ async def test_take_turn_finished_shows_post_battle_buttons():
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert callback_datas == [
-        "refresh_after_battle", "search_encounter", "open_allocation", "show_rules", "search_boss_encounter"
+        "refresh_after_battle", "search_encounter", "open_allocation", "show_rules",
+        "toggle_language", "search_boss_encounter",
     ]
+
+
+async def test_take_turn_finished_language_button_shows_target_language():
+    # docs/notes.md — баг-репорт: постбоевой экран остался БЕЗ кнопки языка
+    # вовсе (не только с неверной подписью) — _post_battle_keyboard раньше
+    # не принимала language вообще. Подпись показывает язык, НА который
+    # переключит (bot/handlers/character.py::language_switch_button) — при
+    # ответе на русском кнопка должна предлагать переключение на English.
+    callback = make_callback("take_turn:5")
+    api = AsyncMock()
+    api.take_turn.return_value = {
+        "status": "finished", "result": "victory", "text": "⚔️ Ты победил!", "language": "ru",
+    }
+
+    await take_turn(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    buttons = {btn.callback_data: btn.text for row in markup.inline_keyboard for btn in row}
+    assert buttons["toggle_language"] == "🌐 English"
 
 
 async def test_take_turn_boss_victory_shows_restart_button_only():
@@ -673,6 +696,7 @@ async def test_flee_decision_flee_shows_post_battle_buttons():
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert "search_encounter" in callback_datas
+    assert "toggle_language" in callback_datas  # docs/notes.md — баг-репорт, кнопки языка не было
 
 
 async def test_flee_decision_continue_resumes_turn_cycle():
@@ -710,6 +734,21 @@ async def test_refresh_after_battle_omits_timer_when_hp_full():
 
     text = callback.message.edit_text.call_args.args[0]
     assert text == "❤️ HP: 50/50"
+
+
+async def test_refresh_after_battle_shows_language_button():
+    # docs/notes.md — баг-репорт: postbattle-экран без кнопки языка;
+    # refresh_after_battle — единственный из четырёх мест, берущий язык из
+    # character, не из response.
+    callback = make_callback("refresh_after_battle")
+    api = AsyncMock()
+    api.get_character.return_value = {"hp_current": 50.0, "hp_max": 50.0, "hp_seconds_to_full": 0, "level": 3}
+
+    await refresh_after_battle(callback, api)
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "toggle_language" in callback_datas
 
 
 async def test_refresh_after_battle_keyboard_labels_follow_locale_en():

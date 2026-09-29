@@ -1378,3 +1378,18 @@
 **Тесты**: `test_reset_confirm_carries_over_welcome_message_id` (новый — прямое воспроизведение репорта: старый персонаж с `welcome_message_id=7`, после сброса `set_message_ids` вызывается с тем же `welcome_message_id=7` для НОВОГО персонажа) + `test_reset_confirm_saves_main_message_id_for_new_character` (существующий, обновлён под новую сигнатуру вызова — теперь всегда передаёт `welcome_message_id`, `None` в кейсе без старого welcome). Новый тест проверен через `git stash` — без фикса падает (`Actual: set_message_ids(2, main_message_id=...)` — без `welcome_message_id` вообще).
 
 **Проверка:** `python -m pytest` — 689/689 (было 688: +1 новый тест).
+
+## 93. Баг-репорт: на постбоевом экране нет кнопки языка — ✅ сделано (2026-09-29)
+
+Пользователь: "После окончания боя, я попадаю в экран, который не стартовый. И на нём нет кнопки языка. Хотя все кнопки меню: обновление, поиск, меню, правила, босс, есть."
+
+**Причина** — `bot/handlers/combat.py::_post_battle_keyboard()` (постбоевой экран — победа не над боссом, побег, поражение) собирался как отдельный набор кнопок, переиспользующий i18n-ключи `stats_screen_keyboard` (`bot/handlers/character.py`, докстринг это явно описывает — "тот же набор навигации экрана персонажа"), но саму кнопку-переключатель языка не переиспользовал: `_language_switch_button` в `character.py` была приватной и не импортировалась. Не следствие ревизии/предыдущих фиксов этой сессии — постбоевой экран никогда не имел этой кнопки с момента её появления (блок про "Переключение языка", докстринг п.84).
+
+**Фикс**:
+- `bot/handlers/character.py::_language_switch_button` → переименована в **публичную** `language_switch_button` (без ведущего "_") — тот же паттерн, что и у `boss_button`/`menu_screen_title` (докстринг помечает "переиспользуется из bot/handlers/combat.py").
+- `_post_battle_keyboard()` — теперь принимает `language: str` и добавляет `language_switch_button(language)` четвёртой кнопкой (перед боссом, как и на `stats_screen_keyboard`).
+- Все 4 места, строящие эту клавиатуру, обновлены передавать язык: `_next_step_markup` (из `response.get("language")`, доступен после `_set_locale_from_response` выше по стеку вызовов), `confirm_flee`/`flee_decision_flee` (аналогично, из `response`), `refresh_after_battle` (из `character.get("language")` — единственное место без `response`, использует уже полученного персонажа).
+
+**Тесты**: `test_take_turn_finished_shows_post_battle_buttons` (существующий, обновлён — теперь ожидает `toggle_language` в списке кнопок) + новый `test_take_turn_finished_language_button_shows_target_language` (проверяет саму подпись кнопки — "🌐 English" при `language: "ru"` в ответе, не только наличие callback_data). По одному новому assert `"toggle_language" in callback_datas` в существующих `test_confirm_flee_shows_post_battle_buttons`/`test_flee_decision_flee_shows_post_battle_buttons`. Новый `test_refresh_after_battle_shows_language_button` — четвёртая точка вызова, единственная без `response`. Все 5 упавших/новых проверок подтверждены через `git stash` `bot/handlers/{combat,character}.py` — падают ожидаемо без фикса (`KeyError: 'toggle_language'` / отсутствие в списке).
+
+**Проверка:** `python -m pytest` — 691/691 (было 689: +2 новых теста, +3 assert'а к существующим).

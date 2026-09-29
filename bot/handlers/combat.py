@@ -22,6 +22,7 @@ from bot.handlers.character import (
     LARGE_POTION_CAP,
     SMALL_POTION_CAP,
     boss_button,
+    language_switch_button,
     menu_screen_title,
     render_stats_screen,
     stats_screen_keyboard,
@@ -155,7 +156,7 @@ def _flee_choice_keyboard(session_id: int, *, mode: str = "manual") -> InlineKey
     )
 
 
-def _post_battle_keyboard() -> InlineKeyboardMarkup:
+def _post_battle_keyboard(language: str) -> InlineKeyboardMarkup:
     """Кнопка финального босса (см. bot/handlers/character.py::boss_button)
     активна на любом уровне (docs/notes.md, п.58) — уровень сюда больше не
     нужен.
@@ -165,13 +166,21 @@ def _post_battle_keyboard() -> InlineKeyboardMarkup:
     блок 3) — переиспользуют её i18n-ключи/menu_screen_title() вместо своих
     копий текста, чтобы не разъезжаться при переводе. Только "🔄 Обновить"
     ведёт на другой callback_data (refresh_after_battle, не refresh_stats) —
-    подпись кнопки при этом та же самая."""
+    подпись кнопки при этом та же самая.
+
+    `language` — баг-репорт (docs/notes.md): постбоевой экран показывал
+    все кнопки меню персонажа, КРОМЕ переключателя языка — его тут просто
+    не было. `language_switch_button` нужен явный текущий язык персонажа
+    (показывает, на какой язык переключит), а не ambient-локаль текущего
+    рендера — вызывающий код передаёт его из уже имеющегося на руках
+    ответа API/character (см. вызовы ниже), без лишнего запроса."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text=i18n.t("character.button.refresh"), callback_data="refresh_after_battle")],
             [InlineKeyboardButton(text=i18n.t("character.button.search_encounter"), callback_data="search_encounter")],
             [InlineKeyboardButton(text=menu_screen_title(), callback_data="open_allocation")],
             [InlineKeyboardButton(text=i18n.t("character.button.rules"), callback_data="show_rules")],
+            [language_switch_button(language)],
             [boss_button()],
         ]
     )
@@ -316,7 +325,7 @@ def _next_step_markup(session_id: int, response: dict, *, mode: str = "manual") 
     if response["status"] == "finished":
         if response.get("enemy_type") == "boss" and response.get("result") == "victory":
             return _boss_victory_keyboard()
-        return _post_battle_keyboard()
+        return _post_battle_keyboard(response.get("language", i18n.DEFAULT_LOCALE))
     if response["status"] == "awaiting_flee_decision":
         return _flee_choice_keyboard(session_id, mode=mode)
     rows = [_attack_phase_buttons(session_id, response.get("current_turn"))]
@@ -535,7 +544,9 @@ async def confirm_flee(callback: CallbackQuery, api: ApiClient) -> None:
         await callback.answer(i18n.t("combat.ui.error.cant_flee"), show_alert=True)
         return
     _set_locale_from_response(response)
-    await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard())
+    await callback.message.edit_text(
+        response["text"], reply_markup=_post_battle_keyboard(response.get("language", i18n.DEFAULT_LOCALE))
+    )
     await callback.answer()
 
 
@@ -596,7 +607,9 @@ async def flee_decision_flee(callback: CallbackQuery, api: ApiClient) -> None:
         await _show_current_battle_state(callback, api, session_id)
         return
     _set_locale_from_response(response)
-    await callback.message.edit_text(response["text"], reply_markup=_post_battle_keyboard())
+    await callback.message.edit_text(
+        response["text"], reply_markup=_post_battle_keyboard(response.get("language", i18n.DEFAULT_LOCALE))
+    )
     await callback.answer()
 
 
@@ -648,5 +661,9 @@ async def refresh_after_battle(callback: CallbackQuery, api: ApiClient) -> None:
     lines = [i18n.t("combat.battle_end.hp_line", hp_current=f"{character['hp_current']:.0f}", hp_max=f"{character['hp_max']:.0f}")]
     if character["hp_seconds_to_full"] > 0:
         lines.append(i18n.t("combat.battle_end.regen_line", hp_seconds_to_full=f"{character['hp_seconds_to_full']:.0f}"))
-    await safe_edit_text(callback.message, "\n".join(lines), reply_markup=_post_battle_keyboard())
+    await safe_edit_text(
+        callback.message,
+        "\n".join(lines),
+        reply_markup=_post_battle_keyboard(character.get("language", i18n.DEFAULT_LOCALE)),
+    )
     await callback.answer()

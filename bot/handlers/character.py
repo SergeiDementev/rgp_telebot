@@ -151,13 +151,17 @@ def boss_button() -> InlineKeyboardButton:
     return InlineKeyboardButton(text=i18n.t("character.button.boss"), callback_data="search_boss_encounter")
 
 
-def _language_switch_button(character_language: str) -> InlineKeyboardButton:
+def language_switch_button(character_language: str) -> InlineKeyboardButton:
     """Показывает язык, НА который переключит, а не текущий (docs/notes.md)
     — привычный паттерн переключателей языка: должно быть понятно
     независимо от того, на каком языке сейчас экран. Только два
     поддерживаемых языка (core.i18n.SUPPORTED_LOCALES) — переключение
     мгновенное, без промежуточного подэкрана выбора. Единственный способ
-    сменить язык — /language удалена целиком (docs/notes.md)."""
+    сменить язык — /language удалена целиком (docs/notes.md).
+
+    Публичная (без ведущего "_") — переиспользуется из bot/handlers/
+    combat.py::_post_battle_keyboard (docs/notes.md, баг-репорт: постбоевой
+    экран показывал остальные кнопки меню персонажа, но не эту)."""
     target = next(locale for locale in i18n.SUPPORTED_LOCALES if locale != character_language)
     return InlineKeyboardButton(text=f"🌐 {_LANGUAGE_NATIVE_NAMES[target]}", callback_data="toggle_language")
 
@@ -169,7 +173,7 @@ def stats_screen_keyboard(character: dict) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text=i18n.t("character.button.search_encounter"), callback_data="search_encounter")],
             [InlineKeyboardButton(text=menu_screen_title(), callback_data="open_allocation")],
             [InlineKeyboardButton(text=i18n.t("character.button.rules"), callback_data="show_rules")],
-            [_language_switch_button(character.get("language", i18n.DEFAULT_LOCALE))],
+            [language_switch_button(character.get("language", i18n.DEFAULT_LOCALE))],
             [boss_button()],
         ]
     )
