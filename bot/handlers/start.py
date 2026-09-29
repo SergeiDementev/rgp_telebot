@@ -248,10 +248,25 @@ async def reset_confirm(callback: CallbackQuery, api: ApiClient) -> None:
         # сообщение — edit, не новый Telegram-message_id, но это первое
         # закрепление main_message_id за этим персонажем: то самое
         # "создание нового персонажа после /reset" из списка мест,
-        # требующих синхронизации. welcome_message_id не трогаем —
-        # отдельного приветственного сообщения в этом флоу не было (он
-        # приходит только явным следующим /start).
-        await api.set_message_ids(character["id"], main_message_id=callback.message.message_id)
+        # требующих синхронизации.
+        #
+        # welcome_message_id — ПЕРЕНОСИТСЯ со старого персонажа, той же
+        # логикой, что и language чуть выше: это тот же физический
+        # Telegram-message, никуда не делся, просто у новой строки
+        # персонажа поле стартует с None. Раньше его "не трогали" — верно
+        # для НОВОГО приветственного сообщения (в этом флоу оно
+        # действительно не отправляется), но неверно для СТАРОГО: без
+        # переноса бот переставал его знать — не обновлял при следующем
+        # toggle_language (id уже None) и не удалял следующим /start (та же
+        # причина, old_welcome_id тоже читался бы как None) — оно оставалось
+        # висеть в чате бессрочно, замороженное на языке персонажа ДО
+        # сброса (баг-репорт: "приветственное сообщение как будто теряет
+        # связь с приложением").
+        await api.set_message_ids(
+            character["id"],
+            main_message_id=callback.message.message_id,
+            welcome_message_id=old_character.get("welcome_message_id"),
+        )
 
         # docs/notes.md, №86 — подтверждение могло прийти НЕ с того же
         # сообщения, что было main_message (/reset-команда шлёт отдельное

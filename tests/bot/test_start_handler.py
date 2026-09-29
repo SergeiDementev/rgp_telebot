@@ -450,8 +450,10 @@ async def test_reset_confirm_deletes_character_and_shows_creation_screen():
 
 async def test_reset_confirm_saves_main_message_id_for_new_character():
     # docs/notes.md — новая строка персонажа (старая архивирована), первое
-    # закрепление main_message_id за ней. welcome_message_id не трогаем —
-    # отдельного приветственного сообщения в этом флоу нет.
+    # закрепление main_message_id за ней. Старый персонаж здесь без
+    # welcome_message_id (ещё ни разу не проходил /start) — welcome
+    # остаётся непереданным (None), не отправляется вовсе (см. api.
+    # set_message_ids — частичное обновление, docs/notes.md).
     callback = make_callback(full_name="Hero")
     callback.data = "reset_confirm:manual_reset"
     api = AsyncMock()
@@ -463,7 +465,34 @@ async def test_reset_confirm_saves_main_message_id_for_new_character():
 
     await reset_confirm(callback, api)
 
-    api.set_message_ids.assert_awaited_once_with(2, main_message_id=callback.message.message_id)
+    api.set_message_ids.assert_awaited_once_with(
+        2, main_message_id=callback.message.message_id, welcome_message_id=None
+    )
+
+
+async def test_reset_confirm_carries_over_welcome_message_id():
+    # docs/notes.md — баг-репорт: "после ресета персонажа приветственное
+    # сообщение как будто теряет связь с приложением. Не обновляется язык,
+    # при нажатии /start остаётся висеть." Причина — welcome_message_id
+    # раньше НЕ переносился со старого персонажа на нового (новая строка
+    # стартует с None), хотя старое приветственное сообщение из более
+    # раннего /start никуда физически не девалось — просто переставало
+    # быть известно боту (не обновлялось toggle_language, не удалялось
+    # следующим /start).
+    callback = make_callback(full_name="Hero")
+    callback.data = "reset_confirm:manual_reset"
+    api = AsyncMock()
+    api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru", "welcome_message_id": 7}
+    api.create_character.return_value = {
+        "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
+        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+    }
+
+    await reset_confirm(callback, api)
+
+    api.set_message_ids.assert_awaited_once_with(
+        2, main_message_id=callback.message.message_id, welcome_message_id=7
+    )
 
 
 async def test_reset_confirm_carries_over_existing_language_choice():
