@@ -232,7 +232,8 @@ TRANSLATIONS: dict[str, str] = {
     "start.welcome": (
         "🧙 Welcome to the text RPG!\n\n"
         "Search for enemies, fight with dice rolls, level up your character. "
-        "The ultimate goal — grow strong enough to defeat the final boss."
+        "The ultimate goal — grow strong enough to defeat the final boss.\n\n"
+        "If the bot isn't responding, press /start."
     ),
     "start.button.start_game": "✅ Start the game",
     "start.resume_prefix": "↩️ Resuming your battle:\n\n",
