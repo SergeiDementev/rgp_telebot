@@ -128,7 +128,7 @@ def test_welcome_text_switches_with_locale():
     token = i18n.set_locale("en")
     try:
         assert welcome_text() == i18n.t("start.welcome")
-        assert "Welcome to the text RPG" in welcome_text()
+        assert "Welcome to this text-based RPG" in welcome_text()
     finally:
         i18n.reset_locale(token)
     assert "Добро пожаловать" in welcome_text()
@@ -138,7 +138,7 @@ def test_start_game_keyboard_label_switches_with_locale():
     token = i18n.set_locale("en")
     try:
         markup = start_game_keyboard()
-        assert markup.inline_keyboard[0][0].text == "✅ Start the game"
+        assert markup.inline_keyboard[0][0].text == "✅ Start Game"
     finally:
         i18n.reset_locale(token)
 

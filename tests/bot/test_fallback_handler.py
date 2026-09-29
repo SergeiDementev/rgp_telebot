@@ -46,6 +46,6 @@ async def test_unknown_text_replies_in_english_locale():
     token = i18n.set_locale("en")
     try:
         await unknown_text(message)
-        message.answer.assert_awaited_once_with("The game is controlled only through the buttons under messages.")
+        message.answer.assert_awaited_once_with("Use the buttons below the messages to control the game.")
     finally:
         i18n.reset_locale(token)

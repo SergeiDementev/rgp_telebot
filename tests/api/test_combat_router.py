@@ -122,7 +122,7 @@ def test_confirm_fight_shows_fight_confirmed_message_in_english(db_session_facto
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
 
     response = client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
-    assert response.json()["text"].endswith("⚔️ You enter the fight!")
+    assert response.json()["text"].endswith("⚔️ You engage in combat!")
 
 
 def test_confirm_fight_response_includes_character_language(db_session_factory, monkeypatch):

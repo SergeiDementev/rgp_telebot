@@ -687,7 +687,7 @@ async def test_render_stats_screen_en(en_locale):
         "💪 Strength: 5\n"
         "🤸 Agility: 3\n"
         "🍀 Luck: 1\n"
-        "🏆 Victory points: 0 (to next level: 8)"
+        "🏆 Victory Points: 0 (to next level: 8)"
     )
 
 
@@ -695,12 +695,12 @@ async def test_render_allocation_screen_creation_en(en_locale):
     text = render_allocation_screen({**BASE_CHARACTER, "unspent_stat_points": 5}, title="🧙 Hero Creation", mode="creation")
     assert text == (
         "🧙 Hero Creation\n"
-        "Points left: 5\n"
+        "Points remaining: 5\n"
         "\n"
         "💪 Strength: 3\n"
         "🤸 Agility: 3\n"
         "🍀 Luck: 1\n"
-        "❤️ Vitality: 3  (HP max: 50)"
+        "❤️ Vitality: 3 (Max HP: 50)"
     )
 
 
@@ -708,10 +708,10 @@ async def test_render_allocation_screen_levelup_en(en_locale):
     character = {**BASE_CHARACTER, "unspent_stat_points": 0, "loot": {"wolf_fang": 3}, "potions_small": 2}
     text = render_allocation_screen(character, title="👤 Player Menu", mode="levelup")
     assert "🏅 Level: 1" in text
-    assert "🏆 Victory points: 0 (to next level: 8)" in text
+    assert "🏆 Victory Points: 0 (to next level: 8)" in text
     assert "Stat points available" not in text  # unspent_stat_points == 0
     assert "💰 Gold: 0" in text
-    assert "📦 Loot: Wolf fang ×3 (24 gold)" in text
+    assert "📦 Loot: Wolf Fang ×3 (24 gold)" in text
     assert "🧪 Potions: Small ×2" in text
 
 
@@ -724,7 +724,7 @@ async def test_stats_screen_keyboard_labels_en(en_locale):
     markup = stats_screen_keyboard({**BASE_CHARACTER, "language": "en"})
     labels = [btn.text for row in markup.inline_keyboard for btn in row]
     assert labels == [
-        "🔄 Refresh", "🔍 Search for an enemy", "👤 Player Menu", "📜 Rules", "🌐 Русский", "⚔️ Final Boss",
+        "🔄 Refresh", "🔍 Find an Enemy", "👤 Player Menu", "📜 Rules", "🌐 Русский", "⚔️ Final Boss",
     ]
 
 
@@ -734,7 +734,7 @@ async def test_allocation_keyboard_buy_potion_labels_en(en_locale):
     assert buttons["buy_potion:small"] == "🧪 Buy small (8 gold)"
     assert buttons["buy_potion:large"] == "🧪 Buy large (50 gold)"
     assert buttons["back_to_stats"] == "⬅️ Back"
-    assert buttons["reset_request"] == "🗑 Reset character"
+    assert buttons["reset_request"] == "🗑 Reset Character"
 
 
 async def test_open_allocation_renders_in_character_language(en_locale):
@@ -752,7 +752,7 @@ async def test_open_allocation_renders_in_character_language(en_locale):
     text = callback.message.edit_text.call_args.args[0]
     assert text.startswith("🏅 Level:")
     assert "💰 Gold: 0" in text
-    assert "📦 Loot: none yet" in text
+    assert "📦 Loot: None yet" in text
 
 
 async def test_show_rules_en(en_locale):
@@ -785,6 +785,6 @@ async def test_show_rules_section_en(en_locale):
 
     text = callback.message.edit_text.call_args.args[0]
     assert "1. Introduction" in text
-    assert "This is a text-based turn-based RPG" in text
+    assert "This is a turn-based, text-based RPG" in text
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
-    assert markup.inline_keyboard[0][0].text == "⬅️ Back to sections"
+    assert markup.inline_keyboard[0][0].text == "⬅️ Back to Sections"

@@ -769,7 +769,7 @@ async def test_refresh_after_battle_keyboard_labels_follow_locale_en():
         await refresh_after_battle(callback, api)
         markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
         labels = [btn.text for row in markup.inline_keyboard for btn in row]
-        assert labels[:4] == ["🔄 Refresh", "🔍 Search for an enemy", "👤 Player Menu", "📜 Rules"]
+        assert labels[:4] == ["🔄 Refresh", "🔍 Find an Enemy", "👤 Player Menu", "📜 Rules"]
     finally:
         i18n.set_locale(i18n.DEFAULT_LOCALE)
 
@@ -927,7 +927,7 @@ async def test_confirm_fight_buttons_en():
         await confirm_fight(callback, api)
         row = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0]
         assert row[0].text == "🎲 Attack"
-        assert row[1].text == "💥 Power attack"
+        assert row[1].text == "💥 Powerful Strike"
     finally:
         i18n.reset_locale(token)
 
@@ -942,7 +942,7 @@ async def test_start_combat_boss_button_en():
     try:
         await start_combat(callback, api)
         button = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
-        assert button.text == "⚔️ Enter the fight"
+        assert button.text == "⚔️ Enter Battle"
     finally:
         i18n.reset_locale(token)
 
@@ -957,7 +957,7 @@ async def test_confirm_fight_auto_stops_at_flee_decision_buttons_en():
         await confirm_fight_auto(callback, api)
         markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
         labels = [btn.text for row in markup.inline_keyboard for btn in row]
-        assert labels == ["🏃 Flee", "⚔️ Keep fighting"]
+        assert labels == ["🏃 Flee", "⚔️ Keep Fighting"]
     finally:
         i18n.reset_locale(token)
 
@@ -980,7 +980,7 @@ async def test_search_boss_encounter_potion_stock_text_en():
             "  Large: 1/3"
         )
         button = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
-        assert button.text == "⚔️ Challenge (from level 9)"
+        assert button.text == "⚔️ Challenge (Level 9+)"
     finally:
         i18n.reset_locale(token)
 
@@ -992,7 +992,7 @@ async def test_boss_challenge_prompt_alerts_en():
     api.get_character.return_value = {"level": 9, "language": "en"}
     try:
         await boss_challenge_prompt(callback, api)
-        callback.answer.assert_awaited_once_with("⚠️ After this, there's no retreating.", show_alert=True)
+        callback.answer.assert_awaited_once_with("⚠️ You won't be able to retreat after this.", show_alert=True)
     finally:
         i18n.set_locale(i18n.DEFAULT_LOCALE)
 
@@ -1016,7 +1016,7 @@ async def test_confirm_flee_not_allowed_alert_en():
     token = i18n.set_locale("en")
     try:
         await confirm_flee(callback, api)
-        callback.answer.assert_awaited_once_with("You can't retreat from this battle.", show_alert=True)
+        callback.answer.assert_awaited_once_with("You can't retreat from a fight against this enemy.", show_alert=True)
     finally:
         i18n.reset_locale(token)
 
@@ -1028,7 +1028,7 @@ async def test_search_encounter_already_in_battle_alert_en():
     token = i18n.set_locale("en")
     try:
         await search_encounter(callback, api)
-        callback.answer.assert_awaited_once_with("You already have an unfinished battle — finish it first.", show_alert=True)
+        callback.answer.assert_awaited_once_with("You already have an unfinished battle. Finish it first.", show_alert=True)
     finally:
         i18n.reset_locale(token)
 

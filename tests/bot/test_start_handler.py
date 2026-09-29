@@ -612,7 +612,7 @@ async def test_start_game_renders_creation_screen_in_character_language():
     try:
         await start_game(callback, api)
         text = callback.message.edit_text.call_args.args[0]
-        assert "🧙 Hero Creation" in text
+        assert "🧙 Create Your Hero" in text
         assert "💪 Strength: 3" in text
     finally:
         i18n.set_locale(i18n.DEFAULT_LOCALE)
@@ -631,7 +631,7 @@ async def test_reset_confirm_renders_creation_screen_in_carried_over_language():
     try:
         await reset_confirm(callback, api)
         text = callback.message.edit_text.call_args.args[0]
-        assert "🧙 Hero Creation" in text
+        assert "🧙 Create Your Hero" in text
     finally:
         i18n.set_locale(i18n.DEFAULT_LOCALE)
 

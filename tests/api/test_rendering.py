@@ -359,12 +359,12 @@ def en_locale():
 
 
 def test_render_encounter_en(en_locale):
-    assert r.render_encounter("wolf", 4) == "🎲 Roll: 4 → Wolf!\n\nYou ran into a wolf."
+    assert r.render_encounter("wolf", 4) == "🎲 Roll: 4 → Wolf!\n\nYou encounter wolf."
 
 
 def test_render_boss_encounter_en(en_locale):
     text = r.render_boss_encounter()
-    assert text == "👑 You step into the Forest King's hall. There's no turning back — he's already watching you."
+    assert text == "👑 You enter Forest King's lair. There's nowhere to run — it already has its eyes on you."
 
 
 def test_render_initiative_en(en_locale):
@@ -374,37 +374,37 @@ def test_render_initiative_en(en_locale):
 
 def test_render_circumstance_buff_player_en(en_locale):
     text = r.render_circumstance("wolf", roll=9, outcome="buff", roller_role="player")
-    assert text == "🎲 Circumstance: 9 → ⚡ Adrenaline rush!\nYour Strength is increased for this fight (×1.2)"
+    assert text == "🎲 Event: 9 → ⚡ Adrenaline Rush!\nYour Strength is increased for this battle (×1.2)"
 
 
 def test_render_double_strike_check_triggered_en(en_locale):
     text = r.render_double_strike_check("wolf", "player", 9, True)
-    assert text == "🎲 Your luck check: 9 → ✨ LUCKY! Double strike!"
+    assert text == "🎲 Your Luck roll: 9 → ✨ LUCKY! Double strike!"
 
 
 def test_render_strike_hit_player_attacking_en(en_locale):
     text = r.render_strike("wolf", "player", attack_roll=8, attack_percent=80, dodge_roll=4, dodged=False, damage=68)
     assert text == (
-        "🗡️ Your attack: 8 → 80% strength.\n"
-        "🛡️ Wolf dodges: 4 → failed!\n"
+        "🗡️ Your attack: 8 → 80% power.\n"
+        "🛡️ Wolf dodges: 4 → Failed!\n"
         "💥 You deal 68 damage."
     )
 
 
 def test_render_strike_miss_en(en_locale):
     text = r.render_strike("wolf", "player", attack_roll=1, attack_percent=None, dodge_roll=None, dodged=None, damage=0)
-    assert text == "🗡️ Your attack: 1 → miss!"
+    assert text == "🗡️ Your attack: 1 → Miss!"
 
 
 def test_render_compact_strike_hit_en(en_locale):
     text = r.render_compact_strike(
         "wolf", "player", 1, attack_roll=9, attack_percent=90, dodge_roll=3, dodged=False, damage=72
     )
-    assert text == "🗡️ Strike 1: 9 → 90% strength. 🛡️ Wolf dodges: 3 → failed! 💥 72 damage."
+    assert text == "🗡️ Strike 1: 9 → 90% power. 🛡️ Wolf dodges: 3 → Failed! 💥 72 damage."
 
 
 def test_render_potion_used_en(en_locale):
-    assert r.render_potion_used("large", 25) == "🧪 Large potion: +25 HP."
+    assert r.render_potion_used("large", 25) == "🧪 Large Potion: +25 HP."
 
 
 def test_render_hp_status_en(en_locale):
@@ -416,16 +416,16 @@ def test_render_flee_opportunity_triggered_player_en(en_locale):
     text = r.render_flee_opportunity_check("wolf", "player", current_hp=18, max_hp=85, luck_roll=7, triggered=True)
     assert text == (
         "⚠️ Your HP is critically low! (18/85)\n"
-        "🍀 Your luck check to flee: 7 → there's a chance to get away alive!"
+        "🍀 Your escape chance roll: 7 → a chance to escape while alive!"
     )
 
 
 def test_render_flee_attempt_player_misses_pursuer_en(en_locale):
     text = r.render_flee_attempt("wolf", "player", attack_roll=1, attack_percent=None, damage=0, defeated=False)
     assert text == (
-        "🏃 You try to flee — the wolf strikes unopposed!\n"
-        "🎲 Wolf's attack: 1 → miss!\n"
-        "✅ You get away clean."
+        "🏃 You try to flee — wolf gets a free hit!\n"
+        "🎲 wolf's attack: 1 → Miss!\n"
+        "✅ You make a clean escape."
     )
 
 
@@ -435,12 +435,12 @@ def test_render_battle_end_victory_with_loot_en(en_locale):
         loot_dropped="wolf_fang",
     )
     assert text == (
-        "⚔️ Battle over! You defeated the Wolf.\n"
-        "🏆 +5 victory points (total: 23)\n"
-        "🎁 Loot: Wolf fang\n"
+        "⚔️ Battle over! You defeated Wolf.\n"
+        "🏆 +5 Victory Points (total: 23)\n"
+        "🎁 Loot: Wolf Fang\n"
         "\n"
         "❤️ HP: 40/60\n"
-        "⏳ Full recovery in: ~20 sec."
+        "⏳ Fully restored in: ~20 sec."
     )
 
 
@@ -448,17 +448,17 @@ def test_render_battle_end_defeat_en(en_locale):
     text = r.render_battle_end(
         "boar", "defeat", reward=0, victory_points_total=0, hp_current=0, hp_max=60, hp_seconds_to_full=60
     )
-    assert text.startswith("💀 You died in battle with the Boar...")
+    assert text.startswith("💀 You were defeated by Boar...")
     assert "🏆" not in text
 
 
 def test_render_boss_victory_en(en_locale):
     text = r.render_boss_victory()
-    assert text == "🎉 You have defeated the Forest King!\n\nThe adventure is over. Thanks for playing!"
+    assert text == "🎉 You have defeated Forest King!\n\nYour adventure is complete. Thanks for playing!"
 
 
 def test_render_fight_confirmed_en(en_locale):
-    assert r.render_fight_confirmed() == "⚔️ You enter the fight!"
+    assert r.render_fight_confirmed() == "⚔️ You engage in combat!"
 
 
 # --- Регрессия: KeyError на en-локали в редко покрытых ветках --------
