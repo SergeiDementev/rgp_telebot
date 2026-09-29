@@ -4,6 +4,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel
 
+from api.schemas.character import PotionSize
+
 
 class EncounterSearchResponse(BaseModel):
     combat_session_id: int
@@ -44,7 +46,7 @@ class TurnRequest(BaseModel):
 
 
 class UsePotionRequest(BaseModel):
-    size: Literal["small", "large"]
+    size: PotionSize
 
 
 class CombatTurnResponse(BaseModel):

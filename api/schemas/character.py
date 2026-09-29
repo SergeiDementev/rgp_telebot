@@ -5,6 +5,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 Language = Literal["ru", "en"]
+PotionSize = Literal["small", "large"]
 
 
 class CharacterCreate(BaseModel):
@@ -55,7 +56,7 @@ class SellLootResponse(BaseModel):
 
 
 class BuyPotionRequest(BaseModel):
-    size: str
+    size: PotionSize
 
 
 class BuyPotionResponse(BaseModel):

@@ -1419,3 +1419,16 @@
 Удалены: функция `plural_ru` (`core/i18n.py`) и оба её теста — `test_plural_ru_selects_correct_form`/`test_plural_ru_uses_absolute_value` (`tests/core/test_i18n.py`).
 
 **Проверка:** `python -m pytest` — 669/669 (было 691: -22 — параметризованный `test_plural_ru_selects_correct_form` даёт 21 отдельный тест-кейс, не один, плюс `test_plural_ru_uses_absolute_value`).
+
+## 96. `BuyPotionRequest.size` приведён к `Literal`, по образцу `UsePotionRequest`/`Language` — ✅ сделано (2026-09-29)
+
+Пользователь заметил несогласованность: `api/schemas/combat.py::UsePotionRequest.size` уже был строго типизирован (`Literal["small", "large"]`), а `api/schemas/character.py::BuyPotionRequest.size` — обычный `str`, из-за чего невалидный размер зелья при покупке ловился вручную в роутере (`api/routers/character.py::buy_potion`), а не на уровне схемы, как уже сделано для `Language`.
+
+- **`api/schemas/character.py`** — новый алиас `PotionSize = Literal["small", "large"]` рядом с `Language`; `BuyPotionRequest.size: str` → `PotionSize`.
+- **`api/schemas/combat.py`** — `UsePotionRequest.size` теперь тоже использует этот алиас (`from api.schemas.character import PotionSize`) вместо собственного инлайн `Literal["small", "large"]` — список значений не дублируется между двумя схемами.
+- **`api/routers/character.py::buy_potion`** — убрана ставшая недостижимой ручная проверка `if payload.size not in ec.POTION_SIZES: raise HTTPException(422, ...)`: FastAPI теперь отклоняет запрос с невалидным `size` ещё до входа в тело хендлера, тем же 422, что и раньше, просто силами Pydantic. `api/routers/combat.py::use_potion` такой ручной проверки никогда не имел (там `Literal` уже был) — трогать нечего.
+- **`core/economy.py::_validate_potion_size`** — не тронута: это единственная защита для вызовов `core/economy.py` в обход HTTP-схем (`scripts/simulate_combat_economy.py`, `scripts/simulate_boss.py` дёргают `ec.buy_potion(...)` напрямую, минуя Pydantic; `Literal` — только аннотация типа, не рантайм-проверка вне контекста FastAPI).
+
+**Тесты**: `tests/api/test_character_router.py::test_buy_potion_unknown_size_returns_422` проверял только `status_code == 422`, не текст детали — прошёл без изменений (Pydantic возвращает тот же код, просто с другой структурой `detail`). `tests/core/test_economy.py` (тестирует `_validate_potion_size` напрямую) не тронут, как и просили — по-прежнему актуален для сценария вызова в обход HTTP.
+
+**Проверка:** `python -m pytest` — 669/669 (без изменений в тестах и их количестве).

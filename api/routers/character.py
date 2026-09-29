@@ -219,11 +219,6 @@ def buy_potion(character_id: int, payload: BuyPotionRequest, db: Session = Depen
     if character is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
 
-    if payload.size not in ec.POTION_SIZES:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"unknown potion size: {payload.size!r}"
-        )
-
     # Проверяем ЗАРАНЕЕ, а не ловим ValueError из ec.buy_potion() — причина
     # отказа ("cap_reached" | "not_enough_gold") идёт в detail явно, бот
     # должен показать игроку правильное сообщение, не общий "нельзя"
