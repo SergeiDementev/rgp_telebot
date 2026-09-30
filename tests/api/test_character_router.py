@@ -199,6 +199,64 @@ def test_allocate_point_no_points_left_returns_400(db_session_factory):
     assert response.status_code == 400
 
 
+def test_allocate_point_vitality_freezes_hp_under_old_cap_first(db_session_factory):
+    # Баг: hp_max растёт сразу при аллокации очка в vitality (pr.
+    # calculate_hp_max в _to_character_out читает уже НОВОЕ значение), а
+    # hp_current/last_hp_update_at оставались от последнего реального
+    # события и лениво пересчитывались при чтении уже под новый, больший
+    # потолок — прошедшие секунды регенерации задним числом "росли" вместе
+    # с потолком. Реальный случай: 44 HP (потолок 50) после боя, 46 секунд
+    # ожидания, +1 очко в Здоровье (потолок стал 60) — без фикса игрок
+    # увидел бы 60/60 сразу, хотя должен увидеть ~50/60 (регенерация
+    # упёрлась в СТАРЫЙ потолок ещё до того, как он вырос).
+    client = make_client(db_session_factory)
+    created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+    assert created["vitality"] == 3
+    assert created["hp_max"] == 50
+
+    db = db_session_factory()
+    character = db.get(Character, created["id"])
+    character.hp_current = 44.0
+    character.last_hp_update_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=46)
+    db.commit()
+    db.close()
+
+    response = client.post(f"/character/{created['id']}/allocate_point", json={"stat": "vitality"})
+    assert response.status_code == 200
+    body = response.json()["character"]
+
+    assert body["vitality"] == 4
+    assert body["hp_max"] == 60
+    # Заморожено под СТАРЫМ потолком (50), не пересчитано под новым (60) —
+    # 44 + 46 сек регенерации уже упирались в 50 до самой аллокации.
+    assert body["hp_current"] == pytest.approx(50.0, abs=1.0)
+
+
+def test_allocate_point_non_vitality_stat_does_not_touch_hp_snapshot(db_session_factory):
+    # Соседний тест на негатив: для статов, не влияющих на hp_max, ничего
+    # замораживать не нужно — hp_current/last_hp_update_at должны остаться
+    # нетронутыми (обычная ленивая регенерация при следующем чтении).
+    client = make_client(db_session_factory)
+    created = client.post("/character", json={"telegram_user_id": 1, "nickname": "Hero"}).json()
+
+    db = db_session_factory()
+    character = db.get(Character, created["id"])
+    character.hp_current = 44.0
+    stale_update_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=5)
+    character.last_hp_update_at = stale_update_at
+    db.commit()
+    db.close()
+
+    response = client.post(f"/character/{created['id']}/allocate_point", json={"stat": "strength"})
+    assert response.status_code == 200
+
+    db = db_session_factory()
+    character = db.get(Character, created["id"])
+    assert character.hp_current == 44.0
+    assert character.last_hp_update_at == stale_update_at
+    db.close()
+
+
 def test_allocate_point_character_not_found_returns_404(db_session_factory):
     client = make_client(db_session_factory)
     response = client.post("/character/999/allocate_point", json={"stat": "strength"})

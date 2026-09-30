@@ -190,6 +190,17 @@ def allocate_point(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no unspent stat points available")
 
     character.unspent_stat_points = new_unspent
+    if payload.stat == "vitality":
+        # Здоровье двигает hp_max (pr.calculate_hp_max) — заморозить
+        # hp_current по СТАРОМУ hp_max до его изменения, тем же способом,
+        # что и api/routers/encounter.py::_start_encounter_session. Без
+        # этого секунды регенерации, прошедшие с last_hp_update_at, задним
+        # числом пересчитываются под новый, уже больший потолок HP —
+        # игрок мог сразу увидеть 70/70 вместо честных ~50/70.
+        now = _now()
+        old_hp_max = pr.calculate_hp_max(character.vitality)
+        character.hp_current = pr.get_current_hp(character.hp_current, old_hp_max, character.last_hp_update_at, now)
+        character.last_hp_update_at = now
     setattr(character, payload.stat, new_value)
     db.add(StatAllocationLog(character_id=character.id, stat=payload.stat, level_at_time=character.level))
     db.commit()
