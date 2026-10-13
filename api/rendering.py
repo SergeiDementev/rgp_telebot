@@ -24,8 +24,6 @@ ru.py формы разные (падежи/род), в en.py все формы 
 ветвится по локали вообще, только по структуре боя.
 """
 
-from typing import Optional
-
 from core import i18n
 from core.combat_mechanics import POWER_ATTACK_DAMAGE_MULTIPLIER
 
@@ -99,7 +97,9 @@ def _damage_suffix(percent: int, power_attack: bool) -> str:
     """§3a: хвост строки атаки после "→" — процент силы, при мощном ударе с
     пометкой множителя урона (POWER_ATTACK_DAMAGE_MULTIPLIER, не хардкод)."""
     if power_attack:
-        return i18n.t("combat.strike.damage_percent_power", percent=percent, multiplier=f"{POWER_ATTACK_DAMAGE_MULTIPLIER:g}")
+        return i18n.t(
+            "combat.strike.damage_percent_power", percent=percent, multiplier=f"{POWER_ATTACK_DAMAGE_MULTIPLIER:g}"
+        )
     return i18n.t("combat.strike.damage_percent", percent=percent)
 
 
@@ -122,7 +122,9 @@ def render_strike(
     уворот и урон уже посчитаны вызывающим кодом с учётом множителя, здесь
     только отображение."""
     names = i18n.enemy_names(enemy_type)
-    power_attack = power_attack and side_role == "player"  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
+    power_attack = (
+        power_attack and side_role == "player"
+    )  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
     if side_role == "player":
         dodge_label = i18n.t("combat.strike.enemy_dodge_label", name_nom_cap=names["nom_cap"])
         damage_verb = i18n.t("combat.strike.player_damage_verb")
@@ -140,9 +142,13 @@ def render_strike(
         return i18n.t("combat.strike.miss", attack_label=attack_label, attack_roll=attack_roll)
 
     percent_part = _damage_suffix(attack_percent, power_attack)
-    lines = [i18n.t("combat.strike.header", attack_label=attack_label, attack_roll=attack_roll, percent_part=percent_part)]
+    lines = [
+        i18n.t("combat.strike.header", attack_label=attack_label, attack_roll=attack_roll, percent_part=percent_part)
+    ]
     if dodged:
-        lines.append(i18n.t("combat.strike.dodge_success", dodge_label=dodge_label, dodge_roll=dodge_roll, dodge_verb=dodge_verb))
+        lines.append(
+            i18n.t("combat.strike.dodge_success", dodge_label=dodge_label, dodge_roll=dodge_roll, dodge_verb=dodge_verb)
+        )
         lines.append(i18n.t("combat.strike.damage_avoided"))
     else:
         lines.append(i18n.t("combat.strike.dodge_fail", dodge_label=dodge_label, dodge_roll=dodge_roll))
@@ -165,7 +171,9 @@ def render_compact_strike(
     удара. power_attack — см. render_strike, тот же принцип (только игрок,
     только подпись/эмодзи/пометка множителя)."""
     names = i18n.enemy_names(enemy_type)
-    power_attack = power_attack and side_role == "player"  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
+    power_attack = (
+        power_attack and side_role == "player"
+    )  # мобы мощным ударом не пользуются, вне зависимости от переданного флага
     if side_role == "player":
         dodge_label = i18n.t("combat.strike.enemy_dodge_label", name_nom_cap=names["nom_cap"])
         dodge_verb = names["dodge_verb"]
@@ -176,15 +184,27 @@ def render_compact_strike(
         strike_label = i18n.t("combat.compact_strike.attack_label")
 
     if attack_percent is None:
-        return i18n.t("combat.compact_strike.miss", strike_label=strike_label, strike_number=strike_number, attack_roll=attack_roll)
+        return i18n.t(
+            "combat.compact_strike.miss",
+            strike_label=strike_label,
+            strike_number=strike_number,
+            attack_roll=attack_roll,
+        )
 
     percent_part = _damage_suffix(attack_percent, power_attack)
-    parts = [i18n.t(
-        "combat.compact_strike.header",
-        strike_label=strike_label, strike_number=strike_number, attack_roll=attack_roll, percent_part=percent_part,
-    )]
+    parts = [
+        i18n.t(
+            "combat.compact_strike.header",
+            strike_label=strike_label,
+            strike_number=strike_number,
+            attack_roll=attack_roll,
+            percent_part=percent_part,
+        )
+    ]
     if dodged:
-        parts.append(i18n.t("combat.strike.dodge_success", dodge_label=dodge_label, dodge_roll=dodge_roll, dodge_verb=dodge_verb))
+        parts.append(
+            i18n.t("combat.strike.dodge_success", dodge_label=dodge_label, dodge_roll=dodge_roll, dodge_verb=dodge_verb)
+        )
     else:
         parts.append(i18n.t("combat.strike.dodge_fail", dodge_label=dodge_label, dodge_roll=dodge_roll))
         parts.append(i18n.t("combat.compact_strike.damage", damage=f"{damage:.0f}"))
@@ -210,9 +230,11 @@ def render_hp_status(
     names = i18n.enemy_names(enemy_type)
     return i18n.t(
         "combat.hp_status",
-        player_hp=f"{player_hp:.0f}", player_hp_max=f"{player_hp_max:.0f}",
+        player_hp=f"{player_hp:.0f}",
+        player_hp_max=f"{player_hp_max:.0f}",
         name_nom_cap=names["nom_cap"],
-        enemy_hp=f"{enemy_hp:.0f}", enemy_hp_max=f"{enemy_hp_max:.0f}",
+        enemy_hp=f"{enemy_hp:.0f}",
+        enemy_hp_max=f"{enemy_hp_max:.0f}",
     )
 
 
@@ -236,8 +258,12 @@ def render_flee_opportunity_check(
     if triggered:
         return i18n.t(
             "combat.flee_check.triggered",
-            hp_label=hp_label, current_hp=f"{current_hp:.0f}", max_hp=f"{max_hp:.0f}",
-            prefix=prefix, luck_roll=luck_roll, alive_adj=alive_adj,
+            hp_label=hp_label,
+            current_hp=f"{current_hp:.0f}",
+            max_hp=f"{max_hp:.0f}",
+            prefix=prefix,
+            luck_roll=luck_roll,
+            alive_adj=alive_adj,
         )
     return i18n.t("combat.flee_check.not_triggered", prefix=prefix, luck_roll=luck_roll)
 
@@ -263,11 +289,17 @@ def render_flee_attempt(
         if defeated:
             return i18n.t(
                 "combat.flee_attempt.player_caught",
-                attack_roll=attack_roll, attack_percent=attack_percent, damage=damage_str, **nk,
+                attack_roll=attack_roll,
+                attack_percent=attack_percent,
+                damage=damage_str,
+                **nk,
             )
         return i18n.t(
             "combat.flee_attempt.player_survives",
-            attack_roll=attack_roll, attack_percent=attack_percent, damage=damage_str, **nk,
+            attack_roll=attack_roll,
+            attack_percent=attack_percent,
+            damage=damage_str,
+            **nk,
         )
 
     if attack_percent is None:
@@ -275,11 +307,17 @@ def render_flee_attempt(
     if defeated:
         return i18n.t(
             "combat.flee_attempt.enemy_caught",
-            attack_roll=attack_roll, attack_percent=attack_percent, damage=damage_str, **nk,
+            attack_roll=attack_roll,
+            attack_percent=attack_percent,
+            damage=damage_str,
+            **nk,
         )
     return i18n.t(
         "combat.flee_attempt.enemy_survives",
-        attack_roll=attack_roll, attack_percent=attack_percent, damage=damage_str, **nk,
+        attack_roll=attack_roll,
+        attack_percent=attack_percent,
+        damage=damage_str,
+        **nk,
     )
 
 
@@ -291,7 +329,7 @@ def render_battle_end(
     hp_current: float,
     hp_max: float,
     hp_seconds_to_full: float,
-    loot_dropped: Optional[str] = None,
+    loot_dropped: str | None = None,
 ) -> str:
     names = i18n.enemy_names(enemy_type)
     nk = _name_kwargs(names)

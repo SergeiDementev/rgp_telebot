@@ -43,7 +43,6 @@ POOL/CHECKPOINT_INTERVAL/CHECKPOINT_FIGHTS/ENCOUNTER_ORDER).
 
 import argparse
 import csv
-import json
 import random
 import statistics
 import sys
@@ -96,6 +95,7 @@ def choose_potion_to_drink(potions_small: int, potions_large: int):
     if potions_small > 0:
         return "small"
     return None
+
 
 # Граница "раннего этапа" для диагностики цены входа в экономику
 # (docs/notes.md) — уровни 1-4, дальше считается "остальная игра".
@@ -230,8 +230,14 @@ def simulate_single_fight_economy(
                     else:
                         result = "player_fled" if attacker_role == "player" else "enemy_fled"
                     fight_result = sc._fight_result(
-                        result, turns_taken, player, enemy, double_strikes,
-                        circumstance_outcome, circumstance_roller, flee_offers,
+                        result,
+                        turns_taken,
+                        player,
+                        enemy,
+                        double_strikes,
+                        circumstance_outcome,
+                        circumstance_roller,
+                        flee_offers,
                     )
                     fight_result["turns_taken"] = turns_taken
                     fight_result["potion_used"] = player["potion_used"]
@@ -258,8 +264,14 @@ def simulate_single_fight_economy(
                 turns_taken += 1
                 result = "victory" if attacker_role == "player" else "defeat"
                 fight_result = sc._fight_result(
-                    result, turns_taken, player, enemy, double_strikes,
-                    circumstance_outcome, circumstance_roller, flee_offers,
+                    result,
+                    turns_taken,
+                    player,
+                    enemy,
+                    double_strikes,
+                    circumstance_outcome,
+                    circumstance_roller,
+                    flee_offers,
                 )
                 fight_result["turns_taken"] = turns_taken
                 fight_result["potion_used"] = player["potion_used"]
@@ -420,8 +432,7 @@ def print_early_game_diagnostics(per_seed_economy_trajectories: list, session_fi
     золота, номер первого боя с зельем в инвентаре, доля боёв волк/кабан
     с использованным зельем."""
     print(
-        f"\n=== Ранний этап (уровни 1-{EARLY_GAME_MAX_LEVEL}) vs остальная игра "
-        f"| session-fights={session_fights} ==="
+        f"\n=== Ранний этап (уровни 1-{EARLY_GAME_MAX_LEVEL}) vs остальная игра | session-fights={session_fights} ==="
     )
     header = (
         f"{'seed':>6} {'gold@early':>11} {'gold@rest':>10} {'1й_бой_с_зельем':>16} "
@@ -494,10 +505,7 @@ def print_economy_vs_control_summary(per_seed: list, session_fights: int) -> Non
     (последняя контрольная точка каждого прогона) — сводка "рядом" для
     сравнения эффекта экономики изолированно от остального шума по seed'ам."""
     print(f"\n=== Экономика vs контроль | session-fights={session_fights} (последняя контрольная точка) ===")
-    header = (
-        f"{'seed':>6} {'ур.эк':>6} {'ур.контр':>9} "
-        f"{'кабан%эк':>9} {'кабан%контр':>12} {'gold(эк)':>9}"
-    )
+    header = f"{'seed':>6} {'ур.эк':>6} {'ур.контр':>9} {'кабан%эк':>9} {'кабан%контр':>12} {'gold(эк)':>9}"
     print(header)
     print("-" * len(header))
     for entry in per_seed:
@@ -512,9 +520,21 @@ def print_economy_vs_control_summary(per_seed: list, session_fights: int) -> Non
 
 
 CSV_FIELDNAMES = [
-    "variant", "session_fights", "seed", "battle_number", "enemy_type", "result",
-    "reward_points", "victory_points_after", "level_after", "turns_taken",
-    "loot_dropped", "gold_balance_after", "potions_owned_small", "potions_owned_large", "potion_used",
+    "variant",
+    "session_fights",
+    "seed",
+    "battle_number",
+    "enemy_type",
+    "result",
+    "reward_points",
+    "victory_points_after",
+    "level_after",
+    "turns_taken",
+    "loot_dropped",
+    "gold_balance_after",
+    "potions_owned_small",
+    "potions_owned_large",
+    "potion_used",
 ]
 
 
@@ -606,7 +626,9 @@ def main():
                 session_fights, seed, args.allocation_policy, args.stat_points_per_level, economy_enabled=True
             )
             print_progression_table_economy(econ_checkpoints, f"Экономика (seed={seed})")
-            sc.save_progression_results(econ_trajectory, econ_checkpoints, f"{timestamp}_economy_sf{session_fights}_seed{seed}")
+            sc.save_progression_results(
+                econ_trajectory, econ_checkpoints, f"{timestamp}_economy_sf{session_fights}_seed{seed}"
+            )
             all_csv_rows.extend(trajectory_to_csv_rows(econ_trajectory, "economy", session_fights, seed))
             per_seed_economy_trajectories.append({"seed": seed, "trajectory": econ_trajectory})
 
@@ -614,7 +636,9 @@ def main():
                 session_fights, seed, args.allocation_policy, args.stat_points_per_level, economy_enabled=False
             )
             print_progression_table_economy(ctrl_checkpoints, f"Контроль без экономики (seed={seed})")
-            sc.save_progression_results(ctrl_trajectory, ctrl_checkpoints, f"{timestamp}_control_sf{session_fights}_seed{seed}")
+            sc.save_progression_results(
+                ctrl_trajectory, ctrl_checkpoints, f"{timestamp}_control_sf{session_fights}_seed{seed}"
+            )
             all_csv_rows.extend(trajectory_to_csv_rows(ctrl_trajectory, "control", session_fights, seed))
 
             per_seed_summary.append(

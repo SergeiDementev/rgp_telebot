@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: ruff check
+        run: ruff check .
+
+      - name: ruff format --check
+        run: ruff format --check .
+
+      # docs/hardening_plan.md, этап 1 — mypy только на то, что уже чисто
+      # (core/ строго, api/ и db/ обычным режимом). bot/ и scripts/ пока
+      # не проверяются: aiogram типизирует callback.message/from_user/data
+      # как Optional почти везде (88 находок, десятки мест) — отдельная,
+      # более объёмная задача, не часть этого этапа.
+      - name: mypy (core/, api/, db/)
+        run: mypy core api db
+
+      - name: pytest
+        run: pytest -q

@@ -14,12 +14,21 @@
   `UNIQUE` на уровне БД — уникальность "одна активная на пользователя"
   обеспечивается на уровне приложения (тот же принцип, что уже применяется
   к "один активный CombatSession на персонажа").
-"""
 
-from datetime import datetime, timezone
+Типизированный стиль SQLAlchemy 2.0 (`Mapped[...]`/`mapped_column()`, не
+старый `Column(...)`, docs/hardening_plan.md, этап 1) — только ради mypy:
+без него атрибуты моделей типизируются как заведомо `Optional`, даже для
+колонок с `nullable=False`, и это давало сотни ложных находок во всём
+`api/`, которое читает эти атрибуты. Сами колонки в БД не меняются —
+`nullable`/типы здесь ровно те же, что были в `Column(...)`, просто
+выражены через аннотацию (`Mapped[X]` = NOT NULL, `Mapped[X | None]` =
+nullable)."""
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String
-from sqlalchemy.orm import relationship
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import JSON, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.session import Base
 
@@ -29,46 +38,46 @@ def _utcnow() -> datetime:
     # (одинаково и на SQLite, и на PostgreSQL, docs/notes.md) — если писать
     # aware, сравнение naive/aware (например, в core.progression.get_current_hp)
     # упадёт после db.refresh().
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Character(Base):
     __tablename__ = "characters"
 
-    id = Column(Integer, primary_key=True)
-    telegram_user_id = Column(Integer, nullable=False, index=True)
-    nickname = Column(String, nullable=False)
-    level = Column(Integer, nullable=False, default=1)
-    victory_points = Column(Integer, nullable=False, default=0)
-    unspent_stat_points = Column(Integer, nullable=False, default=0)
-    strength = Column(Integer, nullable=False)
-    agility = Column(Integer, nullable=False)
-    luck = Column(Integer, nullable=False)
-    vitality = Column(Integer, nullable=False)
-    hp_current = Column(Float, nullable=False)
-    last_hp_update_at = Column(DateTime, nullable=False, default=_utcnow)
-    created_at = Column(DateTime, nullable=False, default=_utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    telegram_user_id: Mapped[int] = mapped_column(index=True)
+    nickname: Mapped[str]
+    level: Mapped[int] = mapped_column(default=1)
+    victory_points: Mapped[int] = mapped_column(default=0)
+    unspent_stat_points: Mapped[int] = mapped_column(default=0)
+    strength: Mapped[int]
+    agility: Mapped[int]
+    luck: Mapped[int]
+    vitality: Mapped[int]
+    hp_current: Mapped[float]
+    last_hp_update_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
     # Архивация вместо удаления (docs/notes.md, п.41) — is_active=False
     # помечает законченное прохождение (ручной сброс или победа над боссом),
     # его CombatSession/StatAllocationLog остаются в БД навсегда для
     # аналитики (scripts/export_playtest_stats.py --character-id N).
-    is_active = Column(Boolean, nullable=False, default=True)
-    archived_at = Column(DateTime, nullable=True)
-    archived_reason = Column(String, nullable=True)  # "manual_reset" | "boss_victory"
+    is_active: Mapped[bool] = mapped_column(default=True)
+    archived_at: Mapped[datetime | None] = mapped_column(default=None)
+    archived_reason: Mapped[str | None] = mapped_column(default=None)  # "manual_reset" | "boss_victory"
 
     # Экономика (docs/notes.md, п.30) — цены/капы в core/economy.py, не здесь.
-    gold = Column(Integer, nullable=False, default=0)
-    loot = Column(JSON, nullable=False, default=dict)  # {"<item_name>": <count>, ...}
-    potions_small = Column(Integer, nullable=False, default=0)
-    potions_large = Column(Integer, nullable=False, default=0)
+    gold: Mapped[int] = mapped_column(default=0)
+    loot: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)  # {"<item_name>": <count>, ...}
+    potions_small: Mapped[int] = mapped_column(default=0)
+    potions_large: Mapped[int] = mapped_column(default=0)
 
     # Двуязычность (docs/notes.md) — "ru" | "en", по одному на персонажа, не
     # на Telegram-аккаунт: отдельной модели пользователя в проекте нет,
     # персонаж — единственная сущность, за которой закреплён игрок.
     # api/dependencies.py::get_localized_character выставляет по этому полю
     # текущую локаль (core/i18n.py) на время обработки запроса.
-    language = Column(String, nullable=False, default="ru")
+    language: Mapped[str] = mapped_column(default="ru")
 
     # message_id двух постоянных сообщений игрока в Telegram — приветствия и
     # главного игрового экрана (docs/notes.md). Nullable — у персонажа, ещё
@@ -79,44 +88,46 @@ class Character(Base):
     # хранится — бот работает только в приватных чатах, где Telegram
     # гарантирует chat_id == telegram_user_id (тот же принцип, что и во
     # всём остальном API — X-Telegram-User-Id, не chat_id).
-    welcome_message_id = Column(Integer, nullable=True)
-    main_message_id = Column(Integer, nullable=True)
+    welcome_message_id: Mapped[int | None] = mapped_column(default=None)
+    main_message_id: Mapped[int | None] = mapped_column(default=None)
 
 
 class CombatSession(Base):
     __tablename__ = "combat_sessions"
 
-    id = Column(Integer, primary_key=True)
-    character_id = Column(Integer, ForeignKey("characters.id"), nullable=False, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    character_id: Mapped[int] = mapped_column(ForeignKey("characters.id"), index=True)
 
-    enemy_type = Column(String, nullable=False)
-    enemy_hp_current = Column(Float, nullable=False)
-    character_hp_snapshot = Column(Float, nullable=False)
+    enemy_type: Mapped[str]
+    enemy_hp_current: Mapped[float]
+    character_hp_snapshot: Mapped[float]
 
-    current_turn = Column(String, nullable=True)  # "player" | "enemy"; None до /start (инициатива ещё не брошена)
-    status = Column(String, nullable=False, default="awaiting_initiative")
+    current_turn: Mapped[str | None] = mapped_column(
+        default=None
+    )  # "player" | "enemy"; None до /start (инициатива ещё не брошена)
+    status: Mapped[str] = mapped_column(default="awaiting_initiative")
     # "awaiting_initiative" | "awaiting_confirmation" | "active" | "finished"
-    result = Column(String, nullable=True)
+    result: Mapped[str | None] = mapped_column(default=None)
     # "victory" | "defeat" | "player_fled" | "enemy_fled"
 
-    circumstance_outcome = Column(String, nullable=True)  # "buff" | "debuff" | None
-    circumstance_roller = Column(String, nullable=True)  # "player" | "enemy"
-    strength_modifier_player = Column(Float, nullable=False, default=1.0)
-    strength_modifier_enemy = Column(Float, nullable=False, default=1.0)
+    circumstance_outcome: Mapped[str | None] = mapped_column(default=None)  # "buff" | "debuff" | None
+    circumstance_roller: Mapped[str | None] = mapped_column(default=None)  # "player" | "enemy"
+    strength_modifier_player: Mapped[float] = mapped_column(default=1.0)
+    strength_modifier_enemy: Mapped[float] = mapped_column(default=1.0)
 
-    player_flee_right_used = Column(Boolean, nullable=False, default=False)
-    enemy_flee_right_used = Column(Boolean, nullable=False, default=False)
+    player_flee_right_used: Mapped[bool] = mapped_column(default=False)
+    enemy_flee_right_used: Mapped[bool] = mapped_column(default=False)
 
     # Зелья (docs/notes.md, п.31) — лимит "раз за бой", своё поле, не завязан
     # на player_flee_right_used. Только игрок — у моба зелий нет вообще.
-    player_potion_used_this_battle = Column(Boolean, nullable=False, default=False)
+    player_potion_used_this_battle: Mapped[bool] = mapped_column(default=False)
 
-    turn_log = Column(JSON, nullable=False, default=list)
+    turn_log: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
 
-    created_at = Column(DateTime, nullable=False, default=_utcnow)
-    updated_at = Column(DateTime, nullable=False, default=_utcnow, onupdate=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
-    character = relationship("Character")
+    character: Mapped[Character] = relationship("Character")
 
 
 class StatAllocationLog(Base):
@@ -128,8 +139,8 @@ class StatAllocationLog(Base):
 
     __tablename__ = "stat_allocation_log"
 
-    id = Column(Integer, primary_key=True)
-    character_id = Column(Integer, ForeignKey("characters.id"), nullable=False, index=True)
-    stat = Column(String, nullable=False)
-    level_at_time = Column(Integer, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=_utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    character_id: Mapped[int] = mapped_column(ForeignKey("characters.id"), index=True)
+    stat: Mapped[str]
+    level_at_time: Mapped[int]
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)

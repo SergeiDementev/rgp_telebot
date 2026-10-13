@@ -12,7 +12,7 @@ character-эндпоинты работают по explicit id/telegram_user_id 
 """
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -34,7 +34,7 @@ class ApiClient:
         self,
         base_url: str = API_BASE_URL,
         api_key: str = INTERNAL_API_KEY,
-        transport: Optional[httpx.AsyncBaseTransport] = None,
+        transport: httpx.AsyncBaseTransport | None = None,
     ):
         self._client = httpx.AsyncClient(
             base_url=base_url, headers={"X-Internal-Api-Key": api_key}, transport=transport
@@ -43,7 +43,7 @@ class ApiClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def __aenter__(self) -> "ApiClient":
+    async def __aenter__(self) -> ApiClient:
         return self
 
     async def __aexit__(self, *exc_info) -> None:
@@ -54,9 +54,9 @@ class ApiClient:
         method: str,
         path: str,
         *,
-        telegram_user_id: Optional[int] = None,
-        json: Optional[dict] = None,
-        params: Optional[dict] = None,
+        telegram_user_id: int | None = None,
+        json: dict | None = None,
+        params: dict | None = None,
     ) -> dict:
         headers = {}
         if telegram_user_id is not None:
@@ -85,25 +85,19 @@ class ApiClient:
         return await self._request("GET", f"/character/{telegram_user_id}")
 
     async def allocate_point(self, character_id: int, stat: str) -> dict:
-        return await self._request(
-            "POST", f"/character/{character_id}/allocate_point", json={"stat": stat}
-        )
+        return await self._request("POST", f"/character/{character_id}/allocate_point", json={"stat": stat})
 
     async def sell_loot(self, character_id: int) -> dict:
         return await self._request("POST", f"/character/{character_id}/sell_loot")
 
     async def buy_potion(self, character_id: int, size: str) -> dict:
-        return await self._request(
-            "POST", f"/character/{character_id}/buy_potion", json={"size": size}
-        )
+        return await self._request("POST", f"/character/{character_id}/buy_potion", json={"size": size})
 
     async def set_language(self, character_id: int, language: str) -> dict:
-        return await self._request(
-            "POST", f"/character/{character_id}/set_language", json={"language": language}
-        )
+        return await self._request("POST", f"/character/{character_id}/set_language", json={"language": language})
 
     async def set_message_ids(
-        self, character_id: int, *, welcome_message_id: Optional[int] = None, main_message_id: Optional[int] = None
+        self, character_id: int, *, welcome_message_id: int | None = None, main_message_id: int | None = None
     ) -> dict:
         """docs/notes.md — запоминает message_id двух постоянных сообщений
         игрока (приветствия/главного экрана). Частичное обновление — не
@@ -131,9 +125,7 @@ class ApiClient:
         return await self._request("POST", "/encounter/search_boss", telegram_user_id=telegram_user_id)
 
     async def start_combat(self, telegram_user_id: int, combat_session_id: int) -> dict:
-        return await self._request(
-            "POST", f"/combat/{combat_session_id}/start", telegram_user_id=telegram_user_id
-        )
+        return await self._request("POST", f"/combat/{combat_session_id}/start", telegram_user_id=telegram_user_id)
 
     async def confirm_combat(self, telegram_user_id: int, combat_session_id: int, decision: str) -> dict:
         return await self._request(
@@ -168,21 +160,15 @@ class ApiClient:
         )
 
     async def get_combat_session(self, telegram_user_id: int, combat_session_id: int) -> dict:
-        return await self._request(
-            "GET", f"/combat/{combat_session_id}", telegram_user_id=telegram_user_id
-        )
+        return await self._request("GET", f"/combat/{combat_session_id}", telegram_user_id=telegram_user_id)
 
     async def resume_combat_session(self, telegram_user_id: int, combat_session_id: int) -> dict:
         """docs/notes.md, п.48 — восстановление потерянной клавиатуры боя
         (например, после удаления чата в Telegram); только чтение, ничего
         не мутирует на сервере."""
-        return await self._request(
-            "GET", f"/combat/{combat_session_id}/resume", telegram_user_id=telegram_user_id
-        )
+        return await self._request("GET", f"/combat/{combat_session_id}/resume", telegram_user_id=telegram_user_id)
 
     async def cancel_combat_session(self, telegram_user_id: int, combat_session_id: int) -> None:
         """docs/notes.md, п.51 — "⬅️ Назад" на экране входа в бой, до
         инициативы: отменяет встречу целиком, ничего в бою ещё не произошло."""
-        await self._request(
-            "DELETE", f"/combat/{combat_session_id}", telegram_user_id=telegram_user_id
-        )
+        await self._request("DELETE", f"/combat/{combat_session_id}", telegram_user_id=telegram_user_id)

@@ -77,8 +77,12 @@ def test_simulate_single_fight_vs_boss_runs_without_error():
     rng = random.Random(5)
     for _ in range(300):
         result = sb.simulate_single_fight_vs_boss(
-            player_stats, sb.BOSS_PRESET, "always_fight", rng,
-            potions_small=sb.FULL_STASH_SMALL_POTIONS, potions_large=sb.FULL_STASH_LARGE_POTIONS,
+            player_stats,
+            sb.BOSS_PRESET,
+            "always_fight",
+            rng,
+            potions_small=sb.FULL_STASH_SMALL_POTIONS,
+            potions_large=sb.FULL_STASH_LARGE_POTIONS,
             unlimited_potions=True,
         )
         assert "result" in result
@@ -95,16 +99,26 @@ def test_unlimited_potions_scenario_uses_more_potions_than_limited_scenario():
     rng_unlimited = random.Random(11)
     unlimited_results = [
         sb.simulate_single_fight_vs_boss(
-            player_stats, sb.BOSS_PRESET, "always_fight", rng_unlimited,
-            sb.FULL_STASH_SMALL_POTIONS, sb.FULL_STASH_LARGE_POTIONS, unlimited_potions=True,
+            player_stats,
+            sb.BOSS_PRESET,
+            "always_fight",
+            rng_unlimited,
+            sb.FULL_STASH_SMALL_POTIONS,
+            sb.FULL_STASH_LARGE_POTIONS,
+            unlimited_potions=True,
         )
         for _ in range(200)
     ]
     rng_limited = random.Random(12)
     limited_results = [
         sb.simulate_single_fight_vs_boss(
-            player_stats, sb.BOSS_PRESET, "always_fight", rng_limited,
-            sb.FULL_STASH_SMALL_POTIONS, sb.FULL_STASH_LARGE_POTIONS, unlimited_potions=False,
+            player_stats,
+            sb.BOSS_PRESET,
+            "always_fight",
+            rng_limited,
+            sb.FULL_STASH_SMALL_POTIONS,
+            sb.FULL_STASH_LARGE_POTIONS,
+            unlimited_potions=False,
         )
         for _ in range(200)
     ]
@@ -132,15 +146,22 @@ def test_boss_preset_hits_target_win_rate_ranges(typical_player_stats, seed):
 
     rng_a = random.Random(seed)
     summary_no_prep = sb.summarize_boss(
-        sb.run_boss_batch(player_stats, sb.BOSS_PRESET, 800, rng_a, potions_small=0, potions_large=0, unlimited_potions=False)
+        sb.run_boss_batch(
+            player_stats, sb.BOSS_PRESET, 800, rng_a, potions_small=0, potions_large=0, unlimited_potions=False
+        )
     )
     assert 0 <= summary_no_prep["outcome_percent"]["victory"] <= 5
 
     rng_b = random.Random(seed + 1)
     summary_full_stash = sb.summarize_boss(
         sb.run_boss_batch(
-            player_stats, sb.BOSS_PRESET, 800, rng_b,
-            potions_small=sb.FULL_STASH_SMALL_POTIONS, potions_large=sb.FULL_STASH_LARGE_POTIONS, unlimited_potions=True,
+            player_stats,
+            sb.BOSS_PRESET,
+            800,
+            rng_b,
+            potions_small=sb.FULL_STASH_SMALL_POTIONS,
+            potions_large=sb.FULL_STASH_LARGE_POTIONS,
+            unlimited_potions=True,
         )
     )
     assert 35 <= summary_full_stash["outcome_percent"]["victory"] <= 70
@@ -163,9 +184,16 @@ def test_boss_never_flees_even_at_critical_hp(typical_player_stats):
     # игрока не нужна — наоборот, хотим ЧАСТО видеть боссу критическое HP,
     # но result никогда не должен быть "enemy_fled").
     player_stats, _count = typical_player_stats
-    weak_boss = {"hp_max": 300, "strength": 1, "agility": 0, "luck": 10}  # огромный luck -> много попыток на побег, если бы они были разрешены
+    weak_boss = {
+        "hp_max": 300,
+        "strength": 1,
+        "agility": 0,
+        "luck": 10,
+    }  # огромный luck -> много попыток на побег, если бы они были разрешены
     rng = random.Random(21)
-    results = sb.run_boss_batch(player_stats, weak_boss, 500, rng, potions_small=0, potions_large=0, unlimited_potions=False)
+    results = sb.run_boss_batch(
+        player_stats, weak_boss, 500, rng, potions_small=0, potions_large=0, unlimited_potions=False
+    )
     assert all(r["result"] != "enemy_fled" for r in results)
 
 
@@ -180,8 +208,14 @@ def test_non_boss_enemy_type_can_still_flee_in_principle(typical_player_stats):
     rng = random.Random(21)
     results = [
         sb.simulate_single_fight_vs_boss(
-            player_stats, weak_boss, "always_fight", rng,
-            potions_small=0, potions_large=0, unlimited_potions=False, enemy_type="wolf",
+            player_stats,
+            weak_boss,
+            "always_fight",
+            rng,
+            potions_small=0,
+            potions_large=0,
+            unlimited_potions=False,
+            enemy_type="wolf",
         )
         for _ in range(500)
     ]

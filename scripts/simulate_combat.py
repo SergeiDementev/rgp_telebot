@@ -168,7 +168,14 @@ def simulate_single_fight(player_stats: dict, enemy_stats: dict, policy: str, rn
                     else:
                         result = "player_fled" if attacker_role == "player" else "enemy_fled"
                     return _fight_result(
-                        result, turns_taken, player, enemy, double_strikes, circumstance_outcome, circumstance_roller, flee_offers
+                        result,
+                        turns_taken,
+                        player,
+                        enemy,
+                        double_strikes,
+                        circumstance_outcome,
+                        circumstance_roller,
+                        flee_offers,
                     )
 
         # 5. Проверка двойного удара (§5).
@@ -194,7 +201,14 @@ def simulate_single_fight(player_stats: dict, enemy_stats: dict, policy: str, rn
                 turns_taken += 1
                 result = "victory" if attacker_role == "player" else "defeat"
                 return _fight_result(
-                    result, turns_taken, player, enemy, double_strikes, circumstance_outcome, circumstance_roller, flee_offers
+                    result,
+                    turns_taken,
+                    player,
+                    enemy,
+                    double_strikes,
+                    circumstance_outcome,
+                    circumstance_roller,
+                    flee_offers,
                 )
 
         # 7. Ход переходит другой стороне.
@@ -265,7 +279,9 @@ def print_summary(enemy_name: str, fights: int, policy: str, seed, summary: dict
         f"   противник avg/бой={summary['enemy_double_strikes_avg']:.2f}"
     )
     cp = summary["circumstance_percent"]
-    print(f"Обстоятельство: debuff={cp['debuff']:.1f}%  none={cp['none']:.1f}%  buff={cp['buff']:.1f}%  (ориентир: 20/60/20)")
+    print(
+        f"Обстоятельство: debuff={cp['debuff']:.1f}%  none={cp['none']:.1f}%  buff={cp['buff']:.1f}%  (ориентир: 20/60/20)"
+    )
     print(f"Возможности побега: среднее/бой={summary['flee_opportunities_avg']:.2f}")
     print(f"Награда: среднее victory points/бой={summary['reward_avg']:.2f}")
 

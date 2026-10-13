@@ -1,8 +1,7 @@
 """Тесты роутера /combat: confirm/turn/flee_decision/get — цикл ходов боя."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -38,7 +37,7 @@ def _insert_character(db_session_factory, telegram_user_id=1, **overrides) -> in
         luck=overrides.get("luck", 2),
         vitality=overrides.get("vitality", 3),
         hp_current=overrides.get("hp_current", 50.0),
-        last_hp_update_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        last_hp_update_at=datetime.now(UTC).replace(tzinfo=None),
         potions_small=overrides.get("potions_small", 0),
         potions_large=overrides.get("potions_large", 0),
         language=overrides.get("language", "ru"),
@@ -184,7 +183,8 @@ def test_turn_victory_awards_reward_and_updates_character(db_session_factory, mo
     client = make_client(db_session_factory)
 
     session_id = _start_session_against_mouse(
-        client, monkeypatch,
+        client,
+        monkeypatch,
         extra_rolls=[10, 10, 10, 100],  # double-strike check (не сработал), атака 100%, уворот мимо, лут="nothing"
     )
 
@@ -210,7 +210,8 @@ def test_turn_victory_can_drop_loot_into_character_inventory(db_session_factory,
     client = make_client(db_session_factory)
 
     session_id = _start_session_against_mouse(
-        client, monkeypatch,
+        client,
+        monkeypatch,
         extra_rolls=[10, 10, 10, 1],  # double-strike(нет), атака 100%, уворот мимо, лут roll=1 -> mouse_pelt
     )
 
@@ -230,7 +231,8 @@ def test_turn_victory_with_no_loot_omits_loot_line(db_session_factory, monkeypat
     client = make_client(db_session_factory)
 
     session_id = _start_session_against_mouse(
-        client, monkeypatch,
+        client,
+        monkeypatch,
         extra_rolls=[10, 10, 10, 100],  # лут roll=100 -> "nothing"
     )
 
@@ -318,9 +320,7 @@ def test_use_potion_small_heal_keeps_hp_integer_on_non_divisible_hp_max(db_sessi
     # навсегда (последующий урон всегда целый), пока HP не показывало
     # "0/70" в статус-баре, хотя реально было, например, 0.5 — бой не
     # заканчивался, хотя выглядело так, будто должен был.
-    _insert_character(
-        db_session_factory, strength=10, agility=5, luck=2, vitality=5, hp_current=10.0, potions_small=1
-    )
+    _insert_character(db_session_factory, strength=10, agility=5, luck=2, vitality=5, hp_current=10.0, potions_small=1)
     client = make_client(db_session_factory)
 
     session_id = _start_session_against_mouse(client, monkeypatch, extra_rolls=[])
@@ -364,9 +364,7 @@ def test_use_potion_against_boss_has_no_per_battle_limit(db_session_factory, mon
     # docs/notes.md, п.39 — у финального босса нет ограничения "раз за бой"
     # на зелья (unlimited_potions в content/enemies.json), в отличие от
     # обычных противников (п.33). Инвентарь всё равно тратится по-настоящему.
-    _insert_character(
-        db_session_factory, level=9, strength=10, agility=5, luck=2, hp_current=10.0, potions_small=2
-    )
+    _insert_character(db_session_factory, level=9, strength=10, agility=5, luck=2, hp_current=10.0, potions_small=2)
     client = make_client(db_session_factory)
 
     session_id = _start_session_against_boss(client, monkeypatch, extra_rolls=[])
@@ -452,7 +450,8 @@ def test_turn_double_strike_renders_two_compact_strikes(db_session_factory, monk
     client = make_client(db_session_factory)
 
     session_id = _start_session_against_mouse(
-        client, monkeypatch,
+        client,
+        monkeypatch,
         extra_rolls=[1, 3, 10, 5, 10],  # double-strike(1,triggered) удар1(3,10) удар2(5,10)
     )
 
@@ -473,7 +472,8 @@ def test_turn_defeat_by_enemy(db_session_factory, monkeypatch):
     client = make_client(db_session_factory)
 
     session_id = _start_session_against_mouse(
-        client, monkeypatch,
+        client,
+        monkeypatch,
         extra_rolls=[10, 1, 1],  # double-strike нет, атака=1 -> промах
     )
 
@@ -554,7 +554,8 @@ def test_turn_victory_against_boss_shows_congratulations_and_no_loot(db_session_
     client = make_client(db_session_factory)
 
     session_id = _start_session_against_boss(
-        client, monkeypatch,
+        client,
+        monkeypatch,
         extra_rolls=[10, 10, 10, 100],  # double-strike нет, атака=100%, уворот мимо, лут roll (неважно какой)
     )
 
@@ -768,9 +769,7 @@ def test_resume_combat_session_awaiting_confirmation_reconstructs_initiative_and
     assert "Обстоятельство" in body["text"]
 
 
-def test_resume_combat_session_awaiting_confirmation_boss_has_no_circumstance(
-    db_session_factory, monkeypatch
-):
+def test_resume_combat_session_awaiting_confirmation_boss_has_no_circumstance(db_session_factory, monkeypatch):
     # docs/notes.md, п.56 — у босса нет записи "circumstance" в turn_log
     # вообще (has_circumstance=false), реконструкция не должна на неё падать.
     _insert_character(db_session_factory, level=9)
@@ -825,7 +824,9 @@ def test_resume_combat_session_finished_returns_409(db_session_factory, monkeypa
     _insert_character(db_session_factory, strength=100, agility=10, luck=2)
     client = make_client(db_session_factory)
     session_id = _start_session_against_mouse(
-        client, monkeypatch, extra_rolls=[10, 10, 10, 100],
+        client,
+        monkeypatch,
+        extra_rolls=[10, 10, 10, 100],
     )
     finished = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
     assert finished.json()["status"] == "finished"

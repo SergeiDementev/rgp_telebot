@@ -8,7 +8,6 @@ import pytest
 from core import economy as ec
 from scripts import simulate_combat_economy as sce
 
-
 # ---------------------------------------------------------------------------
 # Лут
 # ---------------------------------------------------------------------------
@@ -62,16 +61,12 @@ def test_buy_potions_prefers_large_when_affordable():
 
 
 def test_buy_potions_falls_back_to_small_when_cannot_afford_large():
-    gold, small, large = sce.buy_potions(
-        gold=sce.SMALL_POTION_PRICE, potions_small=0, potions_large=0
-    )
+    gold, small, large = sce.buy_potions(gold=sce.SMALL_POTION_PRICE, potions_small=0, potions_large=0)
     assert (gold, small, large) == (0, 1, 0)
 
 
 def test_buy_potions_respects_large_cap():
-    gold, small, large = sce.buy_potions(
-        gold=1000, potions_small=0, potions_large=sce.LARGE_POTION_CAP
-    )
+    gold, small, large = sce.buy_potions(gold=1000, potions_small=0, potions_large=sce.LARGE_POTION_CAP)
     # Большое упёрлось в потолок — переключается на Малое, а не игнорирует покупку.
     assert large == sce.LARGE_POTION_CAP
     assert small == 1
@@ -79,7 +74,11 @@ def test_buy_potions_respects_large_cap():
 
 
 def test_buy_potions_does_nothing_when_both_capped():
-    assert sce.buy_potions(1000, sce.SMALL_POTION_CAP, sce.LARGE_POTION_CAP) == (1000, sce.SMALL_POTION_CAP, sce.LARGE_POTION_CAP)
+    assert sce.buy_potions(1000, sce.SMALL_POTION_CAP, sce.LARGE_POTION_CAP) == (
+        1000,
+        sce.SMALL_POTION_CAP,
+        sce.LARGE_POTION_CAP,
+    )
 
 
 def test_buy_potions_does_nothing_when_too_poor():
@@ -180,7 +179,7 @@ def test_many_fights_run_without_error_even_when_enemy_hp_gets_critical():
 
     player_stats = {"hp_max": 50, "strength": 5, "agility": 5, "luck": 2}
     rng = random.Random(3)
-    for enemy_name, enemy_stats in sc.ENEMY_PRESETS.items():
+    for _enemy_name, enemy_stats in sc.ENEMY_PRESETS.items():
         for _ in range(200):
             result = sce.simulate_single_fight_economy(
                 player_stats, enemy_stats, "always_fight", rng, potions_small=1, potions_large=1

@@ -88,25 +88,13 @@ def test_render_strike_miss():
 
 
 def test_render_strike_hit_player_attacking():
-    text = r.render_strike(
-        "wolf", "player", attack_roll=8, attack_percent=80, dodge_roll=4, dodged=False, damage=68
-    )
-    assert text == (
-        "🗡️ Твоя атака: 8 → 80% силы.\n"
-        "🛡️ Волк уворачивается: 4 → не вышло!\n"
-        "💥 Ты наносишь 68 урона."
-    )
+    text = r.render_strike("wolf", "player", attack_roll=8, attack_percent=80, dodge_roll=4, dodged=False, damage=68)
+    assert text == ("🗡️ Твоя атака: 8 → 80% силы.\n🛡️ Волк уворачивается: 4 → не вышло!\n💥 Ты наносишь 68 урона.")
 
 
 def test_render_strike_dodged_enemy_attacking():
-    text = r.render_strike(
-        "wolf", "enemy", attack_roll=6, attack_percent=60, dodge_roll=8, dodged=True, damage=0
-    )
-    assert text == (
-        "🗡️ Атака волка: 6 → 60% силы.\n"
-        "🛡️ Твой уворот: 8 → увернулся!\n"
-        "✅ Урон полностью пропущен."
-    )
+    text = r.render_strike("wolf", "enemy", attack_roll=6, attack_percent=60, dodge_roll=8, dodged=True, damage=0)
+    assert text == ("🗡️ Атака волка: 6 → 60% силы.\n🛡️ Твой уворот: 8 → увернулся!\n✅ Урон полностью пропущен.")
 
 
 def test_render_compact_strike_hit():
@@ -125,9 +113,7 @@ def test_render_compact_strike_dodged():
 
 def test_render_strike_dodged_uses_feminine_verb_for_mouse():
     # Мышь — женский род: "увернулась", не "увернулся" (docs/notes.md).
-    text = r.render_strike(
-        "mouse", "player", attack_roll=6, attack_percent=60, dodge_roll=8, dodged=True, damage=0
-    )
+    text = r.render_strike("mouse", "player", attack_roll=6, attack_percent=60, dodge_roll=8, dodged=True, damage=0)
     assert "Мышь уворачивается: 8 → увернулась!" in text
 
 
@@ -148,19 +134,29 @@ def test_render_compact_strike_dodged_uses_feminine_verb_for_mouse():
 def test_render_strike_power_attack_hit_uses_own_label_and_multiplier_note():
     # docs/combat_mechanics.md §3a — своя подпись/эмодзи и пометка "урон ×1.5!".
     text = r.render_strike(
-        "wolf", "player", attack_roll=7, attack_percent=70, dodge_roll=5, dodged=False, damage=105,
+        "wolf",
+        "player",
+        attack_roll=7,
+        attack_percent=70,
+        dodge_roll=5,
+        dodged=False,
+        damage=105,
         power_attack=True,
     )
     assert text == (
-        "💥 Мощный удар: 7 → 70% силы, урон ×1.5!\n"
-        "🛡️ Волк уворачивается: 5 → не вышло!\n"
-        "💥 Ты наносишь 105 урона."
+        "💥 Мощный удар: 7 → 70% силы, урон ×1.5!\n🛡️ Волк уворачивается: 5 → не вышло!\n💥 Ты наносишь 105 урона."
     )
 
 
 def test_render_strike_power_attack_miss():
     text = r.render_strike(
-        "wolf", "player", attack_roll=4, attack_percent=None, dodge_roll=None, dodged=None, damage=0,
+        "wolf",
+        "player",
+        attack_roll=4,
+        attack_percent=None,
+        dodge_roll=None,
+        dodged=None,
+        damage=0,
         power_attack=True,
     )
     assert text == "💥 Мощный удар: 4 → промах!"
@@ -170,7 +166,13 @@ def test_render_strike_power_attack_only_affects_player_side():
     # Мобы мощным ударом не пользуются (docs/combat_mechanics.md §3a) —
     # флаг на стороне enemy не должен ничего менять в отображении.
     text = r.render_strike(
-        "wolf", "enemy", attack_roll=6, attack_percent=60, dodge_roll=8, dodged=True, damage=0,
+        "wolf",
+        "enemy",
+        attack_roll=6,
+        attack_percent=60,
+        dodge_roll=8,
+        dodged=True,
+        damage=0,
         power_attack=True,
     )
     assert text.startswith("🗡️ Атака волка: 6 → 60% силы.")
@@ -178,7 +180,14 @@ def test_render_strike_power_attack_only_affects_player_side():
 
 def test_render_compact_strike_power_attack_hit():
     text = r.render_compact_strike(
-        "wolf", "player", 1, attack_roll=9, attack_percent=90, dodge_roll=3, dodged=False, damage=135,
+        "wolf",
+        "player",
+        1,
+        attack_roll=9,
+        attack_percent=90,
+        dodge_roll=3,
+        dodged=False,
+        damage=135,
         power_attack=True,
     )
     assert text == "💥 Мощный удар 1: 9 → 90% силы, урон ×1.5! 🛡️ Волк уворачивается: 3 → не вышло! 💥 135 урона."
@@ -223,9 +232,7 @@ def test_render_flee_attempt_player_caught():
 def test_render_flee_attempt_player_misses_pursuer():
     text = r.render_flee_attempt("wolf", "player", attack_roll=1, attack_percent=None, damage=0, defeated=False)
     assert text == (
-        "🏃 Ты пытаешься сбежать — волк бьёт без ответа!\n"
-        "🎲 Атака волка: 1 → промах!\n"
-        "✅ Тебе удаётся уйти чисто."
+        "🏃 Ты пытаешься сбежать — волк бьёт без ответа!\n🎲 Атака волка: 1 → промах!\n✅ Тебе удаётся уйти чисто."
     )
 
 
@@ -252,7 +259,13 @@ def test_render_battle_end_victory_without_loot_shows_no_luck_line():
 
 def test_render_battle_end_victory_with_loot_shows_loot_line():
     text = r.render_battle_end(
-        "wolf", "victory", reward=5, victory_points_total=23, hp_current=40, hp_max=60, hp_seconds_to_full=20,
+        "wolf",
+        "victory",
+        reward=5,
+        victory_points_total=23,
+        hp_current=40,
+        hp_max=60,
+        hp_seconds_to_full=20,
         loot_dropped="wolf_fang",
     )
     assert text == (
@@ -384,11 +397,7 @@ def test_render_double_strike_check_triggered_en(en_locale):
 
 def test_render_strike_hit_player_attacking_en(en_locale):
     text = r.render_strike("wolf", "player", attack_roll=8, attack_percent=80, dodge_roll=4, dodged=False, damage=68)
-    assert text == (
-        "🗡️ Your attack: 8 → 80% power.\n"
-        "🛡️ Wolf dodges: 4 → Failed!\n"
-        "💥 You deal 68 damage."
-    )
+    assert text == ("🗡️ Your attack: 8 → 80% power.\n🛡️ Wolf dodges: 4 → Failed!\n💥 You deal 68 damage.")
 
 
 def test_render_strike_miss_en(en_locale):
@@ -415,23 +424,26 @@ def test_render_hp_status_en(en_locale):
 def test_render_flee_opportunity_triggered_player_en(en_locale):
     text = r.render_flee_opportunity_check("wolf", "player", current_hp=18, max_hp=85, luck_roll=7, triggered=True)
     assert text == (
-        "⚠️ Your HP is critically low! (18/85)\n"
-        "🍀 Your escape chance roll: 7 → a chance to escape while alive!"
+        "⚠️ Your HP is critically low! (18/85)\n🍀 Your escape chance roll: 7 → a chance to escape while alive!"
     )
 
 
 def test_render_flee_attempt_player_misses_pursuer_en(en_locale):
     text = r.render_flee_attempt("wolf", "player", attack_roll=1, attack_percent=None, damage=0, defeated=False)
     assert text == (
-        "🏃 You try to flee — wolf gets a free hit!\n"
-        "🎲 wolf's attack: 1 → Miss!\n"
-        "✅ You make a clean escape."
+        "🏃 You try to flee — wolf gets a free hit!\n🎲 wolf's attack: 1 → Miss!\n✅ You make a clean escape."
     )
 
 
 def test_render_battle_end_victory_with_loot_en(en_locale):
     text = r.render_battle_end(
-        "wolf", "victory", reward=5, victory_points_total=23, hp_current=40, hp_max=60, hp_seconds_to_full=20,
+        "wolf",
+        "victory",
+        reward=5,
+        victory_points_total=23,
+        hp_current=40,
+        hp_max=60,
+        hp_seconds_to_full=20,
         loot_dropped="wolf_fang",
     )
     assert text == (
@@ -505,12 +517,23 @@ def test_all_render_functions_succeed_across_every_branch_and_locale():
                     assert r.render_flee_attempt(enemy_type, side_role, 5, 50, 10, False)
                 for result in ("victory", "defeat", "player_fled", "enemy_fled"):
                     assert r.render_battle_end(
-                        enemy_type, result, reward=5, victory_points_total=10,
-                        hp_current=40, hp_max=60, hp_seconds_to_full=20,
+                        enemy_type,
+                        result,
+                        reward=5,
+                        victory_points_total=10,
+                        hp_current=40,
+                        hp_max=60,
+                        hp_seconds_to_full=20,
                     )
                 assert r.render_battle_end(
-                    enemy_type, "victory", reward=5, victory_points_total=10,
-                    hp_current=40, hp_max=60, hp_seconds_to_full=20, loot_dropped="wolf_fang",
+                    enemy_type,
+                    "victory",
+                    reward=5,
+                    victory_points_total=10,
+                    hp_current=40,
+                    hp_max=60,
+                    hp_seconds_to_full=20,
+                    loot_dropped="wolf_fang",
                 )
             assert r.render_boss_encounter()
             assert r.render_boss_victory()

@@ -30,10 +30,22 @@ from core import i18n
 pytestmark = pytest.mark.asyncio
 
 BASE_CHARACTER = {
-    "id": 1, "nickname": "Hero", "level": 1, "victory_points": 0, "points_to_next_level": 8,
-    "unspent_stat_points": 5, "strength": 3, "agility": 3, "luck": 1, "vitality": 3,
-    "hp_current": 50.0, "hp_max": 50.0,
-    "gold": 0, "loot": {}, "potions_small": 0, "potions_large": 0,
+    "id": 1,
+    "nickname": "Hero",
+    "level": 1,
+    "victory_points": 0,
+    "points_to_next_level": 8,
+    "unspent_stat_points": 5,
+    "strength": 3,
+    "agility": 3,
+    "luck": 1,
+    "vitality": 3,
+    "hp_current": 50.0,
+    "hp_max": 50.0,
+    "gold": 0,
+    "loot": {},
+    "potions_small": 0,
+    "potions_large": 0,
 }
 
 
@@ -525,9 +537,7 @@ async def test_allocate_levelup_spends_point_and_refreshes_screen():
     callback = make_callback("allocate:strength")
     api = AsyncMock()
     api.get_character.return_value = BASE_CHARACTER
-    api.allocate_point.return_value = {
-        "character": {**BASE_CHARACTER, "strength": 4, "unspent_stat_points": 4}
-    }
+    api.allocate_point.return_value = {"character": {**BASE_CHARACTER, "strength": 4, "unspent_stat_points": 4}}
 
     await allocate_levelup(callback, api)
 
@@ -692,15 +702,11 @@ async def test_render_stats_screen_en(en_locale):
 
 
 async def test_render_allocation_screen_creation_en(en_locale):
-    text = render_allocation_screen({**BASE_CHARACTER, "unspent_stat_points": 5}, title="🧙 Hero Creation", mode="creation")
+    text = render_allocation_screen(
+        {**BASE_CHARACTER, "unspent_stat_points": 5}, title="🧙 Hero Creation", mode="creation"
+    )
     assert text == (
-        "🧙 Hero Creation\n"
-        "Points remaining: 5\n"
-        "\n"
-        "💪 Strength: 3\n"
-        "🤸 Agility: 3\n"
-        "🍀 Luck: 1\n"
-        "❤️ Vitality: 3 (Max HP: 50)"
+        "🧙 Hero Creation\nPoints remaining: 5\n\n💪 Strength: 3\n🤸 Agility: 3\n🍀 Luck: 1\n❤️ Vitality: 3 (Max HP: 50)"
     )
 
 
@@ -724,7 +730,12 @@ async def test_stats_screen_keyboard_labels_en(en_locale):
     markup = stats_screen_keyboard({**BASE_CHARACTER, "language": "en"})
     labels = [btn.text for row in markup.inline_keyboard for btn in row]
     assert labels == [
-        "🔄 Refresh", "🔍 Find an Enemy", "👤 Player Menu", "📜 Rules", "🌐 Русский", "⚔️ Final Boss",
+        "🔄 Refresh",
+        "🔍 Find an Enemy",
+        "👤 Player Menu",
+        "📜 Rules",
+        "🌐 Русский",
+        "⚔️ Final Boss",
     ]
 
 

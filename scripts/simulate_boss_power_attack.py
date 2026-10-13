@@ -46,14 +46,24 @@ def run_seed_comparison(player_stats: dict, boss_stats: dict, seeds, fights_per_
     rows = []
     for seed in seeds:
         baseline_results = sb.run_boss_batch(
-            player_stats, boss_stats, fights_per_seed, random.Random(seed),
-            potions_small=sb.FULL_STASH_SMALL_POTIONS, potions_large=sb.FULL_STASH_LARGE_POTIONS,
-            unlimited_potions=True, power_attack=False,
+            player_stats,
+            boss_stats,
+            fights_per_seed,
+            random.Random(seed),
+            potions_small=sb.FULL_STASH_SMALL_POTIONS,
+            potions_large=sb.FULL_STASH_LARGE_POTIONS,
+            unlimited_potions=True,
+            power_attack=False,
         )
         power_results = sb.run_boss_batch(
-            player_stats, boss_stats, fights_per_seed, random.Random(seed),
-            potions_small=sb.FULL_STASH_SMALL_POTIONS, potions_large=sb.FULL_STASH_LARGE_POTIONS,
-            unlimited_potions=True, power_attack=True,
+            player_stats,
+            boss_stats,
+            fights_per_seed,
+            random.Random(seed),
+            potions_small=sb.FULL_STASH_SMALL_POTIONS,
+            potions_large=sb.FULL_STASH_LARGE_POTIONS,
+            unlimited_potions=True,
+            power_attack=True,
         )
         rows.append(
             {
@@ -107,7 +117,9 @@ def parse_args():
 def main():
     args = parse_args()
     player_stats, sample_count = sb.compute_typical_level_9_10_stats()
-    print(f"Статы игрока (типичный уровень 9-10 по {len(sb.PROBE_SEEDS)} seed, {sample_count} точек-чекпоинтов): {player_stats}")
+    print(
+        f"Статы игрока (типичный уровень 9-10 по {len(sb.PROBE_SEEDS)} seed, {sample_count} точек-чекпоинтов): {player_stats}"
+    )
 
     rows = run_seed_comparison(player_stats, sb.BOSS_PRESET, sb.PROBE_SEEDS, args.fights_per_seed)
     print_report(rows, player_stats, sb.BOSS_PRESET, args.fights_per_seed)

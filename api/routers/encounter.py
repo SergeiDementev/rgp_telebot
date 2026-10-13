@@ -7,13 +7,12 @@ gameplay_loop_mvp.md §9 ("Искать противника" -> "Определ
 """
 
 import random
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from api import enemy_content
-from api import rendering
+from api import enemy_content, rendering
 from api.dependencies import get_db, get_localized_character, require_api_key
 from api.schemas.combat import CombatStartResponse, EncounterSearchResponse
 from core import combat_mechanics as cm
@@ -24,7 +23,7 @@ router = APIRouter(tags=["encounter", "combat"], dependencies=[Depends(require_a
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _roll_enemy_encounter(level: int) -> tuple:
@@ -103,7 +102,9 @@ def search_encounter(
     _require_no_active_session(character, db)
     roll, enemy_type = _roll_enemy_encounter(character.level)
     return _start_encounter_session(
-        character, db, enemy_type,
+        character,
+        db,
+        enemy_type,
         turn_log_entry={"type": "encounter", "roll": roll, "enemy_type": enemy_type},
         text=rendering.render_encounter(enemy_type, roll),
     )
@@ -121,7 +122,9 @@ def search_boss_encounter(
     проверяется дальше, на POST /combat/{id}/start, см. её докстринг)."""
     _require_no_active_session(character, db)
     return _start_encounter_session(
-        character, db, "boss",
+        character,
+        db,
+        "boss",
         turn_log_entry={"type": "encounter", "enemy_type": "boss"},
         text=rendering.render_boss_encounter(),
     )
@@ -188,8 +191,16 @@ def start_combat(
     session.turn_log = session.turn_log + [
         {"type": "initiative", "player_roll": player_roll, "enemy_roll": enemy_roll, "first_role": first_role},
         *(
-            [{"type": "circumstance", "roll": circumstance_roll, "outcome": circumstance_outcome, "roller_role": roller_role}]
-            if has_circumstance else []
+            [
+                {
+                    "type": "circumstance",
+                    "roll": circumstance_roll,
+                    "outcome": circumstance_outcome,
+                    "roller_role": roller_role,
+                }
+            ]
+            if has_circumstance
+            else []
         ),
     ]
     db.commit()
@@ -198,6 +209,13 @@ def start_combat(
     initiative_text = rendering.render_initiative(session.enemy_type, player_roll, enemy_roll, first_role)
     text = initiative_text
     if has_circumstance:
+        # mypy не связывает этот `if has_circumstance` с тем, что выше
+        # (строка 176) — для него это два разных условия, хотя переменная
+        # не менялась между ними. circumstance_outcome сюда не входит —
+        # None для него легитимный исход ("ничего не произошло",
+        # render_circumstance это сам обрабатывает), не повод для assert.
+        assert circumstance_roll is not None
+        assert roller_role is not None
         circumstance_text = rendering.render_circumstance(
             session.enemy_type, circumstance_roll, circumstance_outcome, roller_role
         )

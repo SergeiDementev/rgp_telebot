@@ -98,7 +98,7 @@ _STAT_NAME_KEYS = {
 
 
 def menu_screen_title() -> str:
-    """"👤 Меню игрока" — заголовок и подпись кнопки одновременно (экран
+    """ "👤 Меню игрока" — заголовок и подпись кнопки одновременно (экран
     прокачки вне создания персонажа). Функция, не константа — значение
     зависит от текущей локали (core.i18n.get_locale()), выставленной на
     время обработки колбэка. Публичная (без ведущего "_") — переиспользуется
@@ -108,7 +108,7 @@ def menu_screen_title() -> str:
 
 
 def creation_screen_title() -> str:
-    """"🧙 Создание героя" — заголовок экрана прокачки при создании
+    """ "🧙 Создание героя" — заголовок экрана прокачки при создании
     персонажа. Публичная — переиспользуется из bot/handlers/start.py
     (start_game/reset_confirm ведут на тот же экран создания)."""
     return i18n.t("character.creation_title")
@@ -128,14 +128,16 @@ def render_stats_screen(character: dict) -> str:
         i18n.t("character.level_line", level=character["level"]),
         i18n.t(
             "character.hp_line",
-            hp_current=f"{character['hp_current']:.0f}", hp_max=f"{character['hp_max']:.0f}",
+            hp_current=f"{character['hp_current']:.0f}",
+            hp_max=f"{character['hp_max']:.0f}",
         ),
         _stat_line("strength", character["strength"]),
         _stat_line("agility", character["agility"]),
         _stat_line("luck", character["luck"]),
         i18n.t(
             "character.victory_points_line",
-            victory_points=character["victory_points"], points_to_next_level=character["points_to_next_level"],
+            victory_points=character["victory_points"],
+            points_to_next_level=character["points_to_next_level"],
         ),
     ]
     return "\n".join(lines)
@@ -198,7 +200,9 @@ def rules_menu_keyboard() -> InlineKeyboardMarkup:
 
 def rules_section_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=i18n.t("rules.button.back_to_sections"), callback_data="show_rules")]]
+        inline_keyboard=[
+            [InlineKeyboardButton(text=i18n.t("rules.button.back_to_sections"), callback_data="show_rules")]
+        ]
     )
 
 
@@ -209,7 +213,9 @@ def _stat_line(stat: str, value) -> str:
 def _vitality_line(vitality, hp_max) -> str:
     return i18n.t(
         "character.vitality_line",
-        name=i18n.t(_STAT_NAME_KEYS["vitality"]), value=vitality, hp_max=f"{hp_max:.0f}",
+        name=i18n.t(_STAT_NAME_KEYS["vitality"]),
+        value=vitality,
+        hp_max=f"{hp_max:.0f}",
     )
 
 
@@ -266,11 +272,14 @@ def render_allocation_screen(character: dict, *, title: str, mode: str) -> str:
         "",
         i18n.t(
             "character.victory_points_line",
-            victory_points=character["victory_points"], points_to_next_level=character["points_to_next_level"],
+            victory_points=character["victory_points"],
+            points_to_next_level=character["points_to_next_level"],
         ),
     ]
     if character["unspent_stat_points"] > 0:
-        lines.append(i18n.t("character.unspent_points_available_line", unspent_stat_points=character["unspent_stat_points"]))
+        lines.append(
+            i18n.t("character.unspent_points_available_line", unspent_stat_points=character["unspent_stat_points"])
+        )
     lines.append("")
     lines.append(i18n.t("character.gold_line", gold=character["gold"]))
     lines.append("")
@@ -289,7 +298,11 @@ def _buy_potion_button(size: str, potions_owned: int) -> InlineKeyboardButton:
         name, price, cap = i18n.t("combat.potion.large_label").lower(), LARGE_POTION_PRICE, LARGE_POTION_CAP
     else:
         name, price, cap = i18n.t("combat.potion.small_label").lower(), SMALL_POTION_PRICE, SMALL_POTION_CAP
-    status = i18n.t("character.potion_cap_reached") if potions_owned >= cap else i18n.t("character.potion_price", price=price)
+    status = (
+        i18n.t("character.potion_cap_reached")
+        if potions_owned >= cap
+        else i18n.t("character.potion_price", price=price)
+    )
     return InlineKeyboardButton(
         text=i18n.t("character.buy_potion_button", name=name, status=status), callback_data=f"buy_potion:{size}"
     )
@@ -310,7 +323,9 @@ def allocation_keyboard(character: dict, *, mode: str) -> InlineKeyboardMarkup:
         rows.append([_stat_button(prefix, "strength"), _stat_button(prefix, "agility")])
         rows.append([_stat_button(prefix, "luck"), _stat_button(prefix, "vitality")])
     if mode == "creation":
-        rows.append([InlineKeyboardButton(text=i18n.t("character.button.start_adventure"), callback_data="finish_creation")])
+        rows.append(
+            [InlineKeyboardButton(text=i18n.t("character.button.start_adventure"), callback_data="finish_creation")]
+        )
         return InlineKeyboardMarkup(inline_keyboard=rows)
 
     if any(count > 0 for count in character["loot"].values()):
@@ -375,7 +390,9 @@ async def back_to_stats(callback: CallbackQuery, api: ApiClient) -> None:
     character = await get_character_or_prompt_start(callback, api)
     if character is None:
         return
-    await safe_edit_text(callback.message, render_stats_screen(character), reply_markup=stats_screen_keyboard(character))
+    await safe_edit_text(
+        callback.message, render_stats_screen(character), reply_markup=stats_screen_keyboard(character)
+    )
     await callback.answer()
 
 

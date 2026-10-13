@@ -75,7 +75,9 @@ DEFAULT_FIGHTS_PER_SEED = 2000  # для Прогона 2 (боевая стат
 # ---------------------------------------------------------------------------
 
 
-def run_natural_stock_at_level(target_level: int, seed: int, stat_policy: str, stat_points_per_level: int, max_fights: int) -> dict:
+def run_natural_stock_at_level(
+    target_level: int, seed: int, stat_policy: str, stat_points_per_level: int, max_fights: int
+) -> dict:
     """Непрерывная progression-сессия с экономикой, с 1-го уровня, без
     сброса — тот же цикл, что sce.simulate_progression_session_economy
     (бой -> лут при победе -> покупка -> победные очки -> левел-ап), но
@@ -85,7 +87,9 @@ def run_natural_stock_at_level(target_level: int, seed: int, stat_policy: str, s
     stats = dict(sc.CHARACTER_BASE_STATS)
     unspent_points = sc.CHARACTER_STARTING_POOL
     total_points_spent = 0
-    stats, unspent_points, total_points_spent = sc._spend_all_points(stat_policy, stats, unspent_points, total_points_spent)
+    stats, unspent_points, total_points_spent = sc._spend_all_points(
+        stat_policy, stats, unspent_points, total_points_spent
+    )
     stats["hp_max"] = pr.calculate_hp_max(stats["vitality"])
 
     victory_points = 0
@@ -143,8 +147,7 @@ def run_natural_stock_at_level(target_level: int, seed: int, stat_policy: str, s
 
 def run_natural_stock_all_seeds(target_level, seeds, stat_policy, stat_points_per_level, max_fights) -> list:
     return [
-        run_natural_stock_at_level(target_level, seed, stat_policy, stat_points_per_level, max_fights)
-        for seed in seeds
+        run_natural_stock_at_level(target_level, seed, stat_policy, stat_points_per_level, max_fights) for seed in seeds
     ]
 
 
@@ -172,7 +175,12 @@ def print_natural_stock_report(rows: list, target_level: int) -> None:
 # ---------------------------------------------------------------------------
 
 
-def compute_typical_level_stats(target_level: int, seeds=PROBE_SEEDS, policy: str = STAT_ALLOCATION_POLICY, session_fights: int = STATS_PROBE_SESSION_FIGHTS) -> tuple:
+def compute_typical_level_stats(
+    target_level: int,
+    seeds=PROBE_SEEDS,
+    policy: str = STAT_ALLOCATION_POLICY,
+    session_fights: int = STATS_PROBE_SESSION_FIGHTS,
+) -> tuple:
     """Как sb.compute_typical_level_9_10_stats, но для одного произвольного
     уровня и по полной трассе (trajectory), не по срезам раз в
     CHECKPOINT_INTERVAL боёв — см. докстринг модуля. Возвращает (статы,
@@ -251,18 +259,27 @@ def export_csv(natural_stock_rows: list, boss_summaries: dict, fights_per_seed: 
         writer.writerow(["# Прогон 1 — естественный запас на входе в уровень", TARGET_LEVEL])
         writer.writerow(["seed", "fight_index", "level_reached", "potions_small", "potions_large", "gold"])
         for r in natural_stock_rows:
-            writer.writerow([r["seed"], r["fight_index"], r["level_reached"], r["potions_small"], r["potions_large"], r["gold"]])
+            writer.writerow(
+                [r["seed"], r["fight_index"], r["level_reached"], r["potions_small"], r["potions_large"], r["gold"]]
+            )
 
         writer.writerow([])
-        writer.writerow(["# Прогон 2 — win rate против босса", f"seeds={list(seeds)}", f"fights_per_seed={fights_per_seed}"])
+        writer.writerow(
+            ["# Прогон 2 — win rate против босса", f"seeds={list(seeds)}", f"fights_per_seed={fights_per_seed}"]
+        )
         writer.writerow(["scenario", "potions_small", "potions_large", "victory_pct", "defeat_pct", "rounds_mean"])
         for label, entry in boss_summaries.items():
             s = entry["summary"]
-            writer.writerow([
-                label, entry["potions_small"], entry["potions_large"],
-                round(s["outcome_percent"]["victory"], 2), round(s["outcome_percent"]["defeat"], 2),
-                round(s["rounds_mean"], 2),
-            ])
+            writer.writerow(
+                [
+                    label,
+                    entry["potions_small"],
+                    entry["potions_large"],
+                    round(s["outcome_percent"]["victory"], 2),
+                    round(s["outcome_percent"]["defeat"], 2),
+                    round(s["rounds_mean"], 2),
+                ]
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +304,9 @@ def main():
     natural_large = round(statistics.mean(r["potions_large"] for r in natural_stock_rows))
 
     player_stats, sample_count, samples_per_seed = compute_typical_level_stats(TARGET_LEVEL)
-    print(f"\nСтаты {TARGET_LEVEL} уровня (по {sample_count} точкам трассы, по seed: {samples_per_seed}): {player_stats}")
+    print(
+        f"\nСтаты {TARGET_LEVEL} уровня (по {sample_count} точкам трассы, по seed: {samples_per_seed}): {player_stats}"
+    )
 
     scenarios = {
         "естественный": (natural_small, natural_large),

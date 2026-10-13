@@ -336,13 +336,16 @@ def take_turn(combat_session_id: int, character=Depends(get_current_character), 
 ```python
 # api/rendering.py (сокращённо, реальные сигнатуры)
 
+
 def render_strike(enemy_type, side_role, attack_roll, attack_percent, dodge_roll, dodged, damage) -> str:
     if attack_percent is None:
         return f"🗡️ {attack_label}: {attack_roll} → промах!"
     ...
 
-def render_compact_strike(enemy_type, side_role, strike_number, attack_roll, attack_percent, dodge_roll, dodged, damage) -> str:
-    ...  # однострочная форма — используется внутри двойного удара
+
+def render_compact_strike(
+    enemy_type, side_role, strike_number, attack_roll, attack_percent, dodge_roll, dodged, damage
+) -> str: ...  # однострочная форма — используется внутри двойного удара
 ```
 
 **Что это даёт:** при появлении второго фронтенда (веб, мобильное приложение) или необходимости локализации — меняется/добавляется только `rendering.py` (или его аналог под нужды нового клиента), а `core/` и структура данных в БД не трогаются вообще.

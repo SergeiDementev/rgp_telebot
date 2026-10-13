@@ -5,8 +5,8 @@ core/ -> сохранить -> вернуть JSON (backend_plan.md §6). Ник
 логики внутри роутера самой по себе.
 """
 
-from datetime import datetime, timezone
-from typing import Literal
+from datetime import UTC, datetime
+from typing import Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -19,6 +19,7 @@ from api.schemas.character import (
     BuyPotionResponse,
     CharacterCreate,
     CharacterOut,
+    Language,
     SellLootResponse,
     SetLanguageRequest,
     SetLanguageResponse,
@@ -39,7 +40,7 @@ STARTING_STAT_POOL = 5
 def _now() -> datetime:
     # Naive UTC — см. db/models.py:_utcnow(): колонки без timezone=True,
     # aware здесь привело бы к TypeError при сравнении.
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _to_character_out(character: Character, active_combat_session_id: int | None = None) -> CharacterOut:
@@ -72,7 +73,12 @@ def _to_character_out(character: Character, active_combat_session_id: int | None
         loot=character.loot,
         potions_small=character.potions_small,
         potions_large=character.potions_large,
-        language=character.language,
+        # Колонка в БД — обычный str, без CHECK-ограничения (docs/
+        # hardening_plan.md, этап 4) — значение гарантируется на уровне
+        # приложения: сюда попадают только "ru"/"en", проверенные
+        # Pydantic-схемами CharacterCreate.language/SetLanguageRequest.language
+        # (оба типа Language) до записи в БД.
+        language=cast(Language, character.language),
         active_combat_session_id=active_combat_session_id,
         welcome_message_id=character.welcome_message_id,
         main_message_id=character.main_message_id,
@@ -142,7 +148,7 @@ def reset_character(
     reason: Literal["manual_reset", "boss_victory"] = Query(...),
     db: Session = Depends(get_db),
 ) -> None:
-    """"Обнулить персонажа" — раньше действительно удаляло строку и каскадом
+    """ "Обнулить персонажа" — раньше действительно удаляло строку и каскадом
     CombatSession/StatAllocationLog (docs/notes.md); теперь архивирует
     (docs/notes.md, п.41) — вся история прохождения нужна для аналитики
     (scripts/export_playtest_stats.py) и должна пережить сброс/победу над
@@ -178,16 +184,16 @@ def allocate_point(
     # Валидировать имя стата ДО getattr/setattr — иначе payload.stat мог бы
     # указать на произвольный атрибут модели, не только на игровой стат.
     if payload.stat not in pr.STAT_NAMES:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"unknown stat: {payload.stat!r}"
-        )
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"unknown stat: {payload.stat!r}")
 
     try:
         new_unspent, new_value = pr.allocate_stat_point(
             character.unspent_stat_points, getattr(character, payload.stat), payload.stat
         )
     except pr.NoStatPointsAvailableError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no unspent stat points available")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="no unspent stat points available"
+        ) from None
 
     character.unspent_stat_points = new_unspent
     if payload.stat == "vitality":

@@ -12,8 +12,11 @@ from scripts import simulate_boss_early_unlock as sbe
 
 def test_run_natural_stock_at_level_reaches_target_level():
     result = sbe.run_natural_stock_at_level(
-        target_level=3, seed=1, stat_policy="priority_str_vit",
-        stat_points_per_level=pr.STAT_POINTS_PER_LEVEL, max_fights=200,
+        target_level=3,
+        seed=1,
+        stat_policy="priority_str_vit",
+        stat_points_per_level=pr.STAT_POINTS_PER_LEVEL,
+        max_fights=200,
     )
     assert result["level_reached"] >= 3
     assert result["potions_small"] >= 0
@@ -25,8 +28,11 @@ def test_run_natural_stock_at_level_reaches_target_level():
 def test_run_natural_stock_at_level_raises_when_max_fights_exceeded():
     with pytest.raises(RuntimeError):
         sbe.run_natural_stock_at_level(
-            target_level=8, seed=1, stat_policy="priority_str_vit",
-            stat_points_per_level=pr.STAT_POINTS_PER_LEVEL, max_fights=1,
+            target_level=8,
+            seed=1,
+            stat_policy="priority_str_vit",
+            stat_points_per_level=pr.STAT_POINTS_PER_LEVEL,
+            max_fights=1,
         )
 
 
@@ -83,10 +89,16 @@ def test_export_csv_writes_both_sections(tmp_path):
         {"seed": 1, "fight_index": 99, "level_reached": 8, "potions_small": 1, "potions_large": 0, "gold": 18},
     ]
     boss_summaries = {
-        "естественный": {"potions_small": 1, "potions_large": 0, "summary": {
-            "outcome_percent": {"victory": 0.1, "defeat": 99.9, "player_fled": 0, "enemy_fled": 0}, "rounds_mean": 16.0,
-            "n": 100, "potions_used_avg": 1.0,
-        }},
+        "естественный": {
+            "potions_small": 1,
+            "potions_large": 0,
+            "summary": {
+                "outcome_percent": {"victory": 0.1, "defeat": 99.9, "player_fled": 0, "enemy_fled": 0},
+                "rounds_mean": 16.0,
+                "n": 100,
+                "potions_used_avg": 1.0,
+            },
+        },
     }
     out_path = tmp_path / "boss_early_unlock_test.csv"
 

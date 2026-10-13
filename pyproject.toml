@@ -1,0 +1,65 @@
+[tool.ruff]
+# Дефолтная длина строки у ruff format — 88 символов; в этом проекте много
+# строк длиннее (особенно поясняющие комментарии в core/ и api/rendering.py,
+# которые проект хранит дословно) — 120 переформатирует только по-настоящему
+# длинные строки, не весь файл.
+line-length = 120
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+ignore = [
+    # Длина строки — не навязываем: проект хранит длинные объясняющие
+    # комментарии и собранные в одну строку переводы дословно (docs/
+    # hardening_plan.md, этап 1) — переформатировать 80+ строк вручную
+    # ради лимита ценнее, чем просто выключить проверку.
+    "E501",
+    # function-call-in-default-argument — это FastAPI Depends(...) в
+    # сигнатурах роутеров (`db: Session = Depends(get_db)`), идиоматичный
+    # паттерн внедрения зависимостей самого фреймворка, не баг.
+    "B008",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "bot", "core", "db", "i18n"]
+
+[tool.mypy]
+python_version = "3.14"
+ignore_missing_imports = true
+# Плагин sqlalchemy.ext.mypy.plugin НЕ подключаем: для Mapped[...]/
+# mapped_column() стиля (db/models.py, docs/hardening_plan.md, этап 1)
+# сама документация SQLAlchemy 2.0 прямо говорит, что плагин не нужен и
+# не рекомендуется — на практике он конфликтовал с нативной типизацией и
+# давал десятки ложных "Unexpected keyword argument" на конструкторах
+# Character/CombatSession.
+# Проект не использует __init__.py (implicit namespace packages, работает
+# штатно в рантайме) — без этого mypy путает api/routers/character.py и
+# api/schemas/character.py как один и тот же модуль "character".
+explicit_package_bases = true
+mypy_path = "."
+exclude = ["^migrations/versions/"]
+# Эти два флага mypy считает глобальными — нельзя задать только для
+# core/.* в [[overrides]] ниже (mypy ругается "should only specify
+# per-module flags"), поэтому они здесь, общие для всего проекта.
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+# core/ — чистые функции без зависимостей от HTTP/БД/Telegram, удобное
+# место для строгой проверки типов первым (docs/hardening_plan.md, этап 1).
+# `strict = true` здесь не писать — в mypy 2.4.0 эта сокращённая форма
+# внутри [[overrides]] не scoped по module и включает строгие проверки
+# для ВСЕГО проекта (проверено эмпирически), поэтому ниже перечислены
+# отдельные флаги, которые `--strict` включает согласно `mypy --help`.
+module = "core.*"
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+extra_checks = true

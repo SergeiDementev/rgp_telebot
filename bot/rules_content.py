@@ -62,8 +62,11 @@ def _convert_blocks(text: str) -> str:
         line = lines[i]
         stripped = line.strip()
 
-        if stripped.startswith("|") and stripped.endswith("|") and i + 1 < len(lines) and _TABLE_SEPARATOR_RE.match(
-            lines[i + 1].strip()
+        if (
+            stripped.startswith("|")
+            and stripped.endswith("|")
+            and i + 1 < len(lines)
+            and _TABLE_SEPARATOR_RE.match(lines[i + 1].strip())
         ):
             headers = _split_table_row(stripped)
             i += 2  # пропустить строку-заголовок и строку-разделитель

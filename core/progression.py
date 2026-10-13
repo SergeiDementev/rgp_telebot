@@ -6,7 +6,6 @@
 
 import math
 from datetime import datetime
-from typing import Optional
 
 HP_MAX_BASE = 20
 HP_MAX_PER_VITALITY = 10
@@ -108,16 +107,12 @@ def points_to_next_level(victory_points: int, step: int = LEVEL_THRESHOLD_STEP_D
     return next_threshold - victory_points
 
 
-def calculate_levels_gained(
-    old_points: int, new_points: int, step: int = LEVEL_THRESHOLD_STEP_DEFAULT
-) -> int:
+def calculate_levels_gained(old_points: int, new_points: int, step: int = LEVEL_THRESHOLD_STEP_DEFAULT) -> int:
     """§5: сколько уровней пройдено за прирост победных очков."""
     return calculate_level_for_points(new_points, step) - calculate_level_for_points(old_points, step)
 
 
-def calculate_stat_points_gained(
-    levels_gained: int, stat_points_per_level: int = STAT_POINTS_PER_LEVEL
-) -> int:
+def calculate_stat_points_gained(levels_gained: int, stat_points_per_level: int = STAT_POINTS_PER_LEVEL) -> int:
     """§5: очков прокачки за пройденные уровни = levels_gained × STAT_POINTS_PER_LEVEL."""
     return levels_gained * stat_points_per_level
 
@@ -134,13 +129,13 @@ def calculate_encounter_faces(level: int) -> tuple[int, int, int]:
     return mouse_faces, wolf_faces, boar_faces
 
 
-def calculate_victory_reward(enemy_type: str, rewards: Optional[dict] = None) -> int:
+def calculate_victory_reward(enemy_type: str, rewards: dict[str, int] | None = None) -> int:
     """§7: награда победными очками по типу моба (черновые значения)."""
     rewards = rewards if rewards is not None else VICTORY_REWARD_DEFAULTS
     return rewards[enemy_type]
 
 
-def calculate_battle_reward(outcome: str, enemy_type: str, rewards: Optional[dict] = None) -> int:
+def calculate_battle_reward(outcome: str, enemy_type: str, rewards: dict[str, int] | None = None) -> int:
     """§7: награда только при victory — defeat/player_fled/enemy_fled её не дают."""
     if outcome != "victory":
         return 0

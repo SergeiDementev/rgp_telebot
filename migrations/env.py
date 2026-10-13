@@ -2,16 +2,14 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
 # Чтобы `db.*` находился независимо от того, откуда запущен `alembic`.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from db import models as _models  # noqa: F401 — регистрирует модели в Base.metadata
-from db.session import Base, DATABASE_URL
+from db.session import DATABASE_URL, Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -72,9 +70,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

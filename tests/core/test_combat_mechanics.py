@@ -6,7 +6,6 @@ import pytest
 
 from core import combat_mechanics as cm
 
-
 # ---------------------------------------------------------------------------
 # 1. Детерминированные тесты — граничные значения бросков по §3-8
 # ---------------------------------------------------------------------------
@@ -90,7 +89,7 @@ def test_dodge_success_faces_regression_checkpoint_agility_nine():
 @pytest.mark.parametrize(
     "dodge_roll,success_faces,expected",
     [
-        (3, 3, True),   # граница: попадание в последнюю успешную грань — успех
+        (3, 3, True),  # граница: попадание в последнюю успешную грань — успех
         (4, 3, False),  # первая неуспешная грань
         (1, 1, True),
     ],
@@ -126,7 +125,7 @@ def test_is_double_strike_triggered_boundaries(luck_roll, success_faces, expecte
 @pytest.mark.parametrize(
     "current_hp,max_hp,threshold_percent,expected",
     [
-        (25, 100, 25, True),   # ровно на пороге — считается достигнутым
+        (25, 100, 25, True),  # ровно на пороге — считается достигнутым
         (25.01, 100, 25, False),
         (20, 100, cm.FLEE_THRESHOLD_PERCENT_DEFAULT, True),  # дефолт 25%
     ],
@@ -143,14 +142,12 @@ def test_flee_opportunity_faces_min_at_zero_luck():
 @pytest.mark.parametrize(
     "attack_roll,fleeing_current_hp,expected_damage,expected_hp_after,expected_defeated",
     [
-        (1, 30, 0.0, 30, False),      # промах — убегающий не задет
-        (10, 50, 100.0, 0.0, True),   # максимальный урон добивает
+        (1, 30, 0.0, 30, False),  # промах — убегающий не задет
+        (10, 50, 100.0, 0.0, True),  # максимальный урон добивает
         (6, 100, 60.0, 40.0, False),  # обычный удар, убегающий выживает
     ],
 )
-def test_resolve_flee_attempt(
-    attack_roll, fleeing_current_hp, expected_damage, expected_hp_after, expected_defeated
-):
+def test_resolve_flee_attempt(attack_roll, fleeing_current_hp, expected_damage, expected_hp_after, expected_defeated):
     result = cm.resolve_flee_attempt(
         pursuer_strength=100, attack_roll=attack_roll, fleeing_current_hp=fleeing_current_hp
     )
@@ -189,9 +186,7 @@ def test_resolve_circumstance_outcome_all_faces(roll, expected_outcome):
     ],
 )
 def test_apply_circumstance_strength_modifier(outcome, modifier_percent, expected):
-    assert cm.apply_circumstance_strength_modifier(100, outcome, modifier_percent) == pytest.approx(
-        expected
-    )
+    assert cm.apply_circumstance_strength_modifier(100, outcome, modifier_percent) == pytest.approx(expected)
 
 
 def test_resolve_strike_miss_skips_dodge_entirely():
@@ -303,10 +298,7 @@ def test_saturating_success_faces_stays_within_bounds(stat):
 
 def test_saturating_success_faces_is_non_decreasing_with_stat():
     samples = [0, 1, 2, 5, 10, 20, 50, 100, 1000]
-    faces = [
-        cm.calculate_saturating_success_faces(stat, max_faces=6, k=15, min_faces=1)
-        for stat in samples
-    ]
+    faces = [cm.calculate_saturating_success_faces(stat, max_faces=6, k=15, min_faces=1) for stat in samples]
     assert faces == sorted(faces)
 
 
@@ -346,9 +338,7 @@ def test_saturating_curve_uses_python_round_semantics():
 
 @pytest.mark.parametrize("fleeing_current_hp", [0, 5, 50, 1000])
 def test_resolve_flee_attempt_hp_after_never_negative(fleeing_current_hp):
-    result = cm.resolve_flee_attempt(
-        pursuer_strength=10_000, attack_roll=10, fleeing_current_hp=fleeing_current_hp
-    )
+    result = cm.resolve_flee_attempt(pursuer_strength=10_000, attack_roll=10, fleeing_current_hp=fleeing_current_hp)
     assert result.fleeing_hp_after >= 0
 
 
@@ -452,7 +442,7 @@ def test_two_strike_turn_composition_applies_both_strikes_when_defender_survives
 
 
 def test_unanswered_strike_scenario_via_resolve_flee_attempt():
-    """"Безответный удар" (agility=None в терминологии запроса) в этой кодовой
+    """ "Безответный удар" (agility=None в терминологии запроса) в этой кодовой
     базе — не resolve_strike с agility=None, а отдельная resolve_flee_attempt:
     у неё в принципе нет параметра уворота (см. §7). Сценарий целиком: HP ниже
     порога -> открылась возможность -> выбор "сбежать" -> безответный удар."""
@@ -465,9 +455,7 @@ def test_unanswered_strike_scenario_via_resolve_flee_attempt():
     assert cm.is_flee_opportunity_triggered(luck_roll=2, success_faces=success_faces) is True
 
     # Игрок выбирает "Сбежать" -> безответный удар преследователя без защиты.
-    result = cm.resolve_flee_attempt(
-        pursuer_strength=30, attack_roll=6, fleeing_current_hp=current_hp
-    )
+    result = cm.resolve_flee_attempt(pursuer_strength=30, attack_roll=6, fleeing_current_hp=current_hp)
     assert result.missed is False
     assert result.fleeing_hp_after == pytest.approx(2.0)  # 20 - 30*60/100 = 2
     assert result.fleeing_defeated is False

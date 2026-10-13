@@ -1,6 +1,6 @@
 """Pydantic-схемы запросов/ответов для роутеров encounter и combat."""
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -52,8 +52,8 @@ class UsePotionRequest(BaseModel):
 class CombatTurnResponse(BaseModel):
     combat_session_id: int
     status: str
-    result: Optional[str] = None
-    current_turn: Optional[str] = None
+    result: str | None = None
+    current_turn: str | None = None
     enemy_type: str
     text: str
     potions_small: int
@@ -66,8 +66,8 @@ class CombatSessionOut(BaseModel):
     combat_session_id: int
     enemy_type: str
     status: str
-    result: Optional[str] = None
-    current_turn: Optional[str] = None
+    result: str | None = None
+    current_turn: str | None = None
     player_hp_current: float
     enemy_hp_current: float
     enemy_hp_max: float

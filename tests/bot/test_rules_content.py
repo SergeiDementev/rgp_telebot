@@ -130,7 +130,7 @@ def test_rules_sections_ru_and_en_have_identical_count_and_order():
         i18n.reset_locale(en_token)
 
     assert len(sections_ru) == len(sections_en)
-    for (title_ru, _body_ru), (title_en, _body_en) in zip(sections_ru, sections_en):
+    for (title_ru, _body_ru), (title_en, _body_en) in zip(sections_ru, sections_en, strict=True):
         # Оба заголовка начинаются с одного и того же "N. " — единственный
         # языконезависимый инвариант структуры, который можно проверить, не
         # завязываясь на конкретный перевод.

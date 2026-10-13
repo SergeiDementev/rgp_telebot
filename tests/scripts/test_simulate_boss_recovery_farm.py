@@ -57,8 +57,15 @@ def test_farm_until_full_stash_with_progression_reaches_caps_and_may_level_up():
     rng = random.Random(1)
     starting_vp = pr.calculate_level_threshold(sbr.STARTING_LEVEL)
     result = sbr.farm_until_full_stash_with_progression(
-        PLAYER_STATS, sbr.STARTING_LEVEL, starting_vp, sbr.STAT_ALLOCATION_POLICY, rng,
-        pr.STAT_POINTS_PER_LEVEL, small_cap=1, large_cap=1, max_fights=200,
+        PLAYER_STATS,
+        sbr.STARTING_LEVEL,
+        starting_vp,
+        sbr.STAT_ALLOCATION_POLICY,
+        rng,
+        pr.STAT_POINTS_PER_LEVEL,
+        small_cap=1,
+        large_cap=1,
+        max_fights=200,
     )
     assert result["fights"] > 0
     assert result["victories"] + result["defeats"] + result["fled"] == result["fights"]
@@ -71,8 +78,15 @@ def test_farm_until_full_stash_with_progression_raises_when_max_fights_exceeded(
     starting_vp = pr.calculate_level_threshold(sbr.STARTING_LEVEL)
     with pytest.raises(RuntimeError):
         sbr.farm_until_full_stash_with_progression(
-            PLAYER_STATS, sbr.STARTING_LEVEL, starting_vp, sbr.STAT_ALLOCATION_POLICY, rng,
-            pr.STAT_POINTS_PER_LEVEL, small_cap=5, large_cap=3, max_fights=1,
+            PLAYER_STATS,
+            sbr.STARTING_LEVEL,
+            starting_vp,
+            sbr.STAT_ALLOCATION_POLICY,
+            rng,
+            pr.STAT_POINTS_PER_LEVEL,
+            small_cap=5,
+            large_cap=3,
+            max_fights=1,
         )
 
 
@@ -85,8 +99,15 @@ def test_farm_until_full_stash_with_progression_needs_far_fewer_fights_than_froz
 
     rng_progression = random.Random(seed)
     progression_result = sbr.farm_until_full_stash_with_progression(
-        PLAYER_STATS, sbr.STARTING_LEVEL, starting_vp, sbr.STAT_ALLOCATION_POLICY, rng_progression,
-        pr.STAT_POINTS_PER_LEVEL, small_cap=5, large_cap=3, max_fights=200,
+        PLAYER_STATS,
+        sbr.STARTING_LEVEL,
+        starting_vp,
+        sbr.STAT_ALLOCATION_POLICY,
+        rng_progression,
+        pr.STAT_POINTS_PER_LEVEL,
+        small_cap=5,
+        large_cap=3,
+        max_fights=200,
     )
 
     assert progression_result["fights"] < 100  # ожидание — близко к ~28-32, не сотни
@@ -96,8 +117,15 @@ def test_run_all_seeds_with_progression_returns_one_row_per_seed():
     seeds = [1, 7, 42]
     starting_vp = pr.calculate_level_threshold(sbr.STARTING_LEVEL)
     rows = sbr.run_all_seeds_with_progression(
-        PLAYER_STATS, sbr.STARTING_LEVEL, starting_vp, sbr.STAT_ALLOCATION_POLICY, seeds,
-        pr.STAT_POINTS_PER_LEVEL, small_cap=1, large_cap=1, max_fights=200,
+        PLAYER_STATS,
+        sbr.STARTING_LEVEL,
+        starting_vp,
+        sbr.STAT_ALLOCATION_POLICY,
+        seeds,
+        pr.STAT_POINTS_PER_LEVEL,
+        small_cap=1,
+        large_cap=1,
+        max_fights=200,
     )
     assert [r["seed"] for r in rows] == seeds
     for row in rows:
@@ -110,8 +138,12 @@ def test_run_all_seeds_with_progression_returns_one_row_per_seed():
 
 
 def test_export_csv_writes_both_variants_with_labels(tmp_path):
-    frozen_rows = [{"seed": 1, "fights": 800, "victories": 700, "defeats": 10, "fled": 90, "final_gold": 0, "final_level": 9}]
-    progression_rows = [{"seed": 1, "fights": 30, "victories": 28, "defeats": 0, "fled": 2, "final_gold": 10, "final_level": 15}]
+    frozen_rows = [
+        {"seed": 1, "fights": 800, "victories": 700, "defeats": 10, "fled": 90, "final_gold": 0, "final_level": 9}
+    ]
+    progression_rows = [
+        {"seed": 1, "fights": 30, "victories": 28, "defeats": 0, "fled": 2, "final_gold": 10, "final_level": 15}
+    ]
     out_path = tmp_path / "boss_recovery_farm_test.csv"
 
     sbr.export_csv(frozen_rows, progression_rows, out_path)

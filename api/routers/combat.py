@@ -17,8 +17,8 @@ scripts/simulate_combat.py — тот же набор черновых знач�
 """
 
 import random
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -47,7 +47,7 @@ FLEE_K = 15
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _load_owned_session(db: Session, combat_session_id: int, character: Character) -> CombatSession:
@@ -99,8 +99,14 @@ def _finish_battle(session: CombatSession, character: Character, result: str, db
     hp_max = pr.calculate_hp_max(character.vitality)
     seconds_to_full = pr.time_to_full_hp(character.hp_current, hp_max)
     return rendering.render_battle_end(
-        session.enemy_type, result, reward, character.victory_points, character.hp_current, hp_max,
-        seconds_to_full, loot_dropped=loot_dropped,
+        session.enemy_type,
+        result,
+        reward,
+        character.victory_points,
+        character.hp_current,
+        hp_max,
+        seconds_to_full,
+        loot_dropped=loot_dropped,
     )
 
 
@@ -138,8 +144,11 @@ def _resolve_flee_attempt(
     )
     session.turn_log = session.turn_log + [
         {
-            "type": "flee_attempt", "fleeing_role": fleeing_role, "attack_roll": attack_roll,
-            "damage": flee.damage, "defeated": flee.fleeing_defeated,
+            "type": "flee_attempt",
+            "fleeing_role": fleeing_role,
+            "attack_roll": attack_roll,
+            "damage": flee.damage,
+            "defeated": flee.fleeing_defeated,
         }
     ]
     finish_text = _finish_battle(session, character, result, db)
@@ -181,7 +190,7 @@ def _use_potion(session: CombatSession, character: Character, size: str, db: Ses
     return rendering.render_potion_used(size, heal)
 
 
-def _check_flee_gate(session: CombatSession, character: Character, db: Session) -> Optional[dict]:
+def _check_flee_gate(session: CombatSession, character: Character, db: Session) -> dict | None:
     """§6 combat_mechanics.md: проверка в начале хода атакующей стороны.
 
     Одна попытка за бой на сторону (docs/notes.md, п.9) — право сгорает
@@ -193,6 +202,9 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
     """
     enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
     attacker_role = session.current_turn
+    # current_turn — None только до инициативы (docs/notes.md); эта функция
+    # вызывается на ходу атакующей стороны, инициатива уже брошена.
+    assert attacker_role is not None
 
     if attacker_role == "player":
         # Из боя с финальным боссом нельзя сбежать вообще, ни игроку, ни ему
@@ -201,7 +213,11 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
         if not enemy_stats.get("player_can_flee", True):
             return None
         right_used = session.player_flee_right_used
-        current_hp, max_hp, luck = session.character_hp_snapshot, pr.calculate_hp_max(character.vitality), character.luck
+        current_hp, max_hp, luck = (
+            session.character_hp_snapshot,
+            pr.calculate_hp_max(character.vitality),
+            character.luck,
+        )
     else:
         # Финальный босс бьётся до конца (docs/notes.md, п.36) — can_flee в
         # content/enemies.json, не хардкод по названию.
@@ -243,8 +259,12 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
     session.turn_log = session.turn_log + [log_entry]
     pursuer_strength = character.strength * session.strength_modifier_player
     attempt_text = _resolve_flee_attempt(
-        session, character, db,
-        fleeing_role="enemy", pursuer_strength=pursuer_strength, fleeing_current_hp=current_hp,
+        session,
+        character,
+        db,
+        fleeing_role="enemy",
+        pursuer_strength=pursuer_strength,
+        fleeing_current_hp=current_hp,
     )
     return {"proceed": False, "text": f"{check_text}\n\n{attempt_text}"}
 
@@ -253,8 +273,11 @@ def _hp_status_text(session: CombatSession, character: Character, enemy_stats: d
     """Шапка HP — печатается первой строкой в каждом сообщении боя (пока бой не завершён)."""
     player_hp_max = pr.calculate_hp_max(character.vitality)
     return rendering.render_hp_status(
-        session.enemy_type, session.character_hp_snapshot, player_hp_max,
-        session.enemy_hp_current, enemy_stats["hp_max"],
+        session.enemy_type,
+        session.character_hp_snapshot,
+        player_hp_max,
+        session.enemy_hp_current,
+        enemy_stats["hp_max"],
     )
 
 
@@ -276,7 +299,9 @@ def _render_resume_text(session: CombatSession, character: Character) -> str:
     if session.status == "awaiting_confirmation":
         initiative_entry = next(e for e in session.turn_log if e["type"] == "initiative")
         initiative_text = rendering.render_initiative(
-            session.enemy_type, initiative_entry["player_roll"], initiative_entry["enemy_roll"],
+            session.enemy_type,
+            initiative_entry["player_roll"],
+            initiative_entry["enemy_roll"],
             initiative_entry["first_role"],
         )
         # Босс без обстоятельства (docs/notes.md, п.56 — has_circumstance=false
@@ -285,7 +310,9 @@ def _render_resume_text(session: CombatSession, character: Character) -> str:
         if circumstance_entry is None:
             return initiative_text
         circumstance_text = rendering.render_circumstance(
-            session.enemy_type, circumstance_entry["roll"], circumstance_entry["outcome"],
+            session.enemy_type,
+            circumstance_entry["roll"],
+            circumstance_entry["outcome"],
             circumstance_entry["roller_role"],
         )
         return f"{initiative_text}\n\n{circumstance_text}"
@@ -297,7 +324,12 @@ def _render_resume_text(session: CombatSession, character: Character) -> str:
         else:
             current_hp, max_hp = session.enemy_hp_current, enemy_stats["hp_max"]
         check_text = rendering.render_flee_opportunity_check(
-            session.enemy_type, check_entry["side"], current_hp, max_hp, check_entry["roll"], check_entry["triggered"],
+            session.enemy_type,
+            check_entry["side"],
+            current_hp,
+            max_hp,
+            check_entry["roll"],
+            check_entry["triggered"],
         )
         return f"{_hp_status_text(session, character, enemy_stats)}\n\n{check_text}"
 
@@ -312,9 +344,14 @@ def _turn_response(session: CombatSession, character: Character, text: str) -> C
     нему, показывать ли кнопку "Выпить зелье" на следующем ходу, без
     отдельного вызова get_character на каждом шаге."""
     return CombatTurnResponse(
-        combat_session_id=session.id, status=session.status, result=session.result,
-        current_turn=session.current_turn, enemy_type=session.enemy_type, text=text,
-        potions_small=character.potions_small, potions_large=character.potions_large,
+        combat_session_id=session.id,
+        status=session.status,
+        result=session.result,
+        current_turn=session.current_turn,
+        enemy_type=session.enemy_type,
+        text=text,
+        potions_small=character.potions_small,
+        potions_large=character.potions_large,
         potion_used_this_battle=session.player_potion_used_this_battle,
         language=character.language,
     )
@@ -331,6 +368,9 @@ def _resolve_attacker_turn(
     как и должно быть по механике."""
     enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
     attacker_role = session.current_turn
+    # current_turn — None только до инициативы (docs/notes.md); эта функция
+    # вызывается на реальном ходу, инициатива уже брошена.
+    assert attacker_role is not None
     defender_role = "enemy" if attacker_role == "player" else "player"
     power_attack = power_attack and attacker_role == "player"
 
@@ -343,14 +383,16 @@ def _resolve_attacker_turn(
         defender_agility = character.agility
         attacker_luck = enemy_stats["luck"]
 
-    texts = []
-    log_entries = []
+    texts: list[str] = []
+    log_entries: list[dict[str, Any]] = []
 
     ds_faces = cm.calculate_double_strike_success_faces(attacker_luck, DOUBLE_STRIKE_K)
     luck_roll = random.randint(1, 10)
     triggered = cm.is_double_strike_triggered(luck_roll, ds_faces)
     texts.append(rendering.render_double_strike_check(session.enemy_type, attacker_role, luck_roll, triggered))
-    log_entries.append({"type": "double_strike_check", "side": attacker_role, "roll": luck_roll, "triggered": triggered})
+    log_entries.append(
+        {"type": "double_strike_check", "side": attacker_role, "roll": luck_roll, "triggered": triggered}
+    )
 
     battle_ended = False
     result = None
@@ -376,24 +418,40 @@ def _resolve_attacker_turn(
         if triggered:
             texts.append(
                 rendering.render_compact_strike(
-                    session.enemy_type, attacker_role, strike_number, attack_roll,
-                    strike.attack_percent, dodge_roll, strike.dodged, strike.damage,
+                    session.enemy_type,
+                    attacker_role,
+                    strike_number,
+                    attack_roll,
+                    strike.attack_percent,
+                    dodge_roll,
+                    strike.dodged,
+                    strike.damage,
                     power_attack=power_attack,
                 )
             )
         else:
             texts.append(
                 rendering.render_strike(
-                    session.enemy_type, attacker_role, attack_roll,
-                    strike.attack_percent, dodge_roll, strike.dodged, strike.damage,
+                    session.enemy_type,
+                    attacker_role,
+                    attack_roll,
+                    strike.attack_percent,
+                    dodge_roll,
+                    strike.dodged,
+                    strike.damage,
                     power_attack=power_attack,
                 )
             )
         log_entries.append(
             {
-                "type": "strike", "side": attacker_role, "strike_number": strike_number,
-                "attack_roll": attack_roll, "attack_percent": strike.attack_percent,
-                "dodge_roll": dodge_roll, "dodged": strike.dodged, "damage": strike.damage,
+                "type": "strike",
+                "side": attacker_role,
+                "strike_number": strike_number,
+                "attack_roll": attack_roll,
+                "attack_percent": strike.attack_percent,
+                "dodge_roll": dodge_roll,
+                "dodged": strike.dodged,
+                "damage": strike.damage,
                 "power_attack": power_attack,
             }
         )
@@ -406,6 +464,10 @@ def _resolve_attacker_turn(
     session.turn_log = session.turn_log + log_entries
 
     if battle_ended:
+        # battle_ended устанавливается в True в той же ветке, что и result
+        # (строки выше) — mypy не связывает две разные переменные, но
+        # инвариант реальный: result не None именно тогда, когда battle_ended.
+        assert result is not None
         texts.append(_finish_battle(session, character, result, db))
     else:
         session.current_turn = defender_role
@@ -447,8 +509,12 @@ def confirm_combat(
     # §9 шаг 3б / §7: отказ -> безответный удар противника без защиты.
     pursuer_strength = enemy_stats["strength"] * session.strength_modifier_enemy
     attempt_text = _resolve_flee_attempt(
-        session, character, db,
-        fleeing_role="player", pursuer_strength=pursuer_strength, fleeing_current_hp=session.character_hp_snapshot,
+        session,
+        character,
+        db,
+        fleeing_role="player",
+        pursuer_strength=pursuer_strength,
+        fleeing_current_hp=session.character_hp_snapshot,
     )
     return _turn_response(session, character, attempt_text)
 
@@ -503,8 +569,11 @@ def flee_decision(
         enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
         pursuer_strength = enemy_stats["strength"] * session.strength_modifier_enemy
         attempt_text = _resolve_flee_attempt(
-            session, character, db,
-            fleeing_role="player", pursuer_strength=pursuer_strength,
+            session,
+            character,
+            db,
+            fleeing_role="player",
+            pursuer_strength=pursuer_strength,
             fleeing_current_hp=session.character_hp_snapshot,
         )
         return _turn_response(session, character, attempt_text)

@@ -258,12 +258,14 @@ d10, зависит от уровня персонажа (таблица по д
 
 ```python
 REGEN_PER_SECOND = 1  # фиксировано для всех; стат Здоровье влияет ТОЛЬКО на hp_max,
-                       # не на скорость регенерации
+# не на скорость регенерации
+
 
 def get_current_hp(hp_current, hp_max, last_update_at, now, regen_per_second=REGEN_PER_SECOND):
     elapsed_seconds = (now - last_update_at).total_seconds()
     regenerated = math.floor(elapsed_seconds * regen_per_second)  # округление вниз — HP всегда целое
     return min(hp_current + regenerated, hp_max)
+
 
 def time_to_full_hp(hp_current, hp_max, regen_per_second=REGEN_PER_SECOND):
     missing = hp_max - hp_current

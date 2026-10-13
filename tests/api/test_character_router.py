@@ -1,6 +1,6 @@
 """Тесты роутера /character через FastAPI TestClient + изолированную SQLite."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -13,7 +13,9 @@ from db.models import Character, CombatSession, StatAllocationLog
 from tests.api.conftest import override_get_db
 
 
-def _set_character_economy(db_session_factory, character_id, *, gold=None, loot=None, potions_small=None, potions_large=None):
+def _set_character_economy(
+    db_session_factory, character_id, *, gold=None, loot=None, potions_small=None, potions_large=None
+):
     db = db_session_factory()
     character = db.get(Character, character_id)
     if gold is not None:
@@ -104,8 +106,13 @@ def test_get_character_returns_active_combat_session_id_when_battling(db_session
 
     db = db_session_factory()
     session = CombatSession(
-        character_id=character_id, enemy_type="mouse", enemy_hp_current=20.0,
-        character_hp_snapshot=50.0, status="active", current_turn="player", turn_log=[],
+        character_id=character_id,
+        enemy_type="mouse",
+        enemy_hp_current=20.0,
+        character_hp_snapshot=50.0,
+        status="active",
+        current_turn="player",
+        turn_log=[],
     )
     db.add(session)
     db.commit()
@@ -123,8 +130,14 @@ def test_get_character_ignores_finished_combat_sessions(db_session_factory):
 
     db = db_session_factory()
     session = CombatSession(
-        character_id=character_id, enemy_type="mouse", enemy_hp_current=0.0,
-        character_hp_snapshot=50.0, status="finished", result="victory", current_turn="player", turn_log=[],
+        character_id=character_id,
+        enemy_type="mouse",
+        enemy_hp_current=0.0,
+        character_hp_snapshot=50.0,
+        status="finished",
+        result="victory",
+        current_turn="player",
+        turn_log=[],
     )
     db.add(session)
     db.commit()
@@ -143,7 +156,7 @@ def test_get_character_regenerates_hp_lazily(db_session_factory):
     db = db_session_factory()
     character = db.query(Character).filter(Character.telegram_user_id == 7).first()
     character.hp_current = 20.0
-    character.last_hp_update_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=15)
+    character.last_hp_update_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=15)
     db.commit()
     db.close()
 
@@ -217,7 +230,7 @@ def test_allocate_point_vitality_freezes_hp_under_old_cap_first(db_session_facto
     db = db_session_factory()
     character = db.get(Character, created["id"])
     character.hp_current = 44.0
-    character.last_hp_update_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=46)
+    character.last_hp_update_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=46)
     db.commit()
     db.close()
 
@@ -242,7 +255,7 @@ def test_allocate_point_non_vitality_stat_does_not_touch_hp_snapshot(db_session_
     db = db_session_factory()
     character = db.get(Character, created["id"])
     character.hp_current = 44.0
-    stale_update_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=5)
+    stale_update_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=5)
     character.last_hp_update_at = stale_update_at
     db.commit()
     db.close()

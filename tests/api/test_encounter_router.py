@@ -1,6 +1,6 @@
 """Тесты роутеров /encounter/search и /combat/{id}/start."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -35,7 +35,7 @@ def _insert_character(db_session_factory, telegram_user_id=1, **overrides) -> in
         luck=overrides.get("luck", 2),
         vitality=overrides.get("vitality", 3),
         hp_current=overrides.get("hp_current", 50.0),
-        last_hp_update_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        last_hp_update_at=datetime.now(UTC).replace(tzinfo=None),
         potions_small=overrides.get("potions_small", 0),
         potions_large=overrides.get("potions_large", 0),
         language=overrides.get("language", "ru"),
