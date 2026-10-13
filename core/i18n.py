@@ -19,6 +19,8 @@ Starlette выделяет новый `contextvars.Context` на каждый в
 from __future__ import annotations
 
 import contextvars
+from types import ModuleType
+from typing import Any
 
 DEFAULT_LOCALE = "ru"
 SUPPORTED_LOCALES = ("ru", "en")
@@ -30,7 +32,7 @@ def get_locale() -> str:
     return _current_locale.get()
 
 
-def set_locale(locale: str) -> contextvars.Token:
+def set_locale(locale: str) -> contextvars.Token[str]:
     """Возвращает Token — передать в reset_locale(), если вызывающему коду
     важно явно вернуть предыдущее значение. В основном сценарии (один
     contextvars.Context на один HTTP-запрос) не требуется — следующий
@@ -39,11 +41,11 @@ def set_locale(locale: str) -> contextvars.Token:
     return _current_locale.set(locale)
 
 
-def reset_locale(token: contextvars.Token) -> None:
+def reset_locale(token: contextvars.Token[str]) -> None:
     _current_locale.reset(token)
 
 
-def _locale_module():
+def _locale_module() -> ModuleType:
     """Модуль i18n/ru.py или i18n/en.py для текущей локали — общая точка
     входа для t()/enemy_names()/loot_item_names(), чтобы выбор каталога по
     get_locale() не дублировался в каждой из них."""
@@ -54,26 +56,28 @@ def _locale_module():
     return modules.get(get_locale(), modules[DEFAULT_LOCALE])
 
 
-def t(key: str, **kwargs) -> str:
+def t(key: str, **kwargs: Any) -> str:
     """Текст по ключу для текущей локали (get_locale()), с подстановкой
     kwargs через str.format(). Неизвестный ключ — KeyError, не молчаливый
     fallback на пустую строку: любой реальный вызов t() должен падать
     заметно, не тихо показывать игроку пустоту."""
-    template = _locale_module().TRANSLATIONS[key]
+    template: str = _locale_module().TRANSLATIONS[key]
     return template.format(**kwargs) if kwargs else template
 
 
-def enemy_names(enemy_type: str) -> dict:
+def enemy_names(enemy_type: str) -> dict[str, str]:
     """Грамматические формы имени противника для текущей локали
     (docs/notes.md, блок 2) — общий набор ключей в обеих локалях
     (nom_cap/nom_low/acc_cap/acc_low/gen_low/ins_cap/dodge_verb/
     alive_adj/fled_verb): в ru.py формы разные (падежи/род), в en.py всё
     совпадает с одним именем (английский не склоняется) — api/rendering.py
     читает оба словаря одинаково, без ветвления по локали."""
-    return _locale_module().ENEMY_NAMES[enemy_type]
+    forms: dict[str, str] = _locale_module().ENEMY_NAMES[enemy_type]
+    return forms
 
 
-def loot_item_names() -> dict:
+def loot_item_names() -> dict[str, str]:
     """Названия предметов добычи для текущей локали (api/rendering.py —
     строка добычи в конце боя)."""
-    return _locale_module().LOOT_ITEM_NAMES
+    names: dict[str, str] = _locale_module().LOOT_ITEM_NAMES
+    return names

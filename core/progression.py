@@ -129,13 +129,13 @@ def calculate_encounter_faces(level: int) -> tuple[int, int, int]:
     return mouse_faces, wolf_faces, boar_faces
 
 
-def calculate_victory_reward(enemy_type: str, rewards: dict | None = None) -> int:
+def calculate_victory_reward(enemy_type: str, rewards: dict[str, int] | None = None) -> int:
     """§7: награда победными очками по типу моба (черновые значения)."""
     rewards = rewards if rewards is not None else VICTORY_REWARD_DEFAULTS
     return rewards[enemy_type]
 
 
-def calculate_battle_reward(outcome: str, enemy_type: str, rewards: dict | None = None) -> int:
+def calculate_battle_reward(outcome: str, enemy_type: str, rewards: dict[str, int] | None = None) -> int:
     """§7: награда только при victory — defeat/player_fled/enemy_fled её не дают."""
     if outcome != "victory":
         return 0

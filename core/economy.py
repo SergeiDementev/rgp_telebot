@@ -56,7 +56,7 @@ def resolve_loot_drop(enemy_type: str, roll: int) -> tuple[str, int]:
     return name, price
 
 
-def sell_loot_value(loot: dict) -> int:
+def sell_loot_value(loot: dict[str, int]) -> int:
     """Золото за весь инвентарь лута разом — простая сумма count × цена."""
     return sum(count * LOOT_ITEM_PRICES[name] for name, count in loot.items() if count > 0)
 

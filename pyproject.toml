@@ -27,9 +27,34 @@ known-first-party = ["api", "bot", "core", "db", "i18n"]
 python_version = "3.14"
 plugins = ["sqlalchemy.ext.mypy.plugin"]
 ignore_missing_imports = true
+# Проект не использует __init__.py (implicit namespace packages, работает
+# штатно в рантайме) — без этого mypy путает api/routers/character.py и
+# api/schemas/character.py как один и тот же модуль "character".
+explicit_package_bases = true
+mypy_path = "."
+exclude = ["^migrations/versions/"]
+# Эти два флага mypy считает глобальными — нельзя задать только для
+# core/.* в [[overrides]] ниже (mypy ругается "should only specify
+# per-module flags"), поэтому они здесь, общие для всего проекта.
+warn_redundant_casts = true
+warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 # core/ — чистые функции без зависимостей от HTTP/БД/Telegram, удобное
 # место для строгой проверки типов первым (docs/hardening_plan.md, этап 1).
+# `strict = true` здесь не писать — в mypy 2.4.0 эта сокращённая форма
+# внутри [[overrides]] не scoped по module и включает строгие проверки
+# для ВСЕГО проекта (проверено эмпирически), поэтому ниже перечислены
+# отдельные флаги, которые `--strict` включает согласно `mypy --help`.
 module = "core.*"
-strict = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+extra_checks = true
