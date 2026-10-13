@@ -77,6 +77,16 @@ python -m bot.main
 python -m pytest tests/
 ```
 
+**7. Проверки стиля и типов** (`docs/hardening_plan.md`, этап 1 — то же, что гоняет `.github/workflows/ci.yml` на каждый PR)
+
+```
+ruff check .
+ruff format --check .
+mypy core api db
+```
+
+`mypy` пока проверяет только `core/`/`api/`/`db/` — `bot/` и `scripts/` сознательно не включены (aiogram типизирует многие поля как `Optional`, это отдельная, более объёмная задача).
+
 ### Через Docker (альтернатива шагам 1-5 выше — для переноса на сервер)
 
 Всё (api, бот, PostgreSQL) — одним `docker-compose.yml` (docs/notes.md, п.63). Шаг 2 (`.env`) всё равно нужен — `TELEGRAM_BOT_TOKEN`/`INTERNAL_API_KEY`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` берутся оттуда; `API_BASE_URL`/`DATABASE_URL` для контейнеров заданы прямо в `docker-compose.yml` (имена сервисов сети compose, не `localhost`).
