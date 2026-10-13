@@ -185,7 +185,7 @@ def allocate_point(
             character.unspent_stat_points, getattr(character, payload.stat), payload.stat
         )
     except pr.NoStatPointsAvailableError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no unspent stat points available")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no unspent stat points available") from None
 
     character.unspent_stat_points = new_unspent
     if payload.stat == "vitality":

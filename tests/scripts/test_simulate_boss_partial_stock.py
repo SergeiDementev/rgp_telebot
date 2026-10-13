@@ -22,7 +22,7 @@ def test_run_stock_curve_covers_every_combination():
     seeds = [1, 7]
     by_combination = sbp.run_stock_curve(PLAYER_STATS, sb.BOSS_PRESET, 20, seeds)
     assert set(by_combination.keys()) == set(sbp.POTION_STOCK_COMBINATIONS)
-    for (small, large), entry in by_combination.items():
+    for (_small, _large), entry in by_combination.items():
         assert len(entry["results"]) == 20 * len(seeds)
         assert entry["summary"]["n"] == 20 * len(seeds)
 

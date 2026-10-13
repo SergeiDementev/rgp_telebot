@@ -179,7 +179,7 @@ def test_many_fights_run_without_error_even_when_enemy_hp_gets_critical():
 
     player_stats = {"hp_max": 50, "strength": 5, "agility": 5, "luck": 2}
     rng = random.Random(3)
-    for enemy_name, enemy_stats in sc.ENEMY_PRESETS.items():
+    for _enemy_name, enemy_stats in sc.ENEMY_PRESETS.items():
         for _ in range(200):
             result = sce.simulate_single_fight_economy(
                 player_stats, enemy_stats, "always_fight", rng, potions_small=1, potions_large=1
