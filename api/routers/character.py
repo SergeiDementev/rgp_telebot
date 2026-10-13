@@ -28,7 +28,7 @@ from api.schemas.character import (
 )
 from core import economy as ec
 from core import progression as pr
-from db.models import Character, CombatSession, StatAllocationLog
+from db.models import Character, CharacterMessageState, CombatSession, StatAllocationLog
 
 router = APIRouter(prefix="/character", tags=["character"], dependencies=[Depends(require_api_key)])
 
@@ -80,8 +80,8 @@ def _to_character_out(character: Character, active_combat_session_id: int | None
         # (оба типа Language) до записи в БД.
         language=cast(Language, character.language),
         active_combat_session_id=active_combat_session_id,
-        welcome_message_id=character.welcome_message_id,
-        main_message_id=character.main_message_id,
+        welcome_message_id=character.message_state.welcome_message_id if character.message_state else None,
+        main_message_id=character.message_state.main_message_id if character.message_state else None,
     )
 
 
@@ -282,10 +282,12 @@ def set_message_ids(
     if character is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
 
+    if character.message_state is None:
+        character.message_state = CharacterMessageState(character_id=character_id)
     if payload.welcome_message_id is not None:
-        character.welcome_message_id = payload.welcome_message_id
+        character.message_state.welcome_message_id = payload.welcome_message_id
     if payload.main_message_id is not None:
-        character.main_message_id = payload.main_message_id
+        character.message_state.main_message_id = payload.main_message_id
     db.commit()
     db.refresh(character)
     return SetMessageIdsResponse(character=_to_character_out(character))
