@@ -41,6 +41,32 @@ def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+class CharacterMessageState(Base):
+    """message_id двух постоянных сообщений игрока в Telegram — приветствия
+    и главного игрового экрана (docs/notes.md). `character_id` — и PK, и FK:
+    естественно гарантирует максимум одну строку на персонажа, без
+    отдельного уникального индекса. Строки нет, пока персонаж ни разу не
+    прошёл /start после раскатки этого поля; создаётся впервые при
+    следующем /start (bot/handlers/start.py::cmd_start), который также
+    удаляет и пересоздаёт оба сообщения при повторном вызове вместо
+    накопления истории чата. chat_id отдельно не хранится — бот работает
+    только в приватных чатах, где Telegram гарантирует chat_id ==
+    telegram_user_id (тот же принцип, что и во всём остальном API —
+    X-Telegram-User-Id, не chat_id)."""
+
+    __tablename__ = "character_message_state"
+
+    character_id: Mapped[int] = mapped_column(ForeignKey("characters.id"), primary_key=True)
+    welcome_message_id: Mapped[int | None] = mapped_column(default=None)
+    main_message_id: Mapped[int | None] = mapped_column(default=None)
+
+    # Кавычки обязательны (не ложная находка ruff UP037) — Character
+    # определён ниже в файле, без них это NameError при импорте модуля.
+    character: Mapped["Character"] = relationship(  # noqa: UP037
+        "Character", back_populates="message_state"
+    )
+
+
 class Character(Base):
     __tablename__ = "characters"
 
@@ -79,17 +105,12 @@ class Character(Base):
     # текущую локаль (core/i18n.py) на время обработки запроса.
     language: Mapped[str] = mapped_column(default="ru")
 
-    # message_id двух постоянных сообщений игрока в Telegram — приветствия и
-    # главного игрового экрана (docs/notes.md). Nullable — у персонажа, ещё
-    # ни разу не прошедшего /start после раскатки этого поля, их не будет;
-    # заполняются впервые при следующем /start (bot/handlers/start.py::
-    # cmd_start), который также удаляет и пересоздаёт оба сообщения при
-    # повторном вызове вместо накопления истории чата. chat_id отдельно не
-    # хранится — бот работает только в приватных чатах, где Telegram
-    # гарантирует chat_id == telegram_user_id (тот же принцип, что и во
-    # всём остальном API — X-Telegram-User-Id, не chat_id).
-    welcome_message_id: Mapped[int | None] = mapped_column(default=None)
-    main_message_id: Mapped[int | None] = mapped_column(default=None)
+    # message_id двух постоянных сообщений игрока в Telegram — в отдельной
+    # таблице CharacterMessageState (docs/hardening_plan.md, этап 4, п.7):
+    # это состояние интерфейса бота, не игровые данные персонажа.
+    message_state: Mapped[CharacterMessageState | None] = relationship(
+        "CharacterMessageState", back_populates="character", uselist=False
+    )
 
 
 class CombatSession(Base):
