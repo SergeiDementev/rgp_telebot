@@ -10,8 +10,14 @@ def test_choose_stat_round_robin_blind_rotation_by_points_spent():
     # идёт строго по ROTATION_ORDER, не подглядывая в текущие значения.
     stats = {"strength": 3, "agility": 3, "luck": 1, "vitality": 3}
     expected_sequence = [
-        "strength", "agility", "luck", "vitality",
-        "strength", "agility", "luck", "vitality",
+        "strength",
+        "agility",
+        "luck",
+        "vitality",
+        "strength",
+        "agility",
+        "luck",
+        "vitality",
     ]
     for total_points_spent, expected_stat in enumerate(expected_sequence):
         assert sc.choose_stat_to_allocate("round_robin", stats, total_points_spent) == expected_stat

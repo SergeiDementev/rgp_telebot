@@ -86,8 +86,13 @@ def run_combination(player_stats, boss_stats, potions_small, potions_large, figh
         rng = random.Random(seed)
         results.extend(
             sb.run_boss_batch(
-                player_stats, boss_stats, fights_per_seed, rng,
-                potions_small=potions_small, potions_large=potions_large, unlimited_potions=True,
+                player_stats,
+                boss_stats,
+                fights_per_seed,
+                rng,
+                potions_small=potions_small,
+                potions_large=potions_large,
+                unlimited_potions=True,
             )
         )
     return results
@@ -109,10 +114,7 @@ def print_stock_curve(by_combination: dict, fights_per_seed: int, seeds) -> None
     total_fights = fights_per_seed * len(seeds)
     print(f"\n=== Сценарий 1: win rate по частичному запасу зелий (без лимита 'раз за бой') ===")
     print(f"seeds={list(seeds)}, fights/seed={fights_per_seed}, итого боёв на комбинацию={total_fights}")
-    header = (
-        f"{'малых':>6} {'больших':>8} {'victory%':>9} {'defeat%':>9} {'fled%':>7} "
-        f"{'rounds':>7} {'зелий/бой':>10}"
-    )
+    header = f"{'малых':>6} {'больших':>8} {'victory%':>9} {'defeat%':>9} {'fled%':>7} {'rounds':>7} {'зелий/бой':>10}"
     print(header)
     print("-" * len(header))
     for small, large in POTION_STOCK_COMBINATIONS:
@@ -178,27 +180,38 @@ def print_defeat_potion_usage(summary: dict, small_cap: int, large_cap: int) -> 
 
 def export_csv(by_combination: dict, defeat_summary: dict, fights_per_seed: int, seeds, out_path: Path) -> None:
     fieldnames = [
-        "potions_small", "potions_large", "seeds", "fights_per_seed", "fights_total",
-        "victory_pct", "defeat_pct", "player_fled_pct", "enemy_fled_pct", "rounds_mean", "potions_used_avg",
+        "potions_small",
+        "potions_large",
+        "seeds",
+        "fights_per_seed",
+        "fights_total",
+        "victory_pct",
+        "defeat_pct",
+        "player_fled_pct",
+        "enemy_fled_pct",
+        "rounds_mean",
+        "potions_used_avg",
     ]
     with out_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for small, large in POTION_STOCK_COMBINATIONS:
             summary = by_combination[(small, large)]["summary"]
-            writer.writerow({
-                "potions_small": small,
-                "potions_large": large,
-                "seeds": ";".join(str(s) for s in seeds),
-                "fights_per_seed": fights_per_seed,
-                "fights_total": fights_per_seed * len(seeds),
-                "victory_pct": round(summary["outcome_percent"]["victory"], 2),
-                "defeat_pct": round(summary["outcome_percent"]["defeat"], 2),
-                "player_fled_pct": round(summary["outcome_percent"]["player_fled"], 2),
-                "enemy_fled_pct": round(summary["outcome_percent"]["enemy_fled"], 2),
-                "rounds_mean": round(summary["rounds_mean"], 2),
-                "potions_used_avg": round(summary["potions_used_avg"], 3),
-            })
+            writer.writerow(
+                {
+                    "potions_small": small,
+                    "potions_large": large,
+                    "seeds": ";".join(str(s) for s in seeds),
+                    "fights_per_seed": fights_per_seed,
+                    "fights_total": fights_per_seed * len(seeds),
+                    "victory_pct": round(summary["outcome_percent"]["victory"], 2),
+                    "defeat_pct": round(summary["outcome_percent"]["defeat"], 2),
+                    "player_fled_pct": round(summary["outcome_percent"]["player_fled"], 2),
+                    "enemy_fled_pct": round(summary["outcome_percent"]["enemy_fled"], 2),
+                    "rounds_mean": round(summary["rounds_mean"], 2),
+                    "potions_used_avg": round(summary["potions_used_avg"], 3),
+                }
+            )
 
         # Сценарий 2 — отдельный блок строк в том же файле (комментарии
         # начинаются с "#", чтобы не сбивать парсер CSV с фиксированными
@@ -207,12 +220,18 @@ def export_csv(by_combination: dict, defeat_summary: dict, fights_per_seed: int,
         if defeat_summary["n_defeats"] == 0:
             f.write("# нет проигранных боёв в выборке\n")
         else:
-            f.write(f"# n_fights={defeat_summary['n_fights']}, n_defeats={defeat_summary['n_defeats']}, "
-                    f"defeat_rate_pct={defeat_summary['defeat_rate_pct']:.2f}\n")
-            f.write(f"# small_used_avg={defeat_summary['small_used_avg']:.3f}, "
-                    f"large_used_avg={defeat_summary['large_used_avg']:.3f}\n")
-            f.write(f"# fully_drained_pct={defeat_summary['fully_drained_pct']:.2f}, "
-                    f"died_with_leftover_pct={defeat_summary['died_with_leftover_pct']:.2f}\n")
+            f.write(
+                f"# n_fights={defeat_summary['n_fights']}, n_defeats={defeat_summary['n_defeats']}, "
+                f"defeat_rate_pct={defeat_summary['defeat_rate_pct']:.2f}\n"
+            )
+            f.write(
+                f"# small_used_avg={defeat_summary['small_used_avg']:.3f}, "
+                f"large_used_avg={defeat_summary['large_used_avg']:.3f}\n"
+            )
+            f.write(
+                f"# fully_drained_pct={defeat_summary['fully_drained_pct']:.2f}, "
+                f"died_with_leftover_pct={defeat_summary['died_with_leftover_pct']:.2f}\n"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +243,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--fights", type=int, default=DEFAULT_FIGHTS_PER_SEED, help="боёв на seed на комбинацию")
     parser.add_argument(
-        "--seeds", type=str, default=",".join(str(s) for s in sb.PROBE_SEEDS),
+        "--seeds",
+        type=str,
+        default=",".join(str(s) for s in sb.PROBE_SEEDS),
         help='seed через запятую, напр. "1,7,42,100,2024"',
     )
     return parser.parse_args()

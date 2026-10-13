@@ -83,8 +83,11 @@ def _old_resolve_strike(
     else:
         damage = cm.calculate_damage(attacker_strength, attack_percent)
     return cm.StrikeResult(
-        missed=False, attack_percent=attack_percent, dodge_success_faces=dodge_success_faces,
-        dodged=dodged, damage=damage,
+        missed=False,
+        attack_percent=attack_percent,
+        dodge_success_faces=dodge_success_faces,
+        dodged=dodged,
+        damage=damage,
     )
 
 
@@ -206,9 +209,14 @@ def run_boss_comparison(fights_per_seed: int, seeds) -> tuple:
             for seed in seeds:
                 rng = random.Random(seed)
                 batch = sb.run_boss_batch(
-                    player_stats, sb.BOSS_PRESET, fights_per_seed, rng,
-                    potions_small=sb.FULL_STASH_SMALL_POTIONS, potions_large=sb.FULL_STASH_LARGE_POTIONS,
-                    unlimited_potions=True, power_attack=True,
+                    player_stats,
+                    sb.BOSS_PRESET,
+                    fights_per_seed,
+                    rng,
+                    potions_small=sb.FULL_STASH_SMALL_POTIONS,
+                    potions_large=sb.FULL_STASH_LARGE_POTIONS,
+                    unlimited_potions=True,
+                    power_attack=True,
                 )
                 per_seed.append({"seed": seed, "summary": sb.summarize_boss(batch)})
         results[label] = per_seed

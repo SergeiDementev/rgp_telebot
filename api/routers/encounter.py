@@ -103,7 +103,9 @@ def search_encounter(
     _require_no_active_session(character, db)
     roll, enemy_type = _roll_enemy_encounter(character.level)
     return _start_encounter_session(
-        character, db, enemy_type,
+        character,
+        db,
+        enemy_type,
         turn_log_entry={"type": "encounter", "roll": roll, "enemy_type": enemy_type},
         text=rendering.render_encounter(enemy_type, roll),
     )
@@ -121,7 +123,9 @@ def search_boss_encounter(
     проверяется дальше, на POST /combat/{id}/start, см. её докстринг)."""
     _require_no_active_session(character, db)
     return _start_encounter_session(
-        character, db, "boss",
+        character,
+        db,
+        "boss",
         turn_log_entry={"type": "encounter", "enemy_type": "boss"},
         text=rendering.render_boss_encounter(),
     )
@@ -188,8 +192,16 @@ def start_combat(
     session.turn_log = session.turn_log + [
         {"type": "initiative", "player_roll": player_roll, "enemy_roll": enemy_roll, "first_role": first_role},
         *(
-            [{"type": "circumstance", "roll": circumstance_roll, "outcome": circumstance_outcome, "roller_role": roller_role}]
-            if has_circumstance else []
+            [
+                {
+                    "type": "circumstance",
+                    "roll": circumstance_roll,
+                    "outcome": circumstance_outcome,
+                    "roller_role": roller_role,
+                }
+            ]
+            if has_circumstance
+            else []
         ),
     ]
     db.commit()

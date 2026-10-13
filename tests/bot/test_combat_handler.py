@@ -84,20 +84,18 @@ async def test_search_boss_encounter_shows_potion_stock_and_challenge_buttons():
     callback = make_callback("search_boss_encounter")
     api = AsyncMock()
     api.search_boss_encounter.return_value = {
-        "combat_session_id": 9, "enemy_type": "boss", "text": "Ты входишь в чертог Лесного Короля.",
-        "potions_small": 2, "potions_large": 1,
+        "combat_session_id": 9,
+        "enemy_type": "boss",
+        "text": "Ты входишь в чертог Лесного Короля.",
+        "potions_small": 2,
+        "potions_large": 1,
     }
 
     await search_boss_encounter(callback, api)
 
     api.search_boss_encounter.assert_awaited_once_with(1)
     text = callback.message.edit_text.call_args.args[0]
-    assert text == (
-        "Ты входишь в чертог Лесного Короля.\n\n"
-        "🧪 Твой запас:\n"
-        "  Малое: 2/5\n"
-        "  Большое: 1/3"
-    )
+    assert text == ("Ты входишь в чертог Лесного Короля.\n\n🧪 Твой запас:\n  Малое: 2/5\n  Большое: 1/3")
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     # docs/notes.md, п.59 — каждая кнопка на своей строке, "Бросить вызов"
     # сверху, "Назад" снизу; подпись напоминает порог уровня (подсказка —
@@ -174,7 +172,10 @@ async def test_start_combat_shows_fight_flee_and_auto_buttons():
     callback = make_callback("start_combat:5")
     api = AsyncMock()
     api.start_combat.return_value = {
-        "combat_session_id": 5, "status": "awaiting_confirmation", "enemy_type": "wolf", "text": "..."
+        "combat_session_id": 5,
+        "status": "awaiting_confirmation",
+        "enemy_type": "wolf",
+        "text": "...",
     }
 
     await start_combat(callback, api)
@@ -192,7 +193,10 @@ async def test_start_combat_against_boss_hides_auto_and_flee_buttons():
     callback = make_callback("start_combat:5")
     api = AsyncMock()
     api.start_combat.return_value = {
-        "combat_session_id": 5, "status": "awaiting_confirmation", "enemy_type": "boss", "text": "..."
+        "combat_session_id": 5,
+        "status": "awaiting_confirmation",
+        "enemy_type": "boss",
+        "text": "...",
     }
 
     await start_combat(callback, api)
@@ -206,7 +210,10 @@ async def test_confirm_fight_shows_attack_button_when_player_goes_first():
     callback = make_callback("confirm_fight:5")
     api = AsyncMock()
     api.confirm_combat.return_value = {
-        "status": "active", "result": None, "current_turn": "player", "text": "⚔️ Ты вступаешь в бой!"
+        "status": "active",
+        "result": None,
+        "current_turn": "player",
+        "text": "⚔️ Ты вступаешь в бой!",
     }
 
     await confirm_fight(callback, api)
@@ -228,8 +235,13 @@ async def test_confirm_fight_shows_current_battle_state_on_conflict():
     api = AsyncMock()
     api.confirm_combat.side_effect = ApiError(409, "unexpected session status: 'active'")
     api.resume_combat_session.return_value = {
-        "status": "active", "current_turn": "player", "enemy_type": "wolf", "text": "❤️ Ты: 34/50   👹 Волк: 12/50",
-        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": False,
+        "status": "active",
+        "current_turn": "player",
+        "enemy_type": "wolf",
+        "text": "❤️ Ты: 34/50   👹 Волк: 12/50",
+        "potions_small": 0,
+        "potions_large": 0,
+        "potion_used_this_battle": False,
     }
 
     await confirm_fight(callback, api)
@@ -270,7 +282,10 @@ async def test_confirm_fight_shows_power_attack_button_next_to_attack():
     callback = make_callback("confirm_fight:5")
     api = AsyncMock()
     api.confirm_combat.return_value = {
-        "status": "active", "result": None, "current_turn": "player", "text": "⚔️ Ты вступаешь в бой!"
+        "status": "active",
+        "result": None,
+        "current_turn": "player",
+        "text": "⚔️ Ты вступаешь в бой!",
     }
 
     await confirm_fight(callback, api)
@@ -286,9 +301,7 @@ async def test_confirm_fight_no_power_attack_button_on_defend_turn():
     # доступен исключительно на ходу атаки игрока.
     callback = make_callback("confirm_fight:5")
     api = AsyncMock()
-    api.confirm_combat.return_value = {
-        "status": "active", "result": None, "current_turn": "enemy", "text": "..."
-    }
+    api.confirm_combat.return_value = {"status": "active", "result": None, "current_turn": "enemy", "text": "..."}
 
     await confirm_fight(callback, api)
 
@@ -321,8 +334,12 @@ async def test_confirm_fight_shows_no_potion_buttons_when_none_owned():
     callback = make_callback("confirm_fight:5")
     api = AsyncMock()
     api.confirm_combat.return_value = {
-        "status": "active", "current_turn": "player", "text": "...",
-        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": False,
+        "status": "active",
+        "current_turn": "player",
+        "text": "...",
+        "potions_small": 0,
+        "potions_large": 0,
+        "potion_used_this_battle": False,
     }
 
     await confirm_fight(callback, api)
@@ -337,8 +354,12 @@ async def test_confirm_fight_shows_both_potion_buttons_when_both_owned():
     callback = make_callback("confirm_fight:5")
     api = AsyncMock()
     api.confirm_combat.return_value = {
-        "status": "active", "current_turn": "player", "text": "...",
-        "potions_small": 2, "potions_large": 1, "potion_used_this_battle": False,
+        "status": "active",
+        "current_turn": "player",
+        "text": "...",
+        "potions_small": 2,
+        "potions_large": 1,
+        "potion_used_this_battle": False,
     }
 
     await confirm_fight(callback, api)
@@ -354,8 +375,12 @@ async def test_confirm_fight_shows_only_owned_potion_size():
     callback = make_callback("confirm_fight:5")
     api = AsyncMock()
     api.confirm_combat.return_value = {
-        "status": "active", "current_turn": "player", "text": "...",
-        "potions_small": 0, "potions_large": 3, "potion_used_this_battle": False,
+        "status": "active",
+        "current_turn": "player",
+        "text": "...",
+        "potions_small": 0,
+        "potions_large": 3,
+        "potion_used_this_battle": False,
     }
 
     await confirm_fight(callback, api)
@@ -370,8 +395,12 @@ async def test_confirm_fight_hides_potion_buttons_when_already_used_this_battle(
     callback = make_callback("confirm_fight:5")
     api = AsyncMock()
     api.confirm_combat.return_value = {
-        "status": "active", "current_turn": "player", "text": "...",
-        "potions_small": 2, "potions_large": 1, "potion_used_this_battle": True,
+        "status": "active",
+        "current_turn": "player",
+        "text": "...",
+        "potions_small": 2,
+        "potions_large": 1,
+        "potion_used_this_battle": True,
     }
 
     await confirm_fight(callback, api)
@@ -386,8 +415,12 @@ async def test_take_turn_hides_potion_buttons_on_enemy_turn():
     callback = make_callback("take_turn:5")
     api = AsyncMock()
     api.take_turn.return_value = {
-        "status": "active", "current_turn": "enemy", "text": "...",
-        "potions_small": 2, "potions_large": 1, "potion_used_this_battle": False,
+        "status": "active",
+        "current_turn": "enemy",
+        "text": "...",
+        "potions_small": 2,
+        "potions_large": 1,
+        "potion_used_this_battle": False,
     }
 
     await take_turn(callback, api)
@@ -401,8 +434,12 @@ async def test_use_potion_success_shows_updated_turn_button():
     callback = make_callback("use_potion:5:large")
     api = AsyncMock()
     api.use_potion.return_value = {
-        "status": "active", "current_turn": "enemy", "text": "🧪 Большое зелье: +25 HP.",
-        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": True,
+        "status": "active",
+        "current_turn": "enemy",
+        "text": "🧪 Большое зелье: +25 HP.",
+        "potions_small": 0,
+        "potions_large": 0,
+        "potion_used_this_battle": True,
     }
 
     await use_potion(callback, api)
@@ -424,8 +461,13 @@ async def test_use_potion_shows_current_battle_state_on_conflict():
     api = AsyncMock()
     api.use_potion.side_effect = ApiError(409, "not your turn")
     api.resume_combat_session.return_value = {
-        "status": "active", "current_turn": "enemy", "enemy_type": "wolf", "text": "❤️ Ты: 34/50   👹 Волк: 12/50",
-        "potions_small": 1, "potions_large": 0, "potion_used_this_battle": False,
+        "status": "active",
+        "current_turn": "enemy",
+        "enemy_type": "wolf",
+        "text": "❤️ Ты: 34/50   👹 Волк: 12/50",
+        "potions_small": 1,
+        "potions_large": 0,
+        "potion_used_this_battle": False,
     }
 
     await use_potion(callback, api)
@@ -460,9 +502,7 @@ async def test_use_potion_not_owned_shows_distinct_alert():
 async def test_confirm_fight_shows_defend_button_when_enemy_goes_first():
     callback = make_callback("confirm_fight:5")
     api = AsyncMock()
-    api.confirm_combat.return_value = {
-        "status": "active", "result": None, "current_turn": "enemy", "text": "..."
-    }
+    api.confirm_combat.return_value = {"status": "active", "result": None, "current_turn": "enemy", "text": "..."}
 
     await confirm_fight(callback, api)
 
@@ -504,7 +544,9 @@ async def test_confirm_fight_auto_stops_at_flee_decision():
     api = AsyncMock()
     api.confirm_combat.return_value = {"status": "active", "current_turn": "player", "text": "..."}
     api.take_turn.return_value = {
-        "status": "awaiting_flee_decision", "current_turn": "player", "text": "⚠️ Шанс уйти живым!"
+        "status": "awaiting_flee_decision",
+        "current_turn": "player",
+        "text": "⚠️ Шанс уйти живым!",
     }
 
     await confirm_fight_auto(callback, api)
@@ -535,9 +577,7 @@ async def test_flee_decision_continue_auto_resumes_silently_to_the_end():
 async def test_confirm_flee_shows_post_battle_buttons():
     callback = make_callback("confirm_flee:5")
     api = AsyncMock()
-    api.confirm_combat.return_value = {
-        "status": "finished", "result": "player_fled", "text": "🏃 Тебе удалось уйти."
-    }
+    api.confirm_combat.return_value = {"status": "finished", "result": "player_fled", "text": "🏃 Тебе удалось уйти."}
 
     await confirm_flee(callback, api)
 
@@ -584,8 +624,12 @@ async def test_take_turn_shows_current_battle_state_on_conflict():
     api = AsyncMock()
     api.take_turn.side_effect = ApiError(409, "unexpected session status: 'awaiting_flee_decision'")
     api.resume_combat_session.return_value = {
-        "status": "awaiting_flee_decision", "enemy_type": "wolf", "text": "⚠️ Твоё HP критически низкое!",
-        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": False,
+        "status": "awaiting_flee_decision",
+        "enemy_type": "wolf",
+        "text": "⚠️ Твоё HP критически низкое!",
+        "potions_small": 0,
+        "potions_large": 0,
+        "potion_used_this_battle": False,
     }
 
     await take_turn(callback, api)
@@ -611,8 +655,12 @@ async def test_take_turn_finished_shows_post_battle_buttons():
     markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert callback_datas == [
-        "refresh_after_battle", "search_encounter", "open_allocation", "show_rules",
-        "toggle_language", "search_boss_encounter",
+        "refresh_after_battle",
+        "search_encounter",
+        "open_allocation",
+        "show_rules",
+        "toggle_language",
+        "search_boss_encounter",
     ]
 
 
@@ -625,7 +673,10 @@ async def test_take_turn_finished_language_button_shows_target_language():
     callback = make_callback("take_turn:5")
     api = AsyncMock()
     api.take_turn.return_value = {
-        "status": "finished", "result": "victory", "text": "⚔️ Ты победил!", "language": "ru",
+        "status": "finished",
+        "result": "victory",
+        "text": "⚔️ Ты победил!",
+        "language": "ru",
     }
 
     await take_turn(callback, api)
@@ -643,7 +694,10 @@ async def test_take_turn_boss_victory_shows_restart_button_only():
     callback = make_callback("take_turn:5")
     api = AsyncMock()
     api.take_turn.return_value = {
-        "status": "finished", "result": "victory", "enemy_type": "boss", "text": "🎉 Ты повергнул Лесного Короля!"
+        "status": "finished",
+        "result": "victory",
+        "enemy_type": "boss",
+        "text": "🎉 Ты повергнул Лесного Короля!",
     }
 
     await take_turn(callback, api)
@@ -658,7 +712,10 @@ async def test_take_turn_boss_defeat_shows_normal_post_battle_buttons():
     callback = make_callback("take_turn:5")
     api = AsyncMock()
     api.take_turn.return_value = {
-        "status": "finished", "result": "defeat", "enemy_type": "boss", "text": "💀 Ты пал..."
+        "status": "finished",
+        "result": "defeat",
+        "enemy_type": "boss",
+        "text": "💀 Ты пал...",
     }
 
     await take_turn(callback, api)
@@ -672,9 +729,7 @@ async def test_take_turn_boss_defeat_shows_normal_post_battle_buttons():
 async def test_take_turn_awaiting_flee_decision_shows_flee_buttons():
     callback = make_callback("take_turn:5")
     api = AsyncMock()
-    api.take_turn.return_value = {
-        "status": "awaiting_flee_decision", "text": "⚠️ Твоё HP критически низкое!"
-    }
+    api.take_turn.return_value = {"status": "awaiting_flee_decision", "text": "⚠️ Твоё HP критически низкое!"}
 
     await take_turn(callback, api)
 
@@ -686,9 +741,7 @@ async def test_take_turn_awaiting_flee_decision_shows_flee_buttons():
 async def test_flee_decision_flee_shows_post_battle_buttons():
     callback = make_callback("flee_decision_flee:5")
     api = AsyncMock()
-    api.flee_decision.return_value = {
-        "status": "finished", "result": "defeat", "text": "💀 Ты пал..."
-    }
+    api.flee_decision.return_value = {"status": "finished", "result": "defeat", "text": "💀 Ты пал..."}
 
     await flee_decision_flee(callback, api)
 
@@ -763,7 +816,11 @@ async def test_refresh_after_battle_keyboard_labels_follow_locale_en():
     callback = make_callback("refresh_after_battle")
     api = AsyncMock()
     api.get_character.return_value = {
-        "hp_current": 15.0, "hp_max": 50.0, "hp_seconds_to_full": 35.0, "level": 3, "language": "en",
+        "hp_current": 15.0,
+        "hp_max": 50.0,
+        "hp_seconds_to_full": 35.0,
+        "level": 3,
+        "language": "en",
     }
     try:
         await refresh_after_battle(callback, api)
@@ -797,8 +854,12 @@ async def test_build_resume_keyboard_awaiting_confirmation_hides_auto_and_flee_b
 
 async def test_build_resume_keyboard_active_shows_turn_and_potion_buttons():
     resume = {
-        "status": "active", "current_turn": "player", "enemy_type": "wolf",
-        "potions_small": 1, "potions_large": 0, "potion_used_this_battle": False,
+        "status": "active",
+        "current_turn": "player",
+        "enemy_type": "wolf",
+        "potions_small": 1,
+        "potions_large": 0,
+        "potion_used_this_battle": False,
     }
     markup = build_resume_keyboard(5, resume)
     callback_datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
@@ -824,16 +885,14 @@ async def test_build_resume_keyboard_awaiting_initiative_boss_shows_challenge_an
 
 async def test_build_resume_text_appends_potion_stock_for_boss_awaiting_initiative():
     resume = {
-        "status": "awaiting_initiative", "enemy_type": "boss", "text": "Ты входишь в чертог Лесного Короля.",
-        "potions_small": 3, "potions_large": 0,
+        "status": "awaiting_initiative",
+        "enemy_type": "boss",
+        "text": "Ты входишь в чертог Лесного Короля.",
+        "potions_small": 3,
+        "potions_large": 0,
     }
     text = build_resume_text(resume)
-    assert text == (
-        "Ты входишь в чертог Лесного Короля.\n\n"
-        "🧪 Твой запас:\n"
-        "  Малое: 3/5\n"
-        "  Большое: 0/3"
-    )
+    assert text == ("Ты входишь в чертог Лесного Короля.\n\n🧪 Твой запас:\n  Малое: 3/5\n  Большое: 0/3")
 
 
 async def test_build_resume_text_unchanged_for_non_boss_awaiting_initiative():
@@ -845,8 +904,15 @@ async def test_cancel_encounter_returns_to_stats_screen():
     callback = make_callback("cancel_encounter:9")
     api = AsyncMock()
     api.get_character.return_value = {
-        "nickname": "Hero", "level": 3, "hp_current": 40.0, "hp_max": 60.0,
-        "strength": 5, "agility": 3, "luck": 2, "victory_points": 15, "points_to_next_level": 5,
+        "nickname": "Hero",
+        "level": 3,
+        "hp_current": 40.0,
+        "hp_max": 60.0,
+        "strength": 5,
+        "agility": 3,
+        "luck": 2,
+        "victory_points": 15,
+        "points_to_next_level": 5,
     }
 
     await cancel_encounter(callback, api)
@@ -919,9 +985,7 @@ async def test_log_callback_timing_logs_even_when_handler_raises(caplog):
 async def test_confirm_fight_buttons_en():
     callback = make_callback("confirm_fight:5")
     api = AsyncMock()
-    api.confirm_combat.return_value = {
-        "status": "active", "result": None, "current_turn": "player", "text": "..."
-    }
+    api.confirm_combat.return_value = {"status": "active", "result": None, "current_turn": "player", "text": "..."}
     token = i18n.set_locale("en")
     try:
         await confirm_fight(callback, api)
@@ -936,7 +1000,10 @@ async def test_start_combat_boss_button_en():
     callback = make_callback("start_combat:5")
     api = AsyncMock()
     api.start_combat.return_value = {
-        "combat_session_id": 5, "status": "awaiting_confirmation", "enemy_type": "boss", "text": "..."
+        "combat_session_id": 5,
+        "status": "awaiting_confirmation",
+        "enemy_type": "boss",
+        "text": "...",
     }
     token = i18n.set_locale("en")
     try:
@@ -966,19 +1033,17 @@ async def test_search_boss_encounter_potion_stock_text_en():
     callback = make_callback("search_boss_encounter")
     api = AsyncMock()
     api.search_boss_encounter.return_value = {
-        "combat_session_id": 9, "enemy_type": "boss", "text": "You step into the Forest King's hall.",
-        "potions_small": 2, "potions_large": 1,
+        "combat_session_id": 9,
+        "enemy_type": "boss",
+        "text": "You step into the Forest King's hall.",
+        "potions_small": 2,
+        "potions_large": 1,
     }
     token = i18n.set_locale("en")
     try:
         await search_boss_encounter(callback, api)
         text = callback.message.edit_text.call_args.args[0]
-        assert text == (
-            "You step into the Forest King's hall.\n\n"
-            "🧪 Your stock:\n"
-            "  Small: 2/5\n"
-            "  Large: 1/3"
-        )
+        assert text == ("You step into the Forest King's hall.\n\n🧪 Your stock:\n  Small: 2/5\n  Large: 1/3")
         button = callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
         assert button.text == "⚔️ Challenge (Level 9+)"
     finally:
@@ -1028,7 +1093,9 @@ async def test_search_encounter_already_in_battle_alert_en():
     token = i18n.set_locale("en")
     try:
         await search_encounter(callback, api)
-        callback.answer.assert_awaited_once_with("You already have an unfinished battle. Finish it first.", show_alert=True)
+        callback.answer.assert_awaited_once_with(
+            "You already have an unfinished battle. Finish it first.", show_alert=True
+        )
     finally:
         i18n.reset_locale(token)
 
@@ -1050,7 +1117,10 @@ async def test_search_encounter_keyboard_uses_response_language_over_telegram_cl
     callback = make_callback("search_encounter")
     api = AsyncMock()
     api.search_encounter.return_value = {
-        "combat_session_id": 5, "enemy_type": "wolf", "text": "Ты наткнулся на волка.", "language": "ru",
+        "combat_session_id": 5,
+        "enemy_type": "wolf",
+        "text": "Ты наткнулся на волка.",
+        "language": "ru",
     }
     token = i18n.set_locale("en")
     try:
@@ -1065,7 +1135,11 @@ async def test_start_combat_keyboard_uses_response_language_over_telegram_client
     callback = make_callback("start_combat:5")
     api = AsyncMock()
     api.start_combat.return_value = {
-        "combat_session_id": 5, "status": "awaiting_confirmation", "enemy_type": "wolf", "text": "...", "language": "ru",
+        "combat_session_id": 5,
+        "status": "awaiting_confirmation",
+        "enemy_type": "wolf",
+        "text": "...",
+        "language": "ru",
     }
     token = i18n.set_locale("en")
     try:
@@ -1080,7 +1154,11 @@ async def test_confirm_fight_keyboard_uses_response_language_over_telegram_clien
     callback = make_callback("confirm_fight:5")
     api = AsyncMock()
     api.confirm_combat.return_value = {
-        "status": "active", "result": None, "current_turn": "player", "text": "...", "language": "ru",
+        "status": "active",
+        "result": None,
+        "current_turn": "player",
+        "text": "...",
+        "language": "ru",
     }
     token = i18n.set_locale("en")
     try:
@@ -1111,7 +1189,10 @@ async def test_confirm_fight_auto_keyboard_uses_final_response_language():
     api = AsyncMock()
     api.confirm_combat.return_value = {"status": "active", "current_turn": "player", "text": "...", "language": "en"}
     api.take_turn.return_value = {
-        "status": "awaiting_flee_decision", "enemy_type": "wolf", "text": "...", "language": "ru",
+        "status": "awaiting_flee_decision",
+        "enemy_type": "wolf",
+        "text": "...",
+        "language": "ru",
     }
     token = i18n.set_locale("en")
     try:
@@ -1128,8 +1209,14 @@ async def test_show_current_battle_state_uses_resume_response_language():
     api = AsyncMock()
     api.confirm_combat.side_effect = ApiError(409, "unexpected session status: 'active'")
     api.resume_combat_session.return_value = {
-        "status": "active", "current_turn": "player", "enemy_type": "wolf", "text": "...",
-        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": False, "language": "ru",
+        "status": "active",
+        "current_turn": "player",
+        "enemy_type": "wolf",
+        "text": "...",
+        "potions_small": 0,
+        "potions_large": 0,
+        "potion_used_this_battle": False,
+        "language": "ru",
     }
     token = i18n.set_locale("en")
     try:

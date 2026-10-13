@@ -208,7 +208,9 @@ async def test_try_delete_message_swallows_telegram_bad_request():
     # docs/notes.md — сообщение уже недоступно/устарело/чат другой: не
     # должно мешать создать новые (bot/handlers/start.py::cmd_start).
     bot = MagicMock()
-    bot.delete_message = AsyncMock(side_effect=TelegramBadRequest(method=MagicMock(), message="message to delete not found"))
+    bot.delete_message = AsyncMock(
+        side_effect=TelegramBadRequest(method=MagicMock(), message="message to delete not found")
+    )
 
     await try_delete_message(bot, 42, 111)  # не должно бросить исключение
 
@@ -229,7 +231,9 @@ async def test_try_edit_message_text_returns_false_on_telegram_bad_request():
     # docs/notes.md — переключатель языка должен дотянуться и до второго
     # постоянного сообщения, но не падать, если оно недоступно.
     bot = MagicMock()
-    bot.edit_message_text = AsyncMock(side_effect=TelegramBadRequest(method=MagicMock(), message="message to edit not found"))
+    bot.edit_message_text = AsyncMock(
+        side_effect=TelegramBadRequest(method=MagicMock(), message="message to edit not found")
+    )
 
     result = await try_edit_message_text(bot, 42, 111, "hello")
 

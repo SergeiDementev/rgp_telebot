@@ -100,8 +100,7 @@ def farm_until_full_stash_frozen_stats(
         fights += 1
         if fights > max_fights:
             raise RuntimeError(
-                f"не удалось набрать полный запас за {max_fights} боёв "
-                f"(потолок --max-fights, статы {player_stats})"
+                f"не удалось набрать полный запас за {max_fights} боёв (потолок --max-fights, статы {player_stats})"
             )
 
         enemy_name = sc.roll_enemy_encounter(rng, level)
@@ -248,15 +247,29 @@ def run_all_seeds_frozen(player_stats, level, seeds, small_cap, large_cap, max_f
 
 
 def run_all_seeds_with_progression(
-    starting_stats, starting_level, starting_victory_points, stat_policy, seeds,
-    stat_points_per_level, small_cap, large_cap, max_fights,
+    starting_stats,
+    starting_level,
+    starting_victory_points,
+    stat_policy,
+    seeds,
+    stat_points_per_level,
+    small_cap,
+    large_cap,
+    max_fights,
 ) -> list:
     rows = []
     for seed in seeds:
         rng = random.Random(seed)
         result = farm_until_full_stash_with_progression(
-            starting_stats, starting_level, starting_victory_points, stat_policy, rng,
-            stat_points_per_level, small_cap, large_cap, max_fights,
+            starting_stats,
+            starting_level,
+            starting_victory_points,
+            stat_policy,
+            rng,
+            stat_points_per_level,
+            small_cap,
+            large_cap,
+            max_fights,
         )
         rows.append({"seed": seed, **result})
     return rows
@@ -322,7 +335,9 @@ def parse_args():
     parser.add_argument("--seeds", type=str, default=",".join(str(s) for s in DEFAULT_SEEDS))
     parser.add_argument("--max-fights", type=int, default=DEFAULT_MAX_FIGHTS, help="потолок для 'заморожен' варианта")
     parser.add_argument(
-        "--max-fights-progression", type=int, default=DEFAULT_MAX_FIGHTS_PROGRESSION,
+        "--max-fights-progression",
+        type=int,
+        default=DEFAULT_MAX_FIGHTS_PROGRESSION,
         help="потолок для варианта с ростом статов",
     )
     return parser.parse_args()
@@ -337,13 +352,30 @@ def main():
     frozen_rows = run_all_seeds_frozen(
         POST_DEFEAT_PLAYER_STATS, FARM_LEVEL, seeds, small_cap, large_cap, args.max_fights
     )
-    print_report("Рефарм зелий после поражения от босса — статы ЗАМОРОЖЕНЫ (docs/notes.md, п.43)", frozen_rows, small_cap, large_cap)
+    print_report(
+        "Рефарм зелий после поражения от босса — статы ЗАМОРОЖЕНЫ (docs/notes.md, п.43)",
+        frozen_rows,
+        small_cap,
+        large_cap,
+    )
 
     progression_rows = run_all_seeds_with_progression(
-        POST_DEFEAT_PLAYER_STATS, STARTING_LEVEL, starting_victory_points, STAT_ALLOCATION_POLICY,
-        seeds, pr.STAT_POINTS_PER_LEVEL, small_cap, large_cap, args.max_fights_progression,
+        POST_DEFEAT_PLAYER_STATS,
+        STARTING_LEVEL,
+        starting_victory_points,
+        STAT_ALLOCATION_POLICY,
+        seeds,
+        pr.STAT_POINTS_PER_LEVEL,
+        small_cap,
+        large_cap,
+        args.max_fights_progression,
     )
-    print_report("Рефарм зелий после поражения от босса — статы РАСТУТ (docs/notes.md, п.44)", progression_rows, small_cap, large_cap)
+    print_report(
+        "Рефарм зелий после поражения от босса — статы РАСТУТ (docs/notes.md, п.44)",
+        progression_rows,
+        small_cap,
+        large_cap,
+    )
 
     print_comparison(frozen_rows, progression_rows)
 

@@ -54,7 +54,9 @@ async def _log_callback_timing(
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         _timing_logger.info(
             "combat callback handled: data=%s user_id=%s elapsed_ms=%.1f",
-            event.data, event.from_user.id, elapsed_ms,
+            event.data,
+            event.from_user.id,
+            elapsed_ms,
         )
 
 
@@ -125,13 +127,17 @@ def _potion_buttons(session_id: int, response: dict) -> list[InlineKeyboardButto
         return []
     buttons = []
     if response.get("potions_small", 0) > 0:
-        buttons.append(InlineKeyboardButton(
-            text=f"🧪 {i18n.t('combat.potion.small_label')}", callback_data=f"use_potion:{session_id}:small"
-        ))
+        buttons.append(
+            InlineKeyboardButton(
+                text=f"🧪 {i18n.t('combat.potion.small_label')}", callback_data=f"use_potion:{session_id}:small"
+            )
+        )
     if response.get("potions_large", 0) > 0:
-        buttons.append(InlineKeyboardButton(
-            text=f"🧪 {i18n.t('combat.potion.large_label')}", callback_data=f"use_potion:{session_id}:large"
-        ))
+        buttons.append(
+            InlineKeyboardButton(
+                text=f"🧪 {i18n.t('combat.potion.large_label')}", callback_data=f"use_potion:{session_id}:large"
+            )
+        )
     return buttons
 
 
@@ -149,7 +155,9 @@ def _flee_choice_keyboard(session_id: int, *, mode: str = "manual") -> InlineKey
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text=i18n.t("combat.ui.button.flee"), callback_data=f"flee_decision_flee:{session_id}"),
+                InlineKeyboardButton(
+                    text=i18n.t("combat.ui.button.flee"), callback_data=f"flee_decision_flee:{session_id}"
+                ),
                 InlineKeyboardButton(text=i18n.t("combat.ui.button.continue_fight"), callback_data=continue_callback),
             ]
         ]
@@ -197,16 +205,20 @@ def _boss_victory_keyboard() -> InlineKeyboardMarkup:
     этом экране нет. Причина архивации в самом callback_data —
     "boss_victory", не "manual_reset" (для аналитики на сервере)."""
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=i18n.t("combat.ui.button.restart"), callback_data="reset_confirm:boss_victory")]]
+        inline_keyboard=[
+            [InlineKeyboardButton(text=i18n.t("combat.ui.button.restart"), callback_data="reset_confirm:boss_victory")]
+        ]
     )
 
 
 def _initiative_prompt_keyboard(session_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(
-                text=i18n.t("combat.ui.button.determine_initiative"), callback_data=f"start_combat:{session_id}"
-            )]
+            [
+                InlineKeyboardButton(
+                    text=i18n.t("combat.ui.button.determine_initiative"), callback_data=f"start_combat:{session_id}"
+                )
+            ]
         ]
     )
 
@@ -214,8 +226,12 @@ def _initiative_prompt_keyboard(session_id: int) -> InlineKeyboardMarkup:
 def _potion_stock_text(potions_small: int, potions_large: int) -> str:
     return i18n.t(
         "combat.ui.potion_stock",
-        small_label=i18n.t("combat.potion.small_label"), potions_small=potions_small, small_cap=SMALL_POTION_CAP,
-        large_label=i18n.t("combat.potion.large_label"), potions_large=potions_large, large_cap=LARGE_POTION_CAP,
+        small_label=i18n.t("combat.potion.small_label"),
+        potions_small=potions_small,
+        small_cap=SMALL_POTION_CAP,
+        large_label=i18n.t("combat.potion.large_label"),
+        potions_large=potions_large,
+        large_cap=LARGE_POTION_CAP,
     )
 
 
@@ -238,11 +254,17 @@ def _boss_challenge_keyboard(session_id: int) -> InlineKeyboardMarkup:
     защитить от мисклика лишним подтверждением."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(
-                text=i18n.t("combat.ui.button.boss_challenge", level=BOSS_LEVEL_REQUIREMENT),
-                callback_data=f"boss_challenge_prompt:{session_id}",
-            )],
-            [InlineKeyboardButton(text=i18n.t("character.button.back"), callback_data=f"cancel_encounter:{session_id}")],
+            [
+                InlineKeyboardButton(
+                    text=i18n.t("combat.ui.button.boss_challenge", level=BOSS_LEVEL_REQUIREMENT),
+                    callback_data=f"boss_challenge_prompt:{session_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=i18n.t("character.button.back"), callback_data=f"cancel_encounter:{session_id}"
+                )
+            ],
         ]
     )
 
@@ -255,8 +277,16 @@ def _boss_challenge_confirm_keyboard(session_id: int) -> InlineKeyboardMarkup:
     так же, без промежуточного возврата к экрану "Бросить вызов"."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=i18n.t("combat.ui.button.boss_challenge_confirm"), callback_data=f"start_combat:{session_id}")],
-            [InlineKeyboardButton(text=i18n.t("character.button.back"), callback_data=f"cancel_encounter:{session_id}")],
+            [
+                InlineKeyboardButton(
+                    text=i18n.t("combat.ui.button.boss_challenge_confirm"), callback_data=f"start_combat:{session_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=i18n.t("character.button.back"), callback_data=f"cancel_encounter:{session_id}"
+                )
+            ],
         ]
     )
 
@@ -270,17 +300,29 @@ def _confirmation_keyboard(session_id: int, enemy_type: str) -> InlineKeyboardMa
     до конца."""
     if enemy_type == "boss":
         return InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(
-                text=i18n.t("combat.ui.button.enter_battle"), callback_data=f"confirm_fight:{session_id}"
-            )]]
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=i18n.t("combat.ui.button.enter_battle"), callback_data=f"confirm_fight:{session_id}"
+                    )
+                ]
+            ]
         )
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text=i18n.t("combat.ui.button.enter_battle"), callback_data=f"confirm_fight:{session_id}"),
-                InlineKeyboardButton(text=i18n.t("combat.ui.button.retreat"), callback_data=f"confirm_flee:{session_id}"),
+                InlineKeyboardButton(
+                    text=i18n.t("combat.ui.button.enter_battle"), callback_data=f"confirm_fight:{session_id}"
+                ),
+                InlineKeyboardButton(
+                    text=i18n.t("combat.ui.button.retreat"), callback_data=f"confirm_flee:{session_id}"
+                ),
             ],
-            [InlineKeyboardButton(text=i18n.t("combat.ui.button.autobattle"), callback_data=f"confirm_fight_auto:{session_id}")],
+            [
+                InlineKeyboardButton(
+                    text=i18n.t("combat.ui.button.autobattle"), callback_data=f"confirm_fight_auto:{session_id}"
+                )
+            ],
         ]
     )
 
@@ -416,7 +458,7 @@ async def search_boss_encounter(callback: CallbackQuery, api: ApiClient) -> None
 
 @router.callback_query(F.data.startswith("cancel_encounter:"))
 async def cancel_encounter(callback: CallbackQuery, api: ApiClient) -> None:
-    """"⬅️ Назад" на экране входа в бой, до инициативы (docs/notes.md,
+    """ "⬅️ Назад" на экране входа в бой, до инициативы (docs/notes.md,
     п.51) — отменяет встречу целиком (ничего ещё не произошло, нечего
     "доигрывать") и возвращает на главный экран персонажа."""
     session_id = _session_id_from(callback.data)
@@ -438,7 +480,7 @@ async def cancel_encounter(callback: CallbackQuery, api: ApiClient) -> None:
 
 @router.callback_query(F.data.startswith("boss_challenge_prompt:"))
 async def boss_challenge_prompt(callback: CallbackQuery, api: ApiClient) -> None:
-    """"⚔️ Бросить вызов" — сначала проверка уровня (docs/notes.md, п.69),
+    """ "⚔️ Бросить вызов" — сначала проверка уровня (docs/notes.md, п.69),
     ДО показа подтверждения "нельзя отступить" (п.65): низкоуровневый игрок
     должен увидеть, что бой недоступен, а не пугающий алерт о необратимости
     для боя, который всё равно не начнётся. Читает уровень через
@@ -507,7 +549,9 @@ async def _run_autobattle(callback: CallbackQuery, api: ApiClient, session_id: i
     while response["status"] == "active":
         response = await api.take_turn(callback.from_user.id, session_id)
     _set_locale_from_response(response)
-    await callback.message.edit_text(response["text"], reply_markup=_next_step_markup(session_id, response, mode="auto"))
+    await callback.message.edit_text(
+        response["text"], reply_markup=_next_step_markup(session_id, response, mode="auto")
+    )
 
 
 @router.callback_query(F.data.startswith("confirm_fight_auto:"))
@@ -658,9 +702,17 @@ async def refresh_after_battle(callback: CallbackQuery, api: ApiClient) -> None:
     # Те же ключи, что и у строки HP/таймера в конце боя (api/rendering.py::
     # render_battle_end, блок 2, "combat.battle_end.hp_line"/"regen_line") —
     # текст identичен, отдельного перевода не заводим.
-    lines = [i18n.t("combat.battle_end.hp_line", hp_current=f"{character['hp_current']:.0f}", hp_max=f"{character['hp_max']:.0f}")]
+    lines = [
+        i18n.t(
+            "combat.battle_end.hp_line",
+            hp_current=f"{character['hp_current']:.0f}",
+            hp_max=f"{character['hp_max']:.0f}",
+        )
+    ]
     if character["hp_seconds_to_full"] > 0:
-        lines.append(i18n.t("combat.battle_end.regen_line", hp_seconds_to_full=f"{character['hp_seconds_to_full']:.0f}"))
+        lines.append(
+            i18n.t("combat.battle_end.regen_line", hp_seconds_to_full=f"{character['hp_seconds_to_full']:.0f}")
+        )
     await safe_edit_text(
         callback.message,
         "\n".join(lines),

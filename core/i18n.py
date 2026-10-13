@@ -23,9 +23,7 @@ import contextvars
 DEFAULT_LOCALE = "ru"
 SUPPORTED_LOCALES = ("ru", "en")
 
-_current_locale: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "locale", default=DEFAULT_LOCALE
-)
+_current_locale: contextvars.ContextVar[str] = contextvars.ContextVar("locale", default=DEFAULT_LOCALE)
 
 
 def get_locale() -> str:
@@ -79,4 +77,3 @@ def loot_item_names() -> dict:
     """Названия предметов добычи для текущей локали (api/rendering.py —
     строка добычи в конце боя)."""
     return _locale_module().LOOT_ITEM_NAMES
-

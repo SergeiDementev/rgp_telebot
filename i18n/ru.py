@@ -14,8 +14,10 @@ content/rules.md."""
 # относящихся к противнику, согласуются с ним (docs/notes.md).
 ENEMY_NAMES = {
     "mouse": {
-        "nom_cap": "Мышь", "nom_low": "мышь",
-        "acc_cap": "Мышь", "acc_low": "мышь",
+        "nom_cap": "Мышь",
+        "nom_low": "мышь",
+        "acc_cap": "Мышь",
+        "acc_low": "мышь",
         "gen_low": "мыши",
         "ins_cap": "Мышью",
         "dodge_verb": "увернулась",
@@ -23,8 +25,10 @@ ENEMY_NAMES = {
         "fled_verb": "сбежала",
     },
     "wolf": {
-        "nom_cap": "Волк", "nom_low": "волк",
-        "acc_cap": "Волка", "acc_low": "волка",
+        "nom_cap": "Волк",
+        "nom_low": "волк",
+        "acc_cap": "Волка",
+        "acc_low": "волка",
         "gen_low": "волка",
         "ins_cap": "Волком",
         "dodge_verb": "увернулся",
@@ -32,8 +36,10 @@ ENEMY_NAMES = {
         "fled_verb": "сбежал",
     },
     "boar": {
-        "nom_cap": "Кабан", "nom_low": "кабан",
-        "acc_cap": "Кабана", "acc_low": "кабана",
+        "nom_cap": "Кабан",
+        "nom_low": "кабан",
+        "acc_cap": "Кабана",
+        "acc_low": "кабана",
         "gen_low": "кабана",
         "ins_cap": "Кабаном",
         "dodge_verb": "увернулся",
@@ -41,8 +47,10 @@ ENEMY_NAMES = {
         "fled_verb": "сбежал",
     },
     "boss": {
-        "nom_cap": "Лесной Король", "nom_low": "лесной король",
-        "acc_cap": "Лесного Короля", "acc_low": "лесного короля",
+        "nom_cap": "Лесной Король",
+        "nom_low": "лесной король",
+        "acc_cap": "Лесного Короля",
+        "acc_low": "лесного короля",
         "gen_low": "лесного короля",
         "ins_cap": "Лесным Королём",
         "dodge_verb": "увернулся",
@@ -73,21 +81,17 @@ LOOT_ITEM_NAMES = {
 TRANSLATIONS: dict[str, str] = {
     "encounter.found": "🎲 Бросок: {roll} → {name_nom_cap}!\n\nТы наткнулся на {name_acc_low}.",
     "encounter.boss": "👑 Ты входишь в чертог {name_acc_cap}. Отступать некуда — он уже смотрит на тебя.",
-
     "combat.initiative.player_first": "🎲 Инициатива: ты — {player_roll}, {name_nom_low} — {enemy_roll}. Ты ходишь первым!",
     "combat.initiative.enemy_first": "🎲 Инициатива: {name_nom_low} — {enemy_roll}, ты — {player_roll}. {name_nom_cap} атакует первым!",
-
     "combat.circumstance.none": "🎲 Обстоятельство: {roll} → без происшествий.",
     "combat.circumstance.buff_player": "🎲 Обстоятельство: {roll} → ⚡ Прилив адреналина!\nТвоя Сила увеличена на этот бой (×1.2)",
     "combat.circumstance.buff_enemy": "🎲 Обстоятельство: {roll} → ⚡ Прилив адреналина!\nСила {name_gen_low} увеличена на этот бой (×1.2)",
     "combat.circumstance.debuff_player": "🎲 Обстоятельство: {roll} → ⚡ Скользкая земля\nТвоя Сила уменьшена на этот бой (×0.8)",
     "combat.circumstance.debuff_enemy": "🎲 Обстоятельство: {roll} → ⚡ Скользкая земля\nСила {name_gen_low} уменьшена на этот бой (×0.8)",
-
     "combat.double_strike.player_triggered": "🎲 Твоя проверка удачи: {luck_roll} → ✨ УДАЧА! Двойной удар!",
     "combat.double_strike.player_missed": "🎲 Твоя проверка удачи: {luck_roll} → двойного удара нет.",
     "combat.double_strike.enemy_triggered": "🎲 {name_nom_cap} проверяет удачу: {luck_roll} → ✨ УДАЧА! Двойной удар!",
     "combat.double_strike.enemy_missed": "🎲 {name_nom_cap} проверяет удачу: {luck_roll} → двойного удара нет.",
-
     "combat.strike.power_label": "💥 Мощный удар",
     "combat.strike.damage_percent_power": "{percent}% силы, урон ×{multiplier}!",
     "combat.strike.damage_percent": "{percent}% силы.",
@@ -104,19 +108,15 @@ TRANSLATIONS: dict[str, str] = {
     "combat.strike.damage_avoided": "✅ Урон полностью пропущен.",
     "combat.strike.dodge_fail": "🛡️ {dodge_label}: {dodge_roll} → не вышло!",
     "combat.strike.damage_dealt": "💥 {damage_verb} {damage} урона.",
-
     "combat.compact_strike.attack_label": "🗡️ Удар",
     "combat.compact_strike.player_dodge_label": "Ты уворачиваешься",
     "combat.compact_strike.miss": "{strike_label} {strike_number}: {attack_roll} → промах.",
     "combat.compact_strike.header": "{strike_label} {strike_number}: {attack_roll} → {percent_part}",
     "combat.compact_strike.damage": "💥 {damage} урона.",
-
     "combat.potion.large_label": "Большое",
     "combat.potion.small_label": "Малое",
     "combat.potion.used": "🧪 {label} зелье: +{heal} HP.",
-
     "combat.hp_status": "❤️ Ты: {player_hp}/{player_hp_max}   👹 {name_nom_cap}: {enemy_hp}/{enemy_hp_max}",
-
     "combat.flee_check.player_hp_label": "Твоё HP критически низкое",
     "combat.flee_check.player_prefix": "Твоя проверка удачи на побег",
     "combat.flee_check.player_alive_adj": "живым",
@@ -124,7 +124,6 @@ TRANSLATIONS: dict[str, str] = {
     "combat.flee_check.enemy_prefix": "{name_nom_cap} проверяет удачу на побег",
     "combat.flee_check.triggered": "⚠️ {hp_label}! ({current_hp}/{max_hp})\n🍀 {prefix}: {luck_roll} → есть шанс уйти {alive_adj}!",
     "combat.flee_check.not_triggered": "🍀 {prefix}: {luck_roll} → шанса уйти нет в этот раз.",
-
     "combat.flee_attempt.player_miss": (
         "🏃 Ты пытаешься сбежать — {name_nom_low} бьёт без ответа!\n"
         "🎲 Атака {name_gen_low}: {attack_roll} → промах!\n"
@@ -155,7 +154,6 @@ TRANSLATIONS: dict[str, str] = {
         "🎲 Твоя атака: {attack_roll} → {attack_percent}% силы.\n"
         "💥 {damage} урона, но {name_nom_low} вырывается."
     ),
-
     "combat.battle_end.victory_header": "⚔️ Бой окончен! Ты победил {name_acc_cap}.",
     "combat.battle_end.reward_line": "🏆 +{reward} победных очков (всего: {victory_points_total})",
     "combat.battle_end.defeat_header": "💀 Ты пал в бою с {name_ins_cap}...",
@@ -165,13 +163,10 @@ TRANSLATIONS: dict[str, str] = {
     "combat.battle_end.no_loot_line": "😕 Упс, не повезло с добычей...",
     "combat.battle_end.hp_line": "❤️ HP: {hp_current}/{hp_max}",
     "combat.battle_end.regen_line": "⏳ Полное восстановление через: ~{hp_seconds_to_full} сек.",
-
     "combat.boss_victory": "🎉 Ты повергнул {name_acc_cap}!\n\nПриключение окончено. Спасибо, что играл(а)!",
-
     # docs/notes.md, блок 6 — api/routers/combat.py::confirm_combat, ветка
     # decision="fight" (раньше сырой литерал в обход этого механизма).
     "combat.fight_confirmed": "⚔️ Ты вступаешь в бой!",
-
     # --- Экран персонажа (bot/handlers/character.py, docs/notes.md, блок 3) ---
     "character.menu_title": "👤 Меню игрока",
     "character.creation_title": "🧙 Создание героя",
@@ -184,21 +179,18 @@ TRANSLATIONS: dict[str, str] = {
     "character.button.sell_loot": "💰 Продать весь лут",
     "character.button.start_adventure": "✅ Начать приключение",
     "character.allocate_button": "+1 {name}",
-
     "character.stat.strength": "Сила",
     "character.stat.agility": "Ловкость",
     "character.stat.luck": "Удача",
     "character.stat.vitality": "Здоровье",
     "character.stat_line": "{emoji} {name}: {value}",
     "character.vitality_line": "❤️ {name}: {value}  (HP max: {hp_max})",
-
     "character.level_line": "🏅 Уровень: {level}",
     "character.hp_line": "❤️ HP: {hp_current}/{hp_max}",
     "character.victory_points_line": "🏆 Победные очки: {victory_points} (до след. уровня: {points_to_next_level})",
     "character.unspent_points_line": "Осталось очков: {unspent_stat_points}",
     "character.unspent_points_available_line": "Доступно очков прокачки: {unspent_stat_points}",
     "character.gold_line": "💰 Золото: {gold}",
-
     "character.loot_line": "📦 Лут: {items}",
     "character.loot_empty": "📦 Лут: пока нет",
     "character.potions_line": "🧪 Зелья: {items}",
@@ -206,16 +198,13 @@ TRANSLATIONS: dict[str, str] = {
     "character.loot_item_single": "{name} ({price} зол.)",
     "character.loot_item_multiple": "{name} ×{count} ({total_price} зол.)",
     "character.potion_count": "{name} ×{count}",
-
     "character.potion_cap_reached": "уже максимум",
     "character.potion_price": "{price} зол.",
     "character.buy_potion_button": "🧪 Купить {name} ({status})",
-
     "character.buy_error.not_enough_gold": "Не хватает золота.",
     "character.buy_error.cap_reached": "Уже максимум зелий этого размера.",
     "character.buy_error.generic": "Не удалось купить зелье.",
     "character.allocate_error.no_points": "Не осталось свободных очков",
-
     # --- Боевой UI бота (bot/handlers/combat.py, docs/notes.md, блок 4) ---
     # Кнопки/алерты вокруг боя — в отличие от combat.* из блока 2 (боевой
     # лог, рендерится на api/, боевой ход), это клиентская обвязка бота:
@@ -234,7 +223,6 @@ TRANSLATIONS: dict[str, str] = {
     "combat.ui.button.retreat": "🏃 Отступить",
     "combat.ui.button.autobattle": "⚡ Автобой",
     "combat.ui.potion_stock": "🧪 Твой запас:\n  {small_label}: {potions_small}/{small_cap}\n  {large_label}: {potions_large}/{large_cap}",
-
     "combat.ui.error.already_in_battle": "У тебя уже есть незавершённый бой — сначала заверши его.",
     "combat.ui.error.cant_cancel_started": "Бой уже начался — отменить нельзя.",
     "combat.ui.error.boss_unavailable": "Финальный босс пока недоступен на этом уровне.",
@@ -249,7 +237,6 @@ TRANSLATIONS: dict[str, str] = {
     # что ожидала последняя показанная клавиатура).
     "combat.ui.error.battle_in_progress": "⚠️ Бой уже идёт — вот актуальное состояние:",
     "combat.ui.error.battle_already_resolved": "Этот бой уже завершён.",
-
     # --- /start, /reset (bot/handlers/start.py + bot/utils.py, блок 4) ---
     "start.welcome": (
         "🧙 Добро пожаловать в текстовую RPG!\n\n"
@@ -270,14 +257,12 @@ TRANSLATIONS: dict[str, str] = {
     # постоянных сообщений в /start сорвалась (bot/handlers/start.py::
     # cmd_start).
     "start.error.send_failed": "⚠️ Не удалось отправить сообщение — похоже, временный сбой связи. Попробуй /start ещё раз через минуту.",
-
     # --- /rules (bot/handlers/character.py + bot/rules_content.py, блок 5) ---
     # Сам текст правил — content/rules.md/rules.en.md, отдельные файлы, не
     # TRANSLATIONS (см. докстринг bot/rules_content.py) — здесь только
     # обвязка меню разделов.
     "rules.menu_header": "📖 <b>{title}</b>\n\nВыбери раздел:",
     "rules.button.back_to_sections": "⬅️ К списку разделов",
-
     # --- bot/handlers/fallback.py (блок 6) ---
     "fallback.unknown_text": "Управление в игре — только кнопками под сообщениями.",
 }

@@ -108,16 +108,12 @@ def points_to_next_level(victory_points: int, step: int = LEVEL_THRESHOLD_STEP_D
     return next_threshold - victory_points
 
 
-def calculate_levels_gained(
-    old_points: int, new_points: int, step: int = LEVEL_THRESHOLD_STEP_DEFAULT
-) -> int:
+def calculate_levels_gained(old_points: int, new_points: int, step: int = LEVEL_THRESHOLD_STEP_DEFAULT) -> int:
     """§5: сколько уровней пройдено за прирост победных очков."""
     return calculate_level_for_points(new_points, step) - calculate_level_for_points(old_points, step)
 
 
-def calculate_stat_points_gained(
-    levels_gained: int, stat_points_per_level: int = STAT_POINTS_PER_LEVEL
-) -> int:
+def calculate_stat_points_gained(levels_gained: int, stat_points_per_level: int = STAT_POINTS_PER_LEVEL) -> int:
     """§5: очков прокачки за пройденные уровни = levels_gained × STAT_POINTS_PER_LEVEL."""
     return levels_gained * stat_points_per_level
 

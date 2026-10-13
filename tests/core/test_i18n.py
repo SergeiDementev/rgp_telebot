@@ -86,4 +86,3 @@ def test_loot_item_names_switches_with_locale():
         assert i18n.loot_item_names()["wolf_fang"] == "Wolf Fang"
     finally:
         i18n.reset_locale(token)
-

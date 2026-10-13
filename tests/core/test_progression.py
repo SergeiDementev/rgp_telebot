@@ -29,10 +29,10 @@ def test_calculate_level_threshold_matches_doc_example(level, expected_threshold
 @pytest.mark.parametrize(
     "victory_points,expected_level",
     [
-        (7, 1),    # на 1 очко меньше порога уровня 2 — уровень ещё не сменился
-        (8, 2),    # ровно на пороге — уровень уже сменился
-        (19, 2),   # на 1 очко меньше порога уровня 3
-        (20, 3),   # ровно на пороге уровня 3
+        (7, 1),  # на 1 очко меньше порога уровня 2 — уровень ещё не сменился
+        (8, 2),  # ровно на пороге — уровень уже сменился
+        (19, 2),  # на 1 очко меньше порога уровня 3
+        (20, 3),  # ровно на пороге уровня 3
     ],
 )
 def test_calculate_level_for_points_boundary_is_inclusive(victory_points, expected_level):
@@ -50,9 +50,9 @@ def test_calculate_levels_gained_can_skip_several_levels_at_once():
 @pytest.mark.parametrize(
     "old_points,new_points,expected_gained",
     [
-        (5, 7, 0),   # прирост, не достигающий порога
-        (7, 8, 1),   # прирост ровно до порога — засчитывается
-        (8, 8, 0),   # без прироста — новых уровней нет
+        (5, 7, 0),  # прирост, не достигающий порога
+        (7, 8, 1),  # прирост ровно до порога — засчитывается
+        (8, 8, 0),  # без прироста — новых уровней нет
     ],
 )
 def test_calculate_levels_gained_boundaries(old_points, new_points, expected_gained):
@@ -143,9 +143,9 @@ def test_time_to_full_hp_above_max_returns_zero():
     "vitality,expected_hp_max",
     [
         (0, 20),
-        (3, 50),   # §2: стартовая база (Здоровье=3) в мокапе создания персонажа
-        (5, 70),   # §5: мокап прокачки, "Здоровье: 5 (HP max: 70)"
-        (6, 80),   # §5: после +1 к Здоровью, "Здоровье: 6 (HP max: 80)"
+        (3, 50),  # §2: стартовая база (Здоровье=3) в мокапе создания персонажа
+        (5, 70),  # §5: мокап прокачки, "Здоровье: 5 (HP max: 70)"
+        (6, 80),  # §5: после +1 к Здоровью, "Здоровье: 6 (HP max: 80)"
     ],
 )
 def test_calculate_hp_max_matches_doc_mockups(vitality, expected_hp_max):
@@ -258,18 +258,14 @@ def test_calculate_battle_reward_no_reward_for_non_victory_outcomes(outcome, ene
 
 
 def test_allocate_stat_point_decrements_points_and_increments_stat():
-    new_points, new_value = pr.allocate_stat_point(
-        unspent_stat_points=5, current_stat_value=3, stat="strength"
-    )
+    new_points, new_value = pr.allocate_stat_point(unspent_stat_points=5, current_stat_value=3, stat="strength")
     assert new_points == 4
     assert new_value == 4
 
 
 @pytest.mark.parametrize("stat", sorted(pr.STAT_NAMES))
 def test_allocate_stat_point_works_for_every_known_stat(stat):
-    new_points, new_value = pr.allocate_stat_point(
-        unspent_stat_points=1, current_stat_value=0, stat=stat
-    )
+    new_points, new_value = pr.allocate_stat_point(unspent_stat_points=1, current_stat_value=0, stat=stat)
     assert (new_points, new_value) == (0, 1)
 
 
@@ -314,8 +310,6 @@ def test_allocate_stat_point_carries_over_unspent_points_from_creation_to_level_
     assert unspent_after_level_up == 3
 
     # Тот же allocate_stat_point тратит очки из объединённого пула на левел-апе.
-    unspent_after_level_up, strength = pr.allocate_stat_point(
-        unspent_after_level_up, strength, "strength"
-    )
+    unspent_after_level_up, strength = pr.allocate_stat_point(unspent_after_level_up, strength, "strength")
     assert unspent_after_level_up == 2
     assert strength == 7  # старт 3 + 3 (создание) + 1 (левел-ап) = 4 потраченных очка

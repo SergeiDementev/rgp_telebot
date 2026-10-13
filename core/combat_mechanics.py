@@ -58,9 +58,7 @@ def calculate_damage(strength: float, attack_percent: int) -> int:
     return round(strength * attack_percent / 100)
 
 
-def calculate_saturating_success_faces(
-    stat: float, max_faces: int, k: float, min_faces: int = 1
-) -> int:
+def calculate_saturating_success_faces(stat: float, max_faces: int, k: float, min_faces: int = 1) -> int:
     """Кривая насыщения с жёстким потолком, используется §6 (побег):
     MIN_FACES + round((MAX_FACES − MIN_FACES) × stat / (stat + K)).
 
@@ -91,9 +89,7 @@ def is_dodge_successful(dodge_roll: int, success_faces: int) -> bool:
     return dodge_roll <= success_faces
 
 
-def calculate_double_strike_success_faces(
-    luck: float, k: float, dice_sides: int = DICE_SIDES
-) -> int:
+def calculate_double_strike_success_faces(luck: float, k: float, dice_sides: int = DICE_SIDES) -> int:
     """§5: floor(dice_sides × Удача / (Удача + K)), асимптота к dice_sides."""
     if luck + k <= 0:
         return 0
@@ -134,9 +130,7 @@ class FleeAttemptResult(NamedTuple):
     fleeing_defeated: bool
 
 
-def resolve_flee_attempt(
-    pursuer_strength: float, attack_roll: int, fleeing_current_hp: float
-) -> FleeAttemptResult:
+def resolve_flee_attempt(pursuer_strength: float, attack_roll: int, fleeing_current_hp: float) -> FleeAttemptResult:
     """§7: безответный удар преследователя без защиты убегающего."""
     attack_percent = resolve_attack_percent(attack_roll)
     damage = 0.0 if attack_percent is None else calculate_damage(pursuer_strength, attack_percent)

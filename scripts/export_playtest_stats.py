@@ -75,11 +75,25 @@ def export(db_override: str, character_id: int, out_path: Path) -> int:
         db.close()
 
     fieldnames = [
-        "battle_number", "session_id", "created_at", "duration_seconds",
-        "enemy_type", "result", "reward_points", "victory_points_after", "level_after",
-        "turns_taken", "initiative_winner", "circumstance_outcome", "circumstance_roller",
-        "player_strikes", "enemy_strikes", "damage_dealt", "damage_taken",
-        "flee_checks", "flee_checks_triggered",
+        "battle_number",
+        "session_id",
+        "created_at",
+        "duration_seconds",
+        "enemy_type",
+        "result",
+        "reward_points",
+        "victory_points_after",
+        "level_after",
+        "turns_taken",
+        "initiative_winner",
+        "circumstance_outcome",
+        "circumstance_roller",
+        "player_strikes",
+        "enemy_strikes",
+        "damage_dealt",
+        "damage_taken",
+        "flee_checks",
+        "flee_checks_triggered",
     ]
 
     victory_points = 0
@@ -96,18 +110,20 @@ def export(db_override: str, character_id: int, out_path: Path) -> int:
             victory_points += reward
             duration = (session.updated_at - session.created_at).total_seconds()
             metrics = _turn_log_metrics(session.turn_log)
-            writer.writerow({
-                "battle_number": i,
-                "session_id": session.id,
-                "created_at": session.created_at,
-                "duration_seconds": round(duration, 1),
-                "enemy_type": session.enemy_type,
-                "result": session.result,
-                "reward_points": reward,
-                "victory_points_after": victory_points,
-                "level_after": pr.calculate_level_for_points(victory_points),
-                **metrics,
-            })
+            writer.writerow(
+                {
+                    "battle_number": i,
+                    "session_id": session.id,
+                    "created_at": session.created_at,
+                    "duration_seconds": round(duration, 1),
+                    "enemy_type": session.enemy_type,
+                    "result": session.result,
+                    "reward_points": reward,
+                    "victory_points_after": victory_points,
+                    "level_after": pr.calculate_level_for_points(victory_points),
+                    **metrics,
+                }
+            )
 
     return len(sessions)
 

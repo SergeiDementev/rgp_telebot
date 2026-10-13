@@ -206,8 +206,10 @@ def simulate_single_fight_vs_boss(
         # вызываем — обычный ход дальше. Игрока это никак не ограничивает.
         attacker_can_flee = attacker_role != "enemy" or ENEMY_CAN_FLEE.get(enemy_type, True)
 
-        if attacker_can_flee and not attacker["flee_right_used"] and cm.is_hp_at_or_below_flee_threshold(
-            attacker["hp"], attacker["hp_max"], sc.FLEE_THRESHOLD_PERCENT
+        if (
+            attacker_can_flee
+            and not attacker["flee_right_used"]
+            and cm.is_hp_at_or_below_flee_threshold(attacker["hp"], attacker["hp_max"], sc.FLEE_THRESHOLD_PERCENT)
         ):
             attacker["flee_right_used"] = True
             luck_roll = rng.randint(1, 10)
@@ -223,8 +225,14 @@ def simulate_single_fight_vs_boss(
                     else:
                         result = "player_fled" if attacker_role == "player" else "enemy_fled"
                     fight_result = sc._fight_result(
-                        result, turns_taken, player, enemy, double_strikes,
-                        circumstance_outcome, circumstance_roller, flee_offers,
+                        result,
+                        turns_taken,
+                        player,
+                        enemy,
+                        double_strikes,
+                        circumstance_outcome,
+                        circumstance_roller,
+                        flee_offers,
                     )
                     fight_result["potions_used_count"] = player["potions_used_count"]
                     fight_result["potions_small_used"] = player["potions_small_used"]
@@ -252,8 +260,14 @@ def simulate_single_fight_vs_boss(
                 turns_taken += 1
                 result = "victory" if attacker_role == "player" else "defeat"
                 fight_result = sc._fight_result(
-                    result, turns_taken, player, enemy, double_strikes,
-                    circumstance_outcome, circumstance_roller, flee_offers,
+                    result,
+                    turns_taken,
+                    player,
+                    enemy,
+                    double_strikes,
+                    circumstance_outcome,
+                    circumstance_roller,
+                    flee_offers,
                 )
                 fight_result["potions_used_count"] = player["potions_used_count"]
                 fight_result["potions_small_used"] = player["potions_small_used"]
@@ -274,7 +288,13 @@ def run_boss_batch(
 ) -> list:
     return [
         simulate_single_fight_vs_boss(
-            player_stats, boss_stats, "always_fight", rng, potions_small, potions_large, unlimited_potions,
+            player_stats,
+            boss_stats,
+            "always_fight",
+            rng,
+            potions_small,
+            potions_large,
+            unlimited_potions,
             power_attack=power_attack,
         )
         for _ in range(fights)
@@ -343,14 +363,21 @@ def main():
     print(f"Статы босса (кандидат): {boss_stats}")
 
     rng_a = random.Random(args.seed)
-    results_a = run_boss_batch(player_stats, boss_stats, args.fights, rng_a, potions_small=0, potions_large=0, unlimited_potions=False)
+    results_a = run_boss_batch(
+        player_stats, boss_stats, args.fights, rng_a, potions_small=0, potions_large=0, unlimited_potions=False
+    )
     summary_a = summarize_boss(results_a)
     print_boss_summary("без подготовки (0 зелий)", args.fights, summary_a)
 
     rng_b = random.Random(args.seed + 1)
     results_b = run_boss_batch(
-        player_stats, boss_stats, args.fights, rng_b,
-        potions_small=FULL_STASH_SMALL_POTIONS, potions_large=FULL_STASH_LARGE_POTIONS, unlimited_potions=True,
+        player_stats,
+        boss_stats,
+        args.fights,
+        rng_b,
+        potions_small=FULL_STASH_SMALL_POTIONS,
+        potions_large=FULL_STASH_LARGE_POTIONS,
+        unlimited_potions=True,
     )
     summary_b = summarize_boss(results_b)
     print_boss_summary("с полным запасом (5 малых + 3 больших, без лимита)", args.fights, summary_b)

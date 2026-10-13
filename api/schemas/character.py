@@ -79,6 +79,7 @@ class SetMessageIdsRequest(BaseModel):
     сообщения, на котором физически нажали), не трогая welcome_message_id.
     Не переданное (None) поле — значение персонажа не меняется, не
     сбрасывается в null."""
+
     welcome_message_id: Optional[int] = None
     main_message_id: Optional[int] = None
 

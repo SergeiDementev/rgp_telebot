@@ -1,0 +1,35 @@
+[tool.ruff]
+# Дефолтная длина строки у ruff format — 88 символов; в этом проекте много
+# строк длиннее (особенно поясняющие комментарии в core/ и api/rendering.py,
+# которые проект хранит дословно) — 120 переформатирует только по-настоящему
+# длинные строки, не весь файл.
+line-length = 120
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+ignore = [
+    # Длина строки — не навязываем: проект хранит длинные объясняющие
+    # комментарии и собранные в одну строку переводы дословно (docs/
+    # hardening_plan.md, этап 1) — переформатировать 80+ строк вручную
+    # ради лимита ценнее, чем просто выключить проверку.
+    "E501",
+    # function-call-in-default-argument — это FastAPI Depends(...) в
+    # сигнатурах роутеров (`db: Session = Depends(get_db)`), идиоматичный
+    # паттерн внедрения зависимостей самого фреймворка, не баг.
+    "B008",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "bot", "core", "db", "i18n"]
+
+[tool.mypy]
+python_version = "3.14"
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# core/ — чистые функции без зависимостей от HTTP/БД/Telegram, удобное
+# место для строгой проверки типов первым (docs/hardening_plan.md, этап 1).
+module = "core.*"
+strict = true

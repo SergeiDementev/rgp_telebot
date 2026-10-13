@@ -13,7 +13,9 @@ from db.models import Character, CombatSession, StatAllocationLog
 from tests.api.conftest import override_get_db
 
 
-def _set_character_economy(db_session_factory, character_id, *, gold=None, loot=None, potions_small=None, potions_large=None):
+def _set_character_economy(
+    db_session_factory, character_id, *, gold=None, loot=None, potions_small=None, potions_large=None
+):
     db = db_session_factory()
     character = db.get(Character, character_id)
     if gold is not None:
@@ -104,8 +106,13 @@ def test_get_character_returns_active_combat_session_id_when_battling(db_session
 
     db = db_session_factory()
     session = CombatSession(
-        character_id=character_id, enemy_type="mouse", enemy_hp_current=20.0,
-        character_hp_snapshot=50.0, status="active", current_turn="player", turn_log=[],
+        character_id=character_id,
+        enemy_type="mouse",
+        enemy_hp_current=20.0,
+        character_hp_snapshot=50.0,
+        status="active",
+        current_turn="player",
+        turn_log=[],
     )
     db.add(session)
     db.commit()
@@ -123,8 +130,14 @@ def test_get_character_ignores_finished_combat_sessions(db_session_factory):
 
     db = db_session_factory()
     session = CombatSession(
-        character_id=character_id, enemy_type="mouse", enemy_hp_current=0.0,
-        character_hp_snapshot=50.0, status="finished", result="victory", current_turn="player", turn_log=[],
+        character_id=character_id,
+        enemy_type="mouse",
+        enemy_hp_current=0.0,
+        character_hp_snapshot=50.0,
+        status="finished",
+        result="victory",
+        current_turn="player",
+        turn_log=[],
     )
     db.add(session)
     db.commit()

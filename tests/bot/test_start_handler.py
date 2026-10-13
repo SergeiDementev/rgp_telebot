@@ -58,8 +58,16 @@ async def test_cmd_start_existing_user_shows_welcome_then_stats():
     message = make_message()
     api = AsyncMock()
     api.get_character.return_value = {
-        "id": 1, "nickname": "Hero", "level": 2, "hp_current": 40.0, "hp_max": 60.0,
-        "strength": 5, "agility": 3, "luck": 2, "victory_points": 15, "points_to_next_level": 5,
+        "id": 1,
+        "nickname": "Hero",
+        "level": 2,
+        "hp_current": 40.0,
+        "hp_max": 60.0,
+        "strength": 5,
+        "agility": 3,
+        "luck": 2,
+        "victory_points": 15,
+        "points_to_next_level": 5,
     }
 
     await cmd_start(message, api)
@@ -78,8 +86,13 @@ async def test_cmd_start_resumes_active_battle_instead_of_stats_screen():
     api = AsyncMock()
     api.get_character.return_value = {"id": 1, "nickname": "Hero", "active_combat_session_id": 5}
     api.resume_combat_session.return_value = {
-        "status": "active", "current_turn": "player", "enemy_type": "wolf", "text": "❤️ Ты: 34/50   👹 Волк: 12/50",
-        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": False,
+        "status": "active",
+        "current_turn": "player",
+        "enemy_type": "wolf",
+        "text": "❤️ Ты: 34/50   👹 Волк: 12/50",
+        "potions_small": 0,
+        "potions_large": 0,
+        "potion_used_this_battle": False,
     }
 
     await cmd_start(message, api)
@@ -106,8 +119,15 @@ async def test_cmd_start_reraises_non_404_errors():
 
 
 _STATS_FIELDS = {
-    "nickname": "Hero", "level": 2, "hp_current": 40.0, "hp_max": 60.0,
-    "strength": 5, "agility": 3, "luck": 2, "victory_points": 15, "points_to_next_level": 5,
+    "nickname": "Hero",
+    "level": 2,
+    "hp_current": 40.0,
+    "hp_max": 60.0,
+    "strength": 5,
+    "agility": 3,
+    "luck": 2,
+    "victory_points": 15,
+    "points_to_next_level": 5,
 }
 
 
@@ -276,8 +296,13 @@ async def test_cmd_start_saves_message_ids_for_resume_branch_too():
     api = AsyncMock()
     api.get_character.return_value = {"id": 1, "nickname": "Hero", "active_combat_session_id": 5}
     api.resume_combat_session.return_value = {
-        "status": "active", "current_turn": "player", "enemy_type": "wolf", "text": "...",
-        "potions_small": 0, "potions_large": 0, "potion_used_this_battle": False,
+        "status": "active",
+        "current_turn": "player",
+        "enemy_type": "wolf",
+        "text": "...",
+        "potions_small": 0,
+        "potions_large": 0,
+        "potion_used_this_battle": False,
     }
 
     await cmd_start(message, api)
@@ -290,8 +315,16 @@ async def test_start_game_creates_character_when_missing():
     api = AsyncMock()
     api.get_character.side_effect = ApiError(404, "not found")
     api.create_character.return_value = {
-        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "id": 1,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 5,
+        "strength": 3,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 8,
     }
 
     await start_game(callback, api)
@@ -310,8 +343,16 @@ async def test_start_game_detects_english_from_language_code():
     api = AsyncMock()
     api.get_character.side_effect = ApiError(404, "not found")
     api.create_character.return_value = {
-        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "id": 1,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 5,
+        "strength": 3,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 8,
     }
 
     await start_game(callback, api)
@@ -323,8 +364,16 @@ async def test_start_game_reuses_existing_character_without_recreating():
     callback = make_callback()
     api = AsyncMock()
     api.get_character.return_value = {
-        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 2, "strength": 4,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 3,
+        "id": 1,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 2,
+        "strength": 4,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 3,
     }
 
     await start_game(callback, api)
@@ -433,8 +482,16 @@ async def test_reset_confirm_deletes_character_and_shows_creation_screen():
     api = AsyncMock()
     api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru"}
     api.create_character.return_value = {
-        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "id": 1,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 5,
+        "strength": 3,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 8,
     }
 
     await reset_confirm(callback, api)
@@ -459,8 +516,16 @@ async def test_reset_confirm_saves_main_message_id_for_new_character():
     api = AsyncMock()
     api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru"}
     api.create_character.return_value = {
-        "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "id": 2,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 5,
+        "strength": 3,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 8,
     }
 
     await reset_confirm(callback, api)
@@ -484,15 +549,21 @@ async def test_reset_confirm_carries_over_welcome_message_id():
     api = AsyncMock()
     api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru", "welcome_message_id": 7}
     api.create_character.return_value = {
-        "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "id": 2,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 5,
+        "strength": 3,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 8,
     }
 
     await reset_confirm(callback, api)
 
-    api.set_message_ids.assert_awaited_once_with(
-        2, main_message_id=callback.message.message_id, welcome_message_id=7
-    )
+    api.set_message_ids.assert_awaited_once_with(2, main_message_id=callback.message.message_id, welcome_message_id=7)
 
 
 async def test_reset_confirm_carries_over_existing_language_choice():
@@ -504,8 +575,16 @@ async def test_reset_confirm_carries_over_existing_language_choice():
     api = AsyncMock()
     api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "en"}
     api.create_character.return_value = {
-        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "id": 1,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 5,
+        "strength": 3,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 8,
     }
 
     await reset_confirm(callback, api)
@@ -529,8 +608,16 @@ async def test_reset_confirm_deletes_orphaned_previous_main_message():
     api = AsyncMock()
     api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru", "main_message_id": 20}
     api.create_character.return_value = {
-        "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "id": 2,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 5,
+        "strength": 3,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 8,
     }
 
     await reset_confirm(callback, api)
@@ -551,8 +638,16 @@ async def test_reset_confirm_does_not_delete_when_confirmation_is_the_main_messa
     api = AsyncMock()
     api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru", "main_message_id": 20}
     api.create_character.return_value = {
-        "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "id": 2,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 5,
+        "strength": 3,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 8,
     }
 
     await reset_confirm(callback, api)
@@ -571,8 +666,16 @@ async def test_reset_confirm_skips_deletion_when_no_previous_main_message():
     api = AsyncMock()
     api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "ru"}
     api.create_character.return_value = {
-        "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "id": 2,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 5,
+        "strength": 3,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 8,
     }
 
     await reset_confirm(callback, api)
@@ -587,8 +690,16 @@ async def test_cmd_start_shows_stats_in_character_language():
     message = make_message()
     api = AsyncMock()
     api.get_character.return_value = {
-        "id": 1, "nickname": "Hero", "level": 2, "hp_current": 40.0, "hp_max": 60.0,
-        "strength": 5, "agility": 3, "luck": 2, "victory_points": 15, "points_to_next_level": 5,
+        "id": 1,
+        "nickname": "Hero",
+        "level": 2,
+        "hp_current": 40.0,
+        "hp_max": 60.0,
+        "strength": 5,
+        "agility": 3,
+        "luck": 2,
+        "victory_points": 15,
+        "points_to_next_level": 5,
         "language": "en",
     }
     try:
@@ -605,8 +716,16 @@ async def test_start_game_renders_creation_screen_in_character_language():
     api = AsyncMock()
     api.get_character.side_effect = ApiError(404, "not found")
     api.create_character.return_value = {
-        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "id": 1,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 5,
+        "strength": 3,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 8,
         "language": "en",
     }
     try:
@@ -624,8 +743,16 @@ async def test_reset_confirm_renders_creation_screen_in_carried_over_language():
     api = AsyncMock()
     api.get_character.return_value = {"id": 1, "nickname": "Hero", "language": "en"}
     api.create_character.return_value = {
-        "id": 1, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "id": 1,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 5,
+        "strength": 3,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 8,
         "language": "en",
     }
     try:
@@ -646,8 +773,16 @@ async def test_reset_confirm_passes_boss_victory_reason():
     api = AsyncMock()
     api.get_character.return_value = {"id": 2, "nickname": "Hero", "language": "ru"}
     api.create_character.return_value = {
-        "id": 2, "nickname": "Hero", "level": 1, "unspent_stat_points": 5, "strength": 3,
-        "agility": 3, "luck": 1, "vitality": 3, "hp_max": 50.0, "points_to_next_level": 8,
+        "id": 2,
+        "nickname": "Hero",
+        "level": 1,
+        "unspent_stat_points": 5,
+        "strength": 3,
+        "agility": 3,
+        "luck": 1,
+        "vitality": 3,
+        "hp_max": 50.0,
+        "points_to_next_level": 8,
     }
 
     await reset_confirm(callback, api)

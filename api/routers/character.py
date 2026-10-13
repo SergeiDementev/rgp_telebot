@@ -142,7 +142,7 @@ def reset_character(
     reason: Literal["manual_reset", "boss_victory"] = Query(...),
     db: Session = Depends(get_db),
 ) -> None:
-    """"Обнулить персонажа" — раньше действительно удаляло строку и каскадом
+    """ "Обнулить персонажа" — раньше действительно удаляло строку и каскадом
     CombatSession/StatAllocationLog (docs/notes.md); теперь архивирует
     (docs/notes.md, п.41) — вся история прохождения нужна для аналитики
     (scripts/export_playtest_stats.py) и должна пережить сброс/победу над
@@ -178,9 +178,7 @@ def allocate_point(
     # Валидировать имя стата ДО getattr/setattr — иначе payload.stat мог бы
     # указать на произвольный атрибут модели, не только на игровой стат.
     if payload.stat not in pr.STAT_NAMES:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"unknown stat: {payload.stat!r}"
-        )
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"unknown stat: {payload.stat!r}")
 
     try:
         new_unspent, new_value = pr.allocate_stat_point(
