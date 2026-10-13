@@ -10,9 +10,21 @@
 # тихо передать пустую строку в контейнер (пустой INTERNAL_API_KEY у api
 # и у bot совпал бы сам с собой и выглядел бы "рабочим").
 
+# Ротация логов Docker (docs/hardening_plan.md, этап 3) — без неё логи
+# контейнеров растут без предела (в отличие от файлового лога бота,
+# bot/main.py, который сам себя ротирует). Один якорь на все три сервиса,
+# не три одинаковых блока — заодно защищает и соседний проект на той же ВМ
+# от переполнения диска этим стеком.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
-    image: postgres:16
+    image: postgres:16.15
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?нужен POSTGRES_USER в .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?нужен POSTGRES_PASSWORD в .env}
@@ -31,6 +43,7 @@ services:
     build: .
     image: rpg-tele-bot:latest
     command: sh -c "alembic upgrade head && exec uvicorn api.main:app --host 0.0.0.0 --port 8000"
+    logging: *default-logging
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?нужен INTERNAL_API_KEY в .env}
@@ -50,6 +63,7 @@ services:
   bot:
     image: rpg-tele-bot:latest
     command: python -m bot.main
+    logging: *default-logging
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?нужен TELEGRAM_BOT_TOKEN в .env}
       API_BASE_URL: http://api:8000
