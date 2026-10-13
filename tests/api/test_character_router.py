@@ -6,8 +6,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.dependencies import DEV_DEFAULT_API_KEY, get_db, require_api_key
+from api.dependencies import get_db, require_api_key
 from api.routers.character import router as character_router
+from api.settings import settings as api_settings
 from core import economy as ec
 from db.models import Character, CombatSession, StatAllocationLog
 from tests.api.conftest import override_get_db
@@ -483,7 +484,7 @@ def test_require_api_key_without_override(db_session_factory):
     right_key = client.post(
         "/character",
         json={"telegram_user_id": 1, "nickname": "Hero"},
-        headers={"X-Internal-Api-Key": DEV_DEFAULT_API_KEY},
+        headers={"X-Internal-Api-Key": api_settings.internal_api_key},
     )
     assert right_key.status_code == 201
 

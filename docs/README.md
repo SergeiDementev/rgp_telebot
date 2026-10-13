@@ -43,7 +43,7 @@ INTERNAL_API_KEY=dev-local-key
 DATABASE_URL=postgresql+psycopg2://rpg:rpg@localhost:5432/rpg
 ```
 
-`DATABASE_URL` — необязательна: без неё `db/session.py` использует локальный SQLite-файл (`rpg.db`), без какой-либо настройки. Для PostgreSQL нужен запущенный сервер — быстрее всего поднять один контейнер (без docker-compose, это отдельный шаг для развёртывания на сервере):
+`DATABASE_URL`/`INTERNAL_API_KEY`/`TELEGRAM_BOT_TOKEN` обязательны (docs/hardening_plan.md, этап 2) — без любой из них api/бот сразу падают понятной ошибкой при старте (`db/settings.py`/`api/settings.py`/`bot/settings.py`), а не тихо работают с дефолтом или не той БД. Для PostgreSQL нужен запущенный сервер — быстрее всего поднять один контейнер (без docker-compose, это отдельный шаг для развёртывания на сервере):
 
 ```
 docker run -d --name rpg-postgres -e POSTGRES_USER=rpg -e POSTGRES_PASSWORD=rpg -e POSTGRES_DB=rpg -p 5432:5432 -v rpg_pgdata:/var/lib/postgresql/data postgres:16

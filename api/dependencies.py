@@ -1,22 +1,17 @@
 """Сквозные FastAPI-зависимости: сессия БД, авторизация бота, текущий персонаж."""
 
-import os
-
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
+from api.settings import settings
 from core import i18n
 from db.models import Character
 from db.session import get_db
 
-INTERNAL_API_KEY_ENV = "INTERNAL_API_KEY"
-DEV_DEFAULT_API_KEY = "dev-local-key"  # только для локальной разработки без .env
-
 
 def require_api_key(x_internal_api_key: str = Header(...)) -> None:
     """§9 backend_plan.md: статический ключ, известный только боту."""
-    expected = os.environ.get(INTERNAL_API_KEY_ENV, DEV_DEFAULT_API_KEY)
-    if x_internal_api_key != expected:
+    if x_internal_api_key != settings.internal_api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid API key")
 
 

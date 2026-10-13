@@ -7,7 +7,6 @@
 
 import asyncio
 import logging
-import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -15,13 +14,11 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramRetryAfter
-from dotenv import load_dotenv
 
 from bot.client import ApiClient
 from bot.handlers import character, combat, fallback, start
+from bot.settings import settings
 from bot.utils import set_locale_from_telegram_profile
-
-load_dotenv()
 
 # Поддиректория проекта, не общесерверная (docs/notes.md) — на сервере со
 # временем могут появиться другие приложения, их логи не должны смешиваться
@@ -101,15 +98,13 @@ def build_dispatcher() -> Dispatcher:
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
 
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not token:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN не задан — добавь его в .env (см. .env.example)")
-
-    # После проверки токена, не раньше — иначе быстрый отказ выше уже
-    # создавал бы logs/bot.log и директорию под него без всякой пользы.
+    # Токен уже проверен при импорте bot.settings (выше по файлу, до
+    # определения этой функции) — к моменту вызова main() он гарантированно
+    # задан, поэтому logs/bot.log создаётся не раньше, чем до этого места
+    # вообще можно дойти.
     _add_file_logging()
 
-    bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     bot.session.middleware(_log_retry_after)
     await _clear_bot_commands(bot)
     dp = build_dispatcher()

@@ -1,7 +1,11 @@
 """Тесты bot/main.py — сборка Dispatcher, проверка обязательного токена."""
 
 import logging
+import os
+import subprocess
+import sys
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,11 +13,12 @@ from aiogram.exceptions import TelegramRetryAfter
 
 import bot.main as bot_main
 from bot.handlers import fallback
-from bot.main import _clear_bot_commands, build_dispatcher, main
+from bot.main import _clear_bot_commands, build_dispatcher
 
-pytestmark = pytest.mark.asyncio
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.mark.asyncio
 async def test_build_dispatcher_registers_all_handler_routers():
     # Один-единственный вызов build_dispatcher() в модуле — Router
     # aiogram можно прикрепить только к одному Dispatcher за раз, а
@@ -27,12 +32,38 @@ async def test_build_dispatcher_registers_all_handler_routers():
     assert dp.sub_routers[-1] is fallback.router
 
 
-async def test_main_raises_without_telegram_bot_token(monkeypatch):
-    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
-    with pytest.raises(RuntimeError, match="TELEGRAM_BOT_TOKEN"):
-        await main()
+def test_bot_fails_fast_without_required_env_vars(tmp_path):
+    # docs/hardening_plan.md, этап 2 — bot/settings.py валидирует
+    # TELEGRAM_BOT_TOKEN/INTERNAL_API_KEY при самом импорте, не откладывая
+    # до первого реального использования (bot/main.py импортирует
+    # bot.settings на уровне модуля). Не monkeypatch + повторный вызов
+    # main() в этом же процессе — bot.settings уже импортирован и
+    # закэширован (корневой tests/conftest.py выставляет заглушки до
+    # коллекции тестов), повторный импорт не перевалидирует ничего;
+    # нужен настоящий свежий процесс с пустым окружением, как при
+    # реальном старте без .env.
+    #
+    # cwd — временная директория, не корень репозитория: bot/settings.py
+    # сам вызывает load_dotenv(), которая иначе нашла бы настоящий .env
+    # разработчика (с реальными токенами) при поиске вверх по дереву
+    # каталогов и тест бы не воспроизвёл сценарий отсутствия .env вообще.
+    env = {k: v for k, v in os.environ.items() if k not in ("TELEGRAM_BOT_TOKEN", "INTERNAL_API_KEY")}
+    env["PYTHONPATH"] = str(PROJECT_ROOT)
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import bot.settings"],
+        cwd=str(tmp_path),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "TELEGRAM_BOT_TOKEN" in result.stderr
+    assert "INTERNAL_API_KEY" in result.stderr
 
 
+@pytest.mark.asyncio
 async def test_log_retry_after_reraises_and_logs_warning(caplog):
     # docs/notes.md — расследование flood control (429): middleware сессии
     # должен ловить TelegramRetryAfter от ЛЮБОГО метода API, писать WARNING
@@ -53,6 +84,7 @@ async def test_log_retry_after_reraises_and_logs_warning(caplog):
     assert any("sendMessage" in m and "retry_after=5" in m for m in messages)
 
 
+@pytest.mark.asyncio
 async def test_log_retry_after_passes_through_successful_requests():
     method = MagicMock()
 
@@ -64,6 +96,7 @@ async def test_log_retry_after_passes_through_successful_requests():
     assert result == "ok"
 
 
+@pytest.mark.asyncio
 async def test_add_file_logging_adds_rotating_handler_in_project_subdir(tmp_path, monkeypatch):
     # docs/notes.md — лог должен пережить docker compose up -d --build
     # (bind mount, не writable-слой контейнера) и жить в поддиректории
@@ -88,6 +121,7 @@ async def test_add_file_logging_adds_rotating_handler_in_project_subdir(tmp_path
                 handler.close()
 
 
+@pytest.mark.asyncio
 async def test_clear_bot_commands_deletes_ru_en_and_default():
     # docs/notes.md — меню команд Telegram (иконка "/") решено убрать: явно
     # удаляем те же три регистрации, что раньше выставлял _register_bot_

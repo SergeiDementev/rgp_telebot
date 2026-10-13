@@ -11,13 +11,14 @@ character-эндпоинты работают по explicit id/telegram_user_id 
 (`api/dependencies.get_current_character`).
 """
 
-import os
 from typing import Any
 
 import httpx
 
-API_BASE_URL = os.environ.get("API_BASE_URL", "http://127.0.0.1:8000")
-INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "dev-local-key")
+from bot.settings import settings
+
+API_BASE_URL = settings.api_base_url
+INTERNAL_API_KEY = settings.internal_api_key
 
 
 class ApiError(Exception):
