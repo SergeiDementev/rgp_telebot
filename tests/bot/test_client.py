@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from bot.client import ApiClient, ApiError
+from bot.client import INTERNAL_API_KEY, ApiClient, ApiError
 
 pytestmark = pytest.mark.asyncio
 
@@ -38,7 +38,7 @@ async def test_create_character_sends_correct_request_without_telegram_header():
     assert captured["method"] == "POST"
     assert captured["path"] == "/character"
     assert captured["json"] == {"telegram_user_id": 1, "nickname": "Hero", "language": "ru"}
-    assert captured["headers"]["x-internal-api-key"] == "dev-local-key"
+    assert captured["headers"]["x-internal-api-key"] == INTERNAL_API_KEY
     assert "x-telegram-user-id" not in captured["headers"]
     assert result["nickname"] == "Hero"
 
