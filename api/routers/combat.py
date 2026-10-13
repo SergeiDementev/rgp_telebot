@@ -17,8 +17,7 @@ scripts/simulate_combat.py — тот же набор черновых знач�
 """
 
 import random
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -47,7 +46,7 @@ FLEE_K = 15
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _load_owned_session(db: Session, combat_session_id: int, character: Character) -> CombatSession:
@@ -190,7 +189,7 @@ def _use_potion(session: CombatSession, character: Character, size: str, db: Ses
     return rendering.render_potion_used(size, heal)
 
 
-def _check_flee_gate(session: CombatSession, character: Character, db: Session) -> Optional[dict]:
+def _check_flee_gate(session: CombatSession, character: Character, db: Session) -> dict | None:
     """§6 combat_mechanics.md: проверка в начале хода атакующей стороны.
 
     Одна попытка за бой на сторону (docs/notes.md, п.9) — право сгорает

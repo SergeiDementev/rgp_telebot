@@ -1,6 +1,6 @@
 """Pydantic-схемы запросов/ответов для роутера character."""
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -38,9 +38,9 @@ class CharacterOut(BaseModel):
     potions_small: int
     potions_large: int
     language: Language
-    active_combat_session_id: Optional[int] = None
-    welcome_message_id: Optional[int] = None
-    main_message_id: Optional[int] = None
+    active_combat_session_id: int | None = None
+    welcome_message_id: int | None = None
+    main_message_id: int | None = None
 
 
 class AllocatePointRequest(BaseModel):
@@ -80,8 +80,8 @@ class SetMessageIdsRequest(BaseModel):
     Не переданное (None) поле — значение персонажа не меняется, не
     сбрасывается в null."""
 
-    welcome_message_id: Optional[int] = None
-    main_message_id: Optional[int] = None
+    welcome_message_id: int | None = None
+    main_message_id: int | None = None
 
 
 class SetMessageIdsResponse(BaseModel):

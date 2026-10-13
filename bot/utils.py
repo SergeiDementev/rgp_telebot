@@ -2,7 +2,8 @@
 
 import asyncio
 from collections import defaultdict
-from typing import Any, Awaitable, Callable, Optional, Union
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
@@ -35,7 +36,7 @@ def start_game_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def detect_language(language_code: Optional[str]) -> str:
+def detect_language(language_code: str | None) -> str:
     """Язык персонажа по умолчанию при первом создании (docs/notes.md) —
     из message.from_user.language_code Telegram (двух-трёхбуквенный код,
     иногда с региональным суффиксом вроде "ru-RU"/"en-US", иногда
@@ -45,8 +46,8 @@ def detect_language(language_code: Optional[str]) -> str:
 
 
 async def set_locale_from_telegram_profile(
-    handler: Callable[[Union[Message, CallbackQuery], dict], Awaitable[Any]],
-    event: Union[Message, CallbackQuery],
+    handler: Callable[[Message | CallbackQuery, dict], Awaitable[Any]],
+    event: Message | CallbackQuery,
     data: dict,
 ) -> Any:
     """Диспетчерская мидлварь (docs/notes.md, блок 4; подключена в
@@ -83,7 +84,7 @@ async def try_delete_message(bot: Bot, chat_id: int, message_id: int) -> None:
 
 
 async def try_edit_message_text(
-    bot: Bot, chat_id: int, message_id: int, text: str, *, reply_markup: Optional[InlineKeyboardMarkup] = None
+    bot: Bot, chat_id: int, message_id: int, text: str, *, reply_markup: InlineKeyboardMarkup | None = None
 ) -> bool:
     """Пытается отредактировать сообщение по id, не имея объекта Message под
     рукой (docs/notes.md) — например, переключатель языка на главном экране
@@ -98,7 +99,7 @@ async def try_edit_message_text(
         return False
 
 
-async def safe_edit_text(message: Message, text: str, *, reply_markup: Optional[InlineKeyboardMarkup] = None) -> None:
+async def safe_edit_text(message: Message, text: str, *, reply_markup: InlineKeyboardMarkup | None = None) -> None:
     """edit_text, но не падает, если контент не изменился.
 
     Нужно для кнопки "Обновить": если состояние с прошлого раза не
@@ -148,7 +149,7 @@ def user_lock(telegram_user_id: int) -> asyncio.Lock:
     return _user_locks[telegram_user_id]
 
 
-async def get_character_or_prompt_start(callback: CallbackQuery, api: ApiClient) -> Optional[dict]:
+async def get_character_or_prompt_start(callback: CallbackQuery, api: ApiClient) -> dict | None:
     """Общая обёртка над api.get_character() для колбэков экранов вне боя.
 
     Персонажа может не быть — например, свежая БД после переезда на новую

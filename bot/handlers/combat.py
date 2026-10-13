@@ -11,7 +11,8 @@ power_attack=true в теле запроса, отдельная кнопка р
 
 import logging
 import time
-from typing import Any, Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
@@ -98,7 +99,7 @@ USE_POTION_ERROR_KEYS = {
 }
 
 
-def _attack_phase_buttons(session_id: int, current_turn: Optional[str]) -> list[InlineKeyboardButton]:
+def _attack_phase_buttons(session_id: int, current_turn: str | None) -> list[InlineKeyboardButton]:
     """Кнопка(и) хода игрока. На ходу противника — только "Защищаться" (та
     же кнопка запускает /turn, подпись косметическая). На ходу игрока —
     выбор между обычной атакой и "💥 Мощный удар" (docs/combat_mechanics.md

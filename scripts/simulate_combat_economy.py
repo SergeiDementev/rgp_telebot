@@ -43,7 +43,6 @@ POOL/CHECKPOINT_INTERVAL/CHECKPOINT_FIGHTS/ENCOUNTER_ORDER).
 
 import argparse
 import csv
-import json
 import random
 import statistics
 import sys

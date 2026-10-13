@@ -9,7 +9,7 @@
 """
 
 import math
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 DICE_SIDES = 10
 
@@ -32,7 +32,7 @@ FLEE_THRESHOLD_PERCENT_DEFAULT = 25
 CIRCUMSTANCE_MODIFIER_PERCENT_DEFAULT = 20
 
 
-def resolve_attack_percent(attack_roll: int, *, power: bool = False) -> Optional[int]:
+def resolve_attack_percent(attack_roll: int, *, power: bool = False) -> int | None:
     """§3(+§3a): процент от Силы по грани атаки, либо None при промахе.
 
     Обычная атака и Мощный удар (только игрок) делят одну и ту же шкалу
@@ -124,7 +124,7 @@ def is_flee_opportunity_triggered(luck_roll: int, success_faces: int) -> bool:
 
 class FleeAttemptResult(NamedTuple):
     missed: bool
-    attack_percent: Optional[int]
+    attack_percent: int | None
     damage: float
     fleeing_hp_after: float
     fleeing_defeated: bool
@@ -144,7 +144,7 @@ def resolve_flee_attempt(pursuer_strength: float, attack_roll: int, fleeing_curr
     )
 
 
-def resolve_circumstance_outcome(roll: int) -> Optional[str]:
+def resolve_circumstance_outcome(roll: int) -> str | None:
     """§8: 1-3 -> "debuff", 4-7 -> None (нет обстоятельства), 8-10 -> "buff"."""
     if roll <= 3:
         return "debuff"
@@ -154,7 +154,7 @@ def resolve_circumstance_outcome(roll: int) -> Optional[str]:
 
 
 def resolve_circumstance_multiplier(
-    outcome: Optional[str],
+    outcome: str | None,
     modifier_percent: float = CIRCUMSTANCE_MODIFIER_PERCENT_DEFAULT,
 ) -> float:
     """§8: голый множитель Силы кидающего по исходу обстоятельства (buff ->
@@ -171,7 +171,7 @@ def resolve_circumstance_multiplier(
 
 def apply_circumstance_strength_modifier(
     strength: float,
-    outcome: Optional[str],
+    outcome: str | None,
     modifier_percent: float = CIRCUMSTANCE_MODIFIER_PERCENT_DEFAULT,
 ) -> float:
     """§8: модификатор относителен к кидающему (buff усиливает его, debuff ослабляет)."""
@@ -180,9 +180,9 @@ def apply_circumstance_strength_modifier(
 
 class StrikeResult(NamedTuple):
     missed: bool
-    attack_percent: Optional[int]
-    dodge_success_faces: Optional[int]
-    dodged: Optional[bool]
+    attack_percent: int | None
+    dodge_success_faces: int | None
+    dodged: bool | None
     damage: float
 
 
@@ -227,7 +227,7 @@ def resolve_strike(
     )
 
 
-def resolve_initiative(first_roll: int, second_roll: int) -> Optional[str]:
+def resolve_initiative(first_roll: int, second_roll: int) -> str | None:
     """§9 шаг 1: "first" | "second" — кто ходит первым, либо None при ничьей
     (документ не определяет тай-брейк — ничья считается поводом перебросить).
     """

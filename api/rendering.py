@@ -24,7 +24,6 @@ ru.py формы разные (падежи/род), в en.py все формы 
 ветвится по локали вообще, только по структуре боя.
 """
 
-from typing import Optional
 
 from core import i18n
 from core.combat_mechanics import POWER_ATTACK_DAMAGE_MULTIPLIER
@@ -331,7 +330,7 @@ def render_battle_end(
     hp_current: float,
     hp_max: float,
     hp_seconds_to_full: float,
-    loot_dropped: Optional[str] = None,
+    loot_dropped: str | None = None,
 ) -> str:
     names = i18n.enemy_names(enemy_type)
     nk = _name_kwargs(names)

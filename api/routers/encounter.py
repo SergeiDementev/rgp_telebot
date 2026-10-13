@@ -7,13 +7,12 @@ gameplay_loop_mvp.md §9 ("Искать противника" -> "Определ
 """
 
 import random
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from api import enemy_content
-from api import rendering
+from api import enemy_content, rendering
 from api.dependencies import get_db, get_localized_character, require_api_key
 from api.schemas.combat import CombatStartResponse, EncounterSearchResponse
 from core import combat_mechanics as cm
@@ -24,7 +23,7 @@ router = APIRouter(tags=["encounter", "combat"], dependencies=[Depends(require_a
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _roll_enemy_encounter(level: int) -> tuple:

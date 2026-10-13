@@ -15,7 +15,6 @@
 логика нужна исключительно AI-модели противника в калибровочных
 симуляторах и живёт в `scripts/simulate_combat_economy.py`."""
 
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Лут — таблица весов по мобу, откалибровано в scripts/simulate_combat_economy.py.
@@ -107,7 +106,7 @@ def calculate_heal_amount(hp_max: float, size: str) -> int:
     return round(hp_max * potion_heal_percent(size) / 100)
 
 
-def check_can_buy_potion(gold: int, potions_small: int, potions_large: int, size: str) -> Optional[str]:
+def check_can_buy_potion(gold: int, potions_small: int, potions_large: int, size: str) -> str | None:
     """None — можно купить. Иначе причина отказа: "cap_reached" |
     "not_enough_gold" — вызывающий код (api-роутер) должен уметь показать
     игроку РАЗНУЮ причину (не хватает золота vs уже максимум), не единое

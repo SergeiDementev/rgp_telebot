@@ -8,7 +8,6 @@ import pytest
 from core import economy as ec
 from scripts import simulate_combat_economy as sce
 
-
 # ---------------------------------------------------------------------------
 # Лут
 # ---------------------------------------------------------------------------

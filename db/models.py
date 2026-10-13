@@ -16,7 +16,7 @@
   к "один активный CombatSession на персонажа").
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
@@ -29,7 +29,7 @@ def _utcnow() -> datetime:
     # (одинаково и на SQLite, и на PostgreSQL, docs/notes.md) — если писать
     # aware, сравнение naive/aware (например, в core.progression.get_current_hp)
     # упадёт после db.refresh().
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Character(Base):

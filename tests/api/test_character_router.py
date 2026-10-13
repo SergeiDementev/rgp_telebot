@@ -1,6 +1,6 @@
 """Тесты роутера /character через FastAPI TestClient + изолированную SQLite."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -156,7 +156,7 @@ def test_get_character_regenerates_hp_lazily(db_session_factory):
     db = db_session_factory()
     character = db.query(Character).filter(Character.telegram_user_id == 7).first()
     character.hp_current = 20.0
-    character.last_hp_update_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=15)
+    character.last_hp_update_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=15)
     db.commit()
     db.close()
 
@@ -230,7 +230,7 @@ def test_allocate_point_vitality_freezes_hp_under_old_cap_first(db_session_facto
     db = db_session_factory()
     character = db.get(Character, created["id"])
     character.hp_current = 44.0
-    character.last_hp_update_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=46)
+    character.last_hp_update_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=46)
     db.commit()
     db.close()
 
@@ -255,7 +255,7 @@ def test_allocate_point_non_vitality_stat_does_not_touch_hp_snapshot(db_session_
     db = db_session_factory()
     character = db.get(Character, created["id"])
     character.hp_current = 44.0
-    stale_update_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=5)
+    stale_update_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=5)
     character.last_hp_update_at = stale_update_at
     db.commit()
     db.close()

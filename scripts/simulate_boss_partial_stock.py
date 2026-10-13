@@ -47,7 +47,6 @@ except AttributeError:
     pass
 
 from scripts import simulate_boss as sb  # noqa: E402
-from scripts import simulate_combat as sc  # noqa: E402
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
@@ -112,7 +111,7 @@ def run_stock_curve(player_stats, boss_stats, fights_per_seed, seeds) -> dict:
 
 def print_stock_curve(by_combination: dict, fights_per_seed: int, seeds) -> None:
     total_fights = fights_per_seed * len(seeds)
-    print(f"\n=== Сценарий 1: win rate по частичному запасу зелий (без лимита 'раз за бой') ===")
+    print("\n=== Сценарий 1: win rate по частичному запасу зелий (без лимита 'раз за бой') ===")
     print(f"seeds={list(seeds)}, fights/seed={fights_per_seed}, итого боёв на комбинацию={total_fights}")
     header = f"{'малых':>6} {'больших':>8} {'victory%':>9} {'defeat%':>9} {'fled%':>7} {'rounds':>7} {'зелий/бой':>10}"
     print(header)

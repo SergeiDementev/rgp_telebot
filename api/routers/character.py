@@ -5,7 +5,7 @@ core/ -> сохранить -> вернуть JSON (backend_plan.md §6). Ник
 логики внутри роутера самой по себе.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -39,7 +39,7 @@ STARTING_STAT_POOL = 5
 def _now() -> datetime:
     # Naive UTC — см. db/models.py:_utcnow(): колонки без timezone=True,
     # aware здесь привело бы к TypeError при сравнении.
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _to_character_out(character: Character, active_combat_session_id: int | None = None) -> CharacterOut:
