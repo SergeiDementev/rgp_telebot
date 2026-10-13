@@ -124,7 +124,9 @@ docker compose down             # остановить (том rpg_pgdata с д�
 
 **Логи бота на диске** (docs/notes.md) — `bot/` пишет `logs/bot.log` (плюс ротация `logs/bot.log.1`/`.2`/`.3`) в дополнение к обычному выводу в stdout (`docker compose logs bot`), через bind mount `./logs:/app/logs` в `docker-compose.yml` — переживает `docker compose up -d --build`, в отличие от вывода контейнера. Директория `logs/` создаётся автоматически при первом запуске, в `.gitignore`/`.dockerignore`.
 
-**Бэкап БД** — `db/backup_db.sh` (docs/notes.md): `pg_dump` из контейнера `db` → gzip → загрузка в Oracle Object Storage (`--auth instance_principal`, без ключей на диске) → ротация бэкапов старше 7 дней. Пишет в `logs/backup.log`. На сервере — cron пользователя `ubuntu`, 00:00 UTC; вручную — `db/backup_db.sh` из любой директории.
+**Бэкап БД** — `db/backup_db.sh` (docs/notes.md): `pg_dump --clean --if-exists` из контейнера `db` → gzip → загрузка в Oracle Object Storage (`--auth instance_principal`, без ключей на диске) → ротация бэкапов старше 7 дней. Пишет в `logs/backup.log`. На сервере — cron пользователя `ubuntu`, 00:00 UTC; вручную — `db/backup_db.sh` из любой директории. Хранилище/общий код с восстановлением — `db/backup_common.sh` (`BACKUP_STORAGE=oci` по умолчанию; `local` — только для ручной проверки без реального OCI). Неймспейс Object Storage — `OCI_NAMESPACE` в `.env` (не секрет, просто имя хранилища аккаунта).
+
+**Восстановление БД** — `db/restore_db.sh` (docs/notes.md): без аргументов — список копий в хранилище; с именем копии — восстановление (спросит подтверждение, `--yes` пропускает вопрос). Перед восстановлением сам делает safety-copy текущей базы в `logs/`, останавливает `api`/`bot`, накатывает копию одной транзакцией, запускает `api`/`bot` обратно и ждёт, пока API станет healthy. Пишет в `logs/restore.log`.
 
 ---
 
