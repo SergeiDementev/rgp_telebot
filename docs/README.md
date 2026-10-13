@@ -87,6 +87,14 @@ mypy core api db
 
 `mypy` пока проверяет только `core/`/`api/`/`db/` — `bot/` и `scripts/` сознательно не включены (aiogram типизирует многие поля как `Optional`, это отдельная, более объёмная задача).
 
+CI дополнительно гоняет тесты `api/` против настоящего PostgreSQL (отдельная параллельная задача, схема — через `alembic upgrade head`, не `create_all`) — так проверяется и сама цепочка миграций. Локально это не обязательно; если нужно — **отдельный** контейнер, не тот, что для ручной разработки (шаг 2 выше): тесты делают `TRUNCATE` между прогонами, на реальных данных персонажа это будет потеря прогресса.
+
+```
+docker run -d --name rpg-test-postgres -e POSTGRES_USER=rpg -e POSTGRES_PASSWORD=rpg -e POSTGRES_DB=rpg_test -p 55432:5432 postgres:16
+DATABASE_URL=postgresql+psycopg2://rpg:rpg@localhost:55432/rpg_test alembic upgrade head
+POSTGRES_TEST_URL=postgresql+psycopg2://rpg:rpg@localhost:55432/rpg_test pytest tests/api
+```
+
 ### Через Docker (альтернатива шагам 1-5 выше — для переноса на сервер)
 
 Всё (api, бот, PostgreSQL) — одним `docker-compose.yml` (docs/notes.md, п.63). Шаг 2 (`.env`) всё равно нужен — `TELEGRAM_BOT_TOKEN`/`INTERNAL_API_KEY`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` берутся оттуда; `API_BASE_URL`/`DATABASE_URL` для контейнеров заданы прямо в `docker-compose.yml` (имена сервисов сети compose, не `localhost`).
