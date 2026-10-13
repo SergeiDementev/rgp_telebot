@@ -34,3 +34,46 @@ jobs:
 
       - name: pytest
         run: pytest -q
+
+  # docs/hardening_plan.md, этап 1, шаги 5-6 — отдельная задача, не замена
+  # быстрому прогону на SQLite выше: проверяет, что сама цепочка миграций
+  # Alembic (а не Base.metadata.create_all()) применяется к настоящему
+  # PostgreSQL чисто, плюс реальное поведение api/ на нём (типы колонок,
+  # JSON, уникальные индексы и т.п. могут отличаться от SQLite).
+  postgres-checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Зеркало Docker Hub на ECR Public — у самого Docker Hub лимит
+        # скачиваний для GitHub Actions, у зеркала его нет.
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: rpg
+          POSTGRES_PASSWORD: rpg
+          POSTGRES_DB: rpg_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rpg"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Apply Alembic migrations to PostgreSQL
+        env:
+          DATABASE_URL: postgresql+psycopg2://rpg:rpg@localhost:5432/rpg_test
+        run: alembic upgrade head
+
+      - name: pytest (api/, against PostgreSQL)
+        env:
+          POSTGRES_TEST_URL: postgresql+psycopg2://rpg:rpg@localhost:5432/rpg_test
+        run: pytest -q tests/api
