@@ -209,6 +209,13 @@ def start_combat(
     initiative_text = rendering.render_initiative(session.enemy_type, player_roll, enemy_roll, first_role)
     text = initiative_text
     if has_circumstance:
+        # mypy не связывает этот `if has_circumstance` с тем, что выше
+        # (строка 176) — для него это два разных условия, хотя переменная
+        # не менялась между ними. circumstance_outcome сюда не входит —
+        # None для него легитимный исход ("ничего не произошло",
+        # render_circumstance это сам обрабатывает), не повод для assert.
+        assert circumstance_roll is not None
+        assert roller_role is not None
         circumstance_text = rendering.render_circumstance(
             session.enemy_type, circumstance_roll, circumstance_outcome, roller_role
         )

@@ -24,7 +24,6 @@ ru.py формы разные (падежи/род), в en.py все формы 
 ветвится по локали вообще, только по структуре боя.
 """
 
-
 from core import i18n
 from core.combat_mechanics import POWER_ATTACK_DAMAGE_MULTIPLIER
 

@@ -18,6 +18,7 @@ scripts/simulate_combat.py — тот же набор черновых знач�
 
 import random
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -201,6 +202,9 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
     """
     enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
     attacker_role = session.current_turn
+    # current_turn — None только до инициативы (docs/notes.md); эта функция
+    # вызывается на ходу атакующей стороны, инициатива уже брошена.
+    assert attacker_role is not None
 
     if attacker_role == "player":
         # Из боя с финальным боссом нельзя сбежать вообще, ни игроку, ни ему
@@ -364,6 +368,9 @@ def _resolve_attacker_turn(
     как и должно быть по механике."""
     enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
     attacker_role = session.current_turn
+    # current_turn — None только до инициативы (docs/notes.md); эта функция
+    # вызывается на реальном ходу, инициатива уже брошена.
+    assert attacker_role is not None
     defender_role = "enemy" if attacker_role == "player" else "player"
     power_attack = power_attack and attacker_role == "player"
 
@@ -376,8 +383,8 @@ def _resolve_attacker_turn(
         defender_agility = character.agility
         attacker_luck = enemy_stats["luck"]
 
-    texts = []
-    log_entries = []
+    texts: list[str] = []
+    log_entries: list[dict[str, Any]] = []
 
     ds_faces = cm.calculate_double_strike_success_faces(attacker_luck, DOUBLE_STRIKE_K)
     luck_roll = random.randint(1, 10)
@@ -457,6 +464,10 @@ def _resolve_attacker_turn(
     session.turn_log = session.turn_log + log_entries
 
     if battle_ended:
+        # battle_ended устанавливается в True в той же ветке, что и result
+        # (строки выше) — mypy не связывает две разные переменные, но
+        # инвариант реальный: result не None именно тогда, когда battle_ended.
+        assert result is not None
         texts.append(_finish_battle(session, character, result, db))
     else:
         session.current_turn = defender_role

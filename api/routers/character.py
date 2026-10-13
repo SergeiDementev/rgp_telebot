@@ -6,7 +6,7 @@ core/ -> сохранить -> вернуть JSON (backend_plan.md §6). Ник
 """
 
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -19,6 +19,7 @@ from api.schemas.character import (
     BuyPotionResponse,
     CharacterCreate,
     CharacterOut,
+    Language,
     SellLootResponse,
     SetLanguageRequest,
     SetLanguageResponse,
@@ -72,7 +73,12 @@ def _to_character_out(character: Character, active_combat_session_id: int | None
         loot=character.loot,
         potions_small=character.potions_small,
         potions_large=character.potions_large,
-        language=character.language,
+        # Колонка в БД — обычный str, без CHECK-ограничения (docs/
+        # hardening_plan.md, этап 4) — значение гарантируется на уровне
+        # приложения: сюда попадают только "ru"/"en", проверенные
+        # Pydantic-схемами CharacterCreate.language/SetLanguageRequest.language
+        # (оба типа Language) до записи в БД.
+        language=cast(Language, character.language),
         active_combat_session_id=active_combat_session_id,
         welcome_message_id=character.welcome_message_id,
         main_message_id=character.main_message_id,
@@ -185,7 +191,9 @@ def allocate_point(
             character.unspent_stat_points, getattr(character, payload.stat), payload.stat
         )
     except pr.NoStatPointsAvailableError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no unspent stat points available") from None
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="no unspent stat points available"
+        ) from None
 
     character.unspent_stat_points = new_unspent
     if payload.stat == "vitality":

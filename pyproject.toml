@@ -25,8 +25,13 @@ known-first-party = ["api", "bot", "core", "db", "i18n"]
 
 [tool.mypy]
 python_version = "3.14"
-plugins = ["sqlalchemy.ext.mypy.plugin"]
 ignore_missing_imports = true
+# Плагин sqlalchemy.ext.mypy.plugin НЕ подключаем: для Mapped[...]/
+# mapped_column() стиля (db/models.py, docs/hardening_plan.md, этап 1)
+# сама документация SQLAlchemy 2.0 прямо говорит, что плагин не нужен и
+# не рекомендуется — на практике он конфликтовал с нативной типизацией и
+# давал десятки ложных "Unexpected keyword argument" на конструкторах
+# Character/CombatSession.
 # Проект не использует __init__.py (implicit namespace packages, работает
 # штатно в рантайме) — без этого mypy путает api/routers/character.py и
 # api/schemas/character.py как один и тот же модуль "character".
