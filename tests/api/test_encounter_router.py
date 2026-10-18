@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.dependencies import get_db, require_api_key
+from api.errors import register_error_handlers
 from api.routers.encounter import router as encounter_router
 from core import progression as pr
 from db.models import Character, CombatSession
@@ -17,6 +18,7 @@ HEADERS = {"X-Telegram-User-Id": "1"}
 def make_client(db_session_factory) -> TestClient:
     app = FastAPI()
     app.include_router(encounter_router)
+    register_error_handlers(app)
     app.dependency_overrides[get_db] = override_get_db(db_session_factory)
     app.dependency_overrides[require_api_key] = lambda: None
     return TestClient(app)
@@ -102,6 +104,7 @@ def test_search_encounter_rejects_second_active_session(db_session_factory):
 
     second = client.post("/encounter/search", headers=HEADERS)
     assert second.status_code == 409
+    assert second.json()["error"]["code"] == "encounter.active_session_exists"
 
 
 def test_search_encounter_specific_roll(db_session_factory, monkeypatch):
@@ -285,7 +288,7 @@ def test_start_combat_against_boss_below_required_level_returns_403(db_session_f
     session_id = client.post("/encounter/search_boss", headers=HEADERS).json()["combat_session_id"]
     response = client.post(f"/combat/{session_id}/start", headers=HEADERS)
     assert response.status_code == 403
-    assert response.json()["detail"] == "level_too_low"
+    assert response.json()["error"]["code"] == "encounter.level_too_low"
 
     db = db_session_factory()
     session = db.get(CombatSession, session_id)

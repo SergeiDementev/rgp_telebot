@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.dependencies import get_db, require_api_key
+from api.errors import register_error_handlers
 from api.routers.character import router as character_router
 from api.settings import settings as api_settings
 from core import economy as ec
@@ -34,6 +35,7 @@ def _set_character_economy(
 def make_client(db_session_factory, *, bypass_api_key: bool = True) -> TestClient:
     app = FastAPI()
     app.include_router(character_router)
+    register_error_handlers(app)
     app.dependency_overrides[get_db] = override_get_db(db_session_factory)
     if bypass_api_key:
         app.dependency_overrides[require_api_key] = lambda: None
@@ -200,6 +202,8 @@ def test_allocate_point_unknown_stat_returns_422(db_session_factory):
 
     response = client.post(f"/character/{created['id']}/allocate_point", json={"stat": "intelligence"})
     assert response.status_code == 422
+    assert response.json()["error"]["code"] == "stats.unknown_stat"
+    assert response.json()["error"]["details"] == {"stat": "intelligence"}
 
 
 def test_allocate_point_no_points_left_returns_400(db_session_factory):
@@ -211,6 +215,7 @@ def test_allocate_point_no_points_left_returns_400(db_session_factory):
 
     response = client.post(f"/character/{created['id']}/allocate_point", json={"stat": "strength"})
     assert response.status_code == 400
+    assert response.json()["error"]["code"] == "stats.no_points"
 
 
 def test_allocate_point_vitality_freezes_hp_under_old_cap_first(db_session_factory):
@@ -275,6 +280,7 @@ def test_allocate_point_character_not_found_returns_404(db_session_factory):
     client = make_client(db_session_factory)
     response = client.post("/character/999/allocate_point", json={"stat": "strength"})
     assert response.status_code == 404
+    assert response.json()["error"]["code"] == "character.not_found"
 
 
 def test_sell_loot_adds_gold_and_clears_inventory(db_session_factory):
@@ -343,7 +349,7 @@ def test_buy_potion_not_enough_gold_returns_400_with_reason(db_session_factory):
     response = client.post(f"/character/{created['id']}/buy_potion", json={"size": "small"})
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "not_enough_gold"
+    assert response.json()["error"]["code"] == "economy.not_enough_gold"
 
 
 def test_buy_potion_cap_reached_returns_400_with_distinct_reason(db_session_factory):
@@ -356,7 +362,7 @@ def test_buy_potion_cap_reached_returns_400_with_distinct_reason(db_session_fact
     response = client.post(f"/character/{created['id']}/buy_potion", json={"size": "large"})
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "cap_reached"
+    assert response.json()["error"]["code"] == "economy.cap_reached"
 
 
 def test_buy_potion_unknown_size_returns_422(db_session_factory):
@@ -480,6 +486,7 @@ def test_require_api_key_without_override(db_session_factory):
         headers={"X-Internal-Api-Key": "wrong"},
     )
     assert wrong_key.status_code == 401
+    assert wrong_key.json()["error"]["code"] == "auth.invalid_api_key"
 
     right_key = client.post(
         "/character",

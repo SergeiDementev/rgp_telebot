@@ -22,12 +22,16 @@ INTERNAL_API_KEY = settings.internal_api_key
 
 
 class ApiError(Exception):
-    """Ответ API 4xx/5xx — status_code и detail из тела ответа."""
+    """Ответ API 4xx/5xx — status_code и code (docs/hardening_plan.md, этап 4,
+    п.1: {"error": {"code": ..., "details": {...}}}) из тела ответа.
+    Фоллбэк на простой текст в code — для ответов без этой структуры
+    (например, 500 без JSON-тела вообще)."""
 
-    def __init__(self, status_code: int, detail: Any):
+    def __init__(self, status_code: int, code: Any, details: dict[str, Any] | None = None):
         self.status_code = status_code
-        self.detail = detail
-        super().__init__(f"API error {status_code}: {detail}")
+        self.code = code
+        self.details = details or {}
+        super().__init__(f"API error {status_code}: {code} {self.details}")
 
 
 class ApiClient:
@@ -65,10 +69,15 @@ class ApiClient:
         response = await self._client.request(method, path, json=json, params=params, headers=headers)
         if response.status_code >= 400:
             try:
-                detail = response.json().get("detail")
+                body: dict[str, Any] | None = response.json()
             except ValueError:
-                detail = response.text
-            raise ApiError(response.status_code, detail)
+                body = None
+            error = body.get("error") if body is not None else None
+            if error is not None:
+                raise ApiError(response.status_code, error.get("code"), error.get("details"))
+            # Фоллбэк — ответ не от GameError (например, встроенная 422
+            # валидация FastAPI, не наш обработчик в api/main.py, или не JSON вообще).
+            raise ApiError(response.status_code, body.get("detail") if body is not None else response.text)
         if response.status_code == 204:
             return {}
         return response.json()

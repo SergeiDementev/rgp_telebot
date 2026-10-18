@@ -262,15 +262,38 @@ async def test_cancel_combat_session_path_and_header():
     assert result is None
 
 
-async def test_error_response_raises_api_error_with_detail():
-    handler, _ = _echo_handler(404, {"detail": "combat session not found"})
+async def test_error_response_raises_api_error_with_code():
+    handler, _ = _echo_handler(404, {"error": {"code": "combat.not_found", "details": {}}})
     client = make_client(handler)
 
     with pytest.raises(ApiError) as exc_info:
         await client.get_combat_session(telegram_user_id=7, combat_session_id=999)
 
     assert exc_info.value.status_code == 404
-    assert exc_info.value.detail == "combat session not found"
+    assert exc_info.value.code == "combat.not_found"
+
+
+async def test_error_response_with_details_passes_them_through():
+    handler, _ = _echo_handler(409, {"error": {"code": "combat.unexpected_status", "details": {"status": "finished"}}})
+    client = make_client(handler)
+
+    with pytest.raises(ApiError) as exc_info:
+        await client.get_combat_session(telegram_user_id=7, combat_session_id=999)
+
+    assert exc_info.value.code == "combat.unexpected_status"
+    assert exc_info.value.details == {"status": "finished"}
+
+
+async def test_error_response_without_error_wrapper_falls_back_to_detail():
+    # Встроенная 422-валидация FastAPI (не через api/errors.py::GameError)
+    # отдаёт старый формат {"detail": ...} — бот не должен падать на этом.
+    handler, _ = _echo_handler(422, {"detail": "validation error"})
+    client = make_client(handler)
+
+    with pytest.raises(ApiError) as exc_info:
+        await client.get_character(1)
+
+    assert exc_info.value.code == "validation error"
 
 
 async def test_error_response_without_json_body_falls_back_to_text():
@@ -283,4 +306,4 @@ async def test_error_response_without_json_body_falls_back_to_text():
         await client.get_character(1)
 
     assert exc_info.value.status_code == 500
-    assert exc_info.value.detail == "internal server error"
+    assert exc_info.value.code == "internal server error"

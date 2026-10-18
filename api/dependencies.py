@@ -1,8 +1,9 @@
 """Сквозные FastAPI-зависимости: сессия БД, авторизация бота, текущий персонаж."""
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, status
 from sqlalchemy.orm import Session
 
+from api.errors import GameError
 from api.settings import settings
 from core import i18n
 from db.models import Character
@@ -12,7 +13,7 @@ from db.session import get_db
 def require_api_key(x_internal_api_key: str = Header(...)) -> None:
     """§9 backend_plan.md: статический ключ, известный только боту."""
     if x_internal_api_key != settings.internal_api_key:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid API key")
+        raise GameError(status.HTTP_401_UNAUTHORIZED, "auth.invalid_api_key")
 
 
 def get_current_character(
@@ -32,7 +33,7 @@ def get_current_character(
         .first()
     )
     if character is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+        raise GameError(status.HTTP_404_NOT_FOUND, "character.not_found")
     return character
 
 
