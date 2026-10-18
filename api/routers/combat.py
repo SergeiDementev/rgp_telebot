@@ -20,11 +20,12 @@ import random
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from api import enemy_content, rendering
 from api.dependencies import get_db, get_localized_character, require_api_key
+from api.errors import GameError
 from api.schemas.combat import (
     CombatSessionOut,
     CombatTurnResponse,
@@ -53,9 +54,9 @@ def _now() -> datetime:
 def _load_owned_session(db: Session, combat_session_id: int, character: Character) -> CombatSession:
     session = db.get(CombatSession, combat_session_id)
     if session is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="combat session not found")
+        raise GameError(status.HTTP_404_NOT_FOUND, "combat.not_found")
     if session.character_id != character.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not your combat session")
+        raise GameError(status.HTTP_403_FORBIDDEN, "combat.not_your_session")
     return session
 
 
@@ -486,9 +487,7 @@ def confirm_combat(
 ) -> CombatTurnResponse:
     session = _load_owned_session(db, combat_session_id, character)
     if session.status != "awaiting_confirmation":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=f"unexpected session status: {session.status!r}"
-        )
+        raise GameError(status.HTTP_409_CONFLICT, "combat.unexpected_status", {"status": session.status})
     enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
 
     if payload.decision == "fight":
@@ -504,7 +503,7 @@ def confirm_combat(
     # защита от гонки/устаревшей клавиатуры, тот же принцип, что и везде
     # здесь ("клиенту не доверяем").
     if not enemy_stats.get("player_can_flee", True):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="flee_not_allowed")
+        raise GameError(status.HTTP_400_BAD_REQUEST, "combat.flee_not_allowed")
 
     # §9 шаг 3б / §7: отказ -> безответный удар противника без защиты.
     pursuer_strength = enemy_stats["strength"] * session.strength_modifier_enemy
@@ -531,9 +530,7 @@ def take_turn(
     старые/прочие клиенты без тела не ломаются)."""
     session = _load_owned_session(db, combat_session_id, character)
     if session.status != "active":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=f"unexpected session status: {session.status!r}"
-        )
+        raise GameError(status.HTTP_409_CONFLICT, "combat.unexpected_status", {"status": session.status})
 
     gate = _check_flee_gate(session, character, db)
     if gate is not None and not gate["proceed"]:
@@ -559,9 +556,7 @@ def flee_decision(
 ) -> CombatTurnResponse:
     session = _load_owned_session(db, combat_session_id, character)
     if session.status != "awaiting_flee_decision":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=f"unexpected session status: {session.status!r}"
-        )
+        raise GameError(status.HTTP_409_CONFLICT, "combat.unexpected_status", {"status": session.status})
 
     attacker_role = session.current_turn  # на практике всегда "player"
 
@@ -611,17 +606,15 @@ def use_potion(
     (например, два быстрых нажатия подряд)."""
     session = _load_owned_session(db, combat_session_id, character)
     if session.status != "active":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=f"unexpected session status: {session.status!r}"
-        )
+        raise GameError(status.HTTP_409_CONFLICT, "combat.unexpected_status", {"status": session.status})
     if session.current_turn != "player":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not your turn")
+        raise GameError(status.HTTP_409_CONFLICT, "combat.not_your_turn")
     if session.player_potion_used_this_battle:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="already_used")
+        raise GameError(status.HTTP_400_BAD_REQUEST, "combat.potion_already_used")
 
     owned = character.potions_large if payload.size == "large" else character.potions_small
     if owned <= 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_owned")
+        raise GameError(status.HTTP_400_BAD_REQUEST, "combat.potion_not_owned")
 
     potion_text = _use_potion(session, character, payload.size, db)
     enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
@@ -666,7 +659,7 @@ def resume_combat_session(
     "active"/"awaiting_flee_decision", что и для обычных ответов хода."""
     session = _load_owned_session(db, combat_session_id, character)
     if session.status == "finished":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="combat session already finished")
+        raise GameError(status.HTTP_409_CONFLICT, "combat.already_finished")
     text = _render_resume_text(session, character)
     return _turn_response(session, character, text)
 
@@ -686,8 +679,6 @@ def cancel_combat_session(
     архивируем как исход боя (victory/defeat/...), она им и не была."""
     session = _load_owned_session(db, combat_session_id, character)
     if session.status != "awaiting_initiative":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=f"unexpected session status: {session.status!r}"
-        )
+        raise GameError(status.HTTP_409_CONFLICT, "combat.unexpected_status", {"status": session.status})
     db.delete(session)
     db.commit()

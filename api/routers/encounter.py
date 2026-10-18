@@ -9,11 +9,12 @@ gameplay_loop_mvp.md §9 ("Искать противника" -> "Определ
 import random
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from api import enemy_content, rendering
 from api.dependencies import get_db, get_localized_character, require_api_key
+from api.errors import GameError
 from api.schemas.combat import CombatStartResponse, EncounterSearchResponse
 from core import combat_mechanics as cm
 from core import progression as pr
@@ -46,9 +47,7 @@ def _require_no_active_session(character: Character, db: Session) -> None:
         .first()
     )
     if active_session is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="character already has an active combat session"
-        )
+        raise GameError(status.HTTP_409_CONFLICT, "encounter.active_session_exists")
 
 
 def _start_encounter_session(
@@ -138,20 +137,18 @@ def start_combat(
 ) -> CombatStartResponse:
     session = db.get(CombatSession, combat_session_id)
     if session is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="combat session not found")
+        raise GameError(status.HTTP_404_NOT_FOUND, "combat.not_found")
     if session.character_id != character.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not your combat session")
+        raise GameError(status.HTTP_403_FORBIDDEN, "combat.not_your_session")
     if session.status != "awaiting_initiative":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=f"unexpected session status: {session.status!r}"
-        )
+        raise GameError(status.HTTP_409_CONFLICT, "combat.unexpected_status", {"status": session.status})
     # Порог уровня для босса (docs/notes.md, п.69 — было тут же в п.58,
     # перенесено на search_boss_encounter в п.66, возвращено обратно: экран
     # входа должен быть доступен на любом уровне, а не только тем, кто уже
     # прошёл порог, — гейт снова здесь, до броска инициативы (низкоуровневый
     # игрок не тратит бросок впустую), сессия остаётся "awaiting_initiative".
     if session.enemy_type == "boss" and character.level < pr.BOSS_LEVEL_REQUIREMENT:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="level_too_low")
+        raise GameError(status.HTTP_403_FORBIDDEN, "encounter.level_too_low")
 
     while True:
         player_roll = random.randint(1, 10)

@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.dependencies import get_db, require_api_key
+from api.errors import register_error_handlers
 from api.routers.combat import router as combat_router
 from api.routers.encounter import router as encounter_router
 from db.models import Character, CombatSession
@@ -19,6 +20,7 @@ def make_client(db_session_factory) -> TestClient:
     app = FastAPI()
     app.include_router(encounter_router)
     app.include_router(combat_router)
+    register_error_handlers(app)
     app.dependency_overrides[get_db] = override_get_db(db_session_factory)
     app.dependency_overrides[require_api_key] = lambda: None
     return TestClient(app)
@@ -352,7 +354,7 @@ def test_use_potion_rejects_when_already_used_this_battle(db_session_factory, mo
 
     response = client.post(f"/combat/{session_id}/use_potion", json={"size": "small"}, headers=HEADERS)
     assert response.status_code == 400
-    assert response.json()["detail"] == "already_used"
+    assert response.json()["error"]["code"] == "combat.potion_already_used"
 
     db = db_session_factory()
     character = db.query(Character).filter(Character.telegram_user_id == 1).first()
@@ -399,7 +401,7 @@ def test_use_potion_rejects_when_not_owned(db_session_factory, monkeypatch):
 
     response = client.post(f"/combat/{session_id}/use_potion", json={"size": "small"}, headers=HEADERS)
     assert response.status_code == 400
-    assert response.json()["detail"] == "not_owned"
+    assert response.json()["error"]["code"] == "combat.potion_not_owned"
 
 
 def test_use_potion_rejects_on_enemy_turn(db_session_factory, monkeypatch):
@@ -414,6 +416,7 @@ def test_use_potion_rejects_on_enemy_turn(db_session_factory, monkeypatch):
 
     response = client.post(f"/combat/{session_id}/use_potion", json={"size": "small"}, headers=HEADERS)
     assert response.status_code == 409
+    assert response.json()["error"]["code"] == "combat.not_your_turn"
 
     db = db_session_factory()
     character = db.query(Character).filter(Character.telegram_user_id == 1).first()
@@ -432,6 +435,8 @@ def test_use_potion_rejects_when_session_not_active(db_session_factory, monkeypa
 
     response = client.post(f"/combat/{session_id}/use_potion", json={"size": "small"}, headers=HEADERS)
     assert response.status_code == 409
+    assert response.json()["error"]["code"] == "combat.unexpected_status"
+    assert response.json()["error"]["details"] == {"status": "awaiting_confirmation"}
 
 
 def test_use_potion_rejects_unknown_size(db_session_factory, monkeypatch):
@@ -665,7 +670,7 @@ def test_confirm_flee_against_boss_returns_400(db_session_factory, monkeypatch):
 
     response = client.post(f"/combat/{session_id}/confirm", json={"decision": "flee"}, headers=HEADERS)
     assert response.status_code == 400
-    assert response.json()["detail"] == "flee_not_allowed"
+    assert response.json()["error"]["code"] == "combat.flee_not_allowed"
 
     db = db_session_factory()
     session = db.get(CombatSession, session_id)
@@ -833,6 +838,7 @@ def test_resume_combat_session_finished_returns_409(db_session_factory, monkeypa
 
     response = client.get(f"/combat/{session_id}/resume", headers=HEADERS)
     assert response.status_code == 409
+    assert response.json()["error"]["code"] == "combat.already_finished"
 
 
 def test_resume_combat_session_not_found_returns_404(db_session_factory):
@@ -840,6 +846,7 @@ def test_resume_combat_session_not_found_returns_404(db_session_factory):
     client = make_client(db_session_factory)
     response = client.get("/combat/999/resume", headers=HEADERS)
     assert response.status_code == 404
+    assert response.json()["error"]["code"] == "combat.not_found"
 
 
 def test_resume_combat_session_forbids_other_character(db_session_factory, monkeypatch):
@@ -852,6 +859,7 @@ def test_resume_combat_session_forbids_other_character(db_session_factory, monke
 
     response = client.get(f"/combat/{session_id}/resume", headers=OTHER_HEADERS)
     assert response.status_code == 403
+    assert response.json()["error"]["code"] == "combat.not_your_session"
 
 
 def test_resume_combat_session_does_not_mutate_state(db_session_factory, monkeypatch):

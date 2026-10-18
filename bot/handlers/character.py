@@ -71,8 +71,8 @@ LOOT_ITEM_PRICES = {
 }
 
 BUY_POTION_ERROR_KEYS = {
-    "not_enough_gold": "character.buy_error.not_enough_gold",
-    "cap_reached": "character.buy_error.cap_reached",
+    "economy.not_enough_gold": "character.buy_error.not_enough_gold",
+    "economy.cap_reached": "character.buy_error.cap_reached",
 }
 
 # Названия языков в переключателе на главном экране (docs/notes.md) — не
@@ -553,7 +553,7 @@ async def buy_potion(callback: CallbackQuery, api: ApiClient) -> None:
     try:
         result = await api.buy_potion(character["id"], size)
     except ApiError as error:
-        message = i18n.t(BUY_POTION_ERROR_KEYS.get(error.detail, "character.buy_error.generic"))
+        message = i18n.t(BUY_POTION_ERROR_KEYS.get(error.code, "character.buy_error.generic"))
         await callback.answer(message, show_alert=True)
         return
     updated = result["character"]

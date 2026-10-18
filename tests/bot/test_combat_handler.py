@@ -481,7 +481,7 @@ async def test_use_potion_shows_current_battle_state_on_conflict():
 async def test_use_potion_already_used_shows_alert_without_editing_message():
     callback = make_callback("use_potion:5:small")
     api = AsyncMock()
-    api.use_potion.side_effect = ApiError(400, "already_used")
+    api.use_potion.side_effect = ApiError(400, "combat.potion_already_used")
 
     await use_potion(callback, api)
 
@@ -492,7 +492,7 @@ async def test_use_potion_already_used_shows_alert_without_editing_message():
 async def test_use_potion_not_owned_shows_distinct_alert():
     callback = make_callback("use_potion:5:small")
     api = AsyncMock()
-    api.use_potion.side_effect = ApiError(400, "not_owned")
+    api.use_potion.side_effect = ApiError(400, "combat.potion_not_owned")
 
     await use_potion(callback, api)
 
@@ -597,7 +597,7 @@ async def test_confirm_flee_not_allowed_shows_alert_without_editing_message():
     # случай гонки/устаревшей клавиатуры сервер отвечает 400, а не 200.
     callback = make_callback("confirm_flee:5")
     api = AsyncMock()
-    api.confirm_combat.side_effect = ApiError(400, "flee_not_allowed")
+    api.confirm_combat.side_effect = ApiError(400, "combat.flee_not_allowed")
 
     await confirm_flee(callback, api)
 
@@ -1065,7 +1065,7 @@ async def test_boss_challenge_prompt_alerts_en():
 async def test_use_potion_error_alerts_en():
     callback = make_callback("use_potion:5:small")
     api = AsyncMock()
-    api.use_potion.side_effect = ApiError(400, "not_owned")
+    api.use_potion.side_effect = ApiError(400, "combat.potion_not_owned")
     token = i18n.set_locale("en")
     try:
         await use_potion(callback, api)
@@ -1077,7 +1077,7 @@ async def test_use_potion_error_alerts_en():
 async def test_confirm_flee_not_allowed_alert_en():
     callback = make_callback("confirm_flee:5")
     api = AsyncMock()
-    api.confirm_combat.side_effect = ApiError(400, "flee_not_allowed")
+    api.confirm_combat.side_effect = ApiError(400, "combat.flee_not_allowed")
     token = i18n.set_locale("en")
     try:
         await confirm_flee(callback, api)

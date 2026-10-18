@@ -7,6 +7,7 @@ Swagger: http://127.0.0.1:8000/docs
 
 from fastapi import FastAPI
 
+from api.errors import register_error_handlers
 from api.routers.character import router as character_router
 from api.routers.combat import router as combat_router
 from api.routers.encounter import router as encounter_router
@@ -19,6 +20,7 @@ app = FastAPI(title="RPG Telegram Bot API", version="0.1.0")
 app.include_router(character_router)
 app.include_router(encounter_router)
 app.include_router(combat_router)
+register_error_handlers(app)
 
 
 @app.get("/health", tags=["health"])

@@ -307,7 +307,7 @@ async def test_buy_potion_not_enough_gold_shows_alert_without_editing_message():
     callback = make_callback("buy_potion:large")
     api = AsyncMock()
     api.get_character.return_value = BASE_CHARACTER
-    api.buy_potion.side_effect = ApiError(400, "not_enough_gold")
+    api.buy_potion.side_effect = ApiError(400, "economy.not_enough_gold")
 
     await buy_potion(callback, api)
 
@@ -319,7 +319,7 @@ async def test_buy_potion_cap_reached_shows_distinct_alert():
     callback = make_callback("buy_potion:large")
     api = AsyncMock()
     api.get_character.return_value = BASE_CHARACTER
-    api.buy_potion.side_effect = ApiError(400, "cap_reached")
+    api.buy_potion.side_effect = ApiError(400, "economy.cap_reached")
 
     await buy_potion(callback, api)
 

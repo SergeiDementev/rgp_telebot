@@ -8,10 +8,11 @@ core/ -> сохранить -> вернуть JSON (backend_plan.md §6). Ник
 from datetime import UTC, datetime
 from typing import Literal, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_db, require_api_key
+from api.errors import GameError
 from api.schemas.character import (
     AllocatePointRequest,
     AllocatePointResponse,
@@ -26,6 +27,7 @@ from api.schemas.character import (
     SetMessageIdsRequest,
     SetMessageIdsResponse,
 )
+from api.schemas.errors import ErrorCode
 from core import economy as ec
 from core import progression as pr
 from db.models import Character, CharacterMessageState, CombatSession, StatAllocationLog
@@ -130,7 +132,7 @@ def get_character(telegram_user_id: int, db: Session = Depends(get_db)) -> Chara
         .first()
     )
     if character is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+        raise GameError(status.HTTP_404_NOT_FOUND, "character.not_found")
 
     # docs/notes.md, п.48 — бот проверяет это поле при /start, чтобы
     # восстановить потерянный экран боя вместо обычного меню персонажа.
@@ -165,7 +167,7 @@ def reset_character(
         .first()
     )
     if character is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+        raise GameError(status.HTTP_404_NOT_FOUND, "character.not_found")
 
     character.is_active = False
     character.archived_at = _now()
@@ -179,21 +181,19 @@ def allocate_point(
 ) -> AllocatePointResponse:
     character = db.get(Character, character_id)
     if character is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+        raise GameError(status.HTTP_404_NOT_FOUND, "character.not_found")
 
     # Валидировать имя стата ДО getattr/setattr — иначе payload.stat мог бы
     # указать на произвольный атрибут модели, не только на игровой стат.
     if payload.stat not in pr.STAT_NAMES:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"unknown stat: {payload.stat!r}")
+        raise GameError(status.HTTP_422_UNPROCESSABLE_CONTENT, "stats.unknown_stat", {"stat": payload.stat})
 
     try:
         new_unspent, new_value = pr.allocate_stat_point(
             character.unspent_stat_points, getattr(character, payload.stat), payload.stat
         )
     except pr.NoStatPointsAvailableError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="no unspent stat points available"
-        ) from None
+        raise GameError(status.HTTP_400_BAD_REQUEST, "stats.no_points") from None
 
     character.unspent_stat_points = new_unspent
     if payload.stat == "vitality":
@@ -221,7 +221,7 @@ def sell_loot(character_id: int, db: Session = Depends(get_db)) -> SellLootRespo
     симуляторе (docs/notes.md, п.26)."""
     character = db.get(Character, character_id)
     if character is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+        raise GameError(status.HTTP_404_NOT_FOUND, "character.not_found")
 
     character.gold += ec.sell_loot_value(character.loot)
     character.loot = {}
@@ -234,15 +234,17 @@ def sell_loot(character_id: int, db: Session = Depends(get_db)) -> SellLootRespo
 def buy_potion(character_id: int, payload: BuyPotionRequest, db: Session = Depends(get_db)) -> BuyPotionResponse:
     character = db.get(Character, character_id)
     if character is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+        raise GameError(status.HTTP_404_NOT_FOUND, "character.not_found")
 
     # Проверяем ЗАРАНЕЕ, а не ловим ValueError из ec.buy_potion() — причина
-    # отказа ("cap_reached" | "not_enough_gold") идёт в detail явно, бот
-    # должен показать игроку правильное сообщение, не общий "нельзя"
-    # (docs/gameplay_loop_mvp.md — паттерн видимости кнопок покупки).
+    # отказа ("cap_reached" | "not_enough_gold", core/economy.py) идёт в коде
+    # явно, бот должен показать игроку правильное сообщение, не общий
+    # "нельзя" (docs/gameplay_loop_mvp.md — паттерн видимости кнопок покупки).
+    # Namespacing ("economy." + reason) — здесь, не в core/economy.py: core/
+    # не должен знать про формат кодов ошибок API.
     reason = ec.check_can_buy_potion(character.gold, character.potions_small, character.potions_large, payload.size)
     if reason is not None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
+        raise GameError(status.HTTP_400_BAD_REQUEST, cast(ErrorCode, f"economy.{reason}"))
 
     character.gold, character.potions_small, character.potions_large = ec.buy_potion(
         character.gold, character.potions_small, character.potions_large, payload.size
@@ -260,7 +262,7 @@ def set_language(character_id: int, payload: SetLanguageRequest, db: Session = D
     только записать новую на будущее."""
     character = db.get(Character, character_id)
     if character is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+        raise GameError(status.HTTP_404_NOT_FOUND, "character.not_found")
 
     character.language = payload.language
     db.commit()
@@ -280,7 +282,7 @@ def set_message_ids(
     без get_localized_character."""
     character = db.get(Character, character_id)
     if character is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="character not found")
+        raise GameError(status.HTTP_404_NOT_FOUND, "character.not_found")
 
     if character.message_state is None:
         character.message_state = CharacterMessageState(character_id=character_id)

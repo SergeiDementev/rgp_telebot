@@ -94,8 +94,8 @@ def _set_locale_from_response(response: dict) -> None:
 
 
 USE_POTION_ERROR_KEYS = {
-    "already_used": "combat.ui.error.potion_already_used",
-    "not_owned": "combat.ui.error.potion_not_owned",
+    "combat.potion_already_used": "combat.ui.error.potion_already_used",
+    "combat.potion_not_owned": "combat.ui.error.potion_not_owned",
 }
 
 
@@ -582,7 +582,7 @@ async def confirm_flee(callback: CallbackQuery, api: ApiClient) -> None:
         if error.status_code == 409:
             await _show_current_battle_state(callback, api, session_id)
             return
-        if error.detail != "flee_not_allowed":
+        if error.code != "combat.flee_not_allowed":
             raise
         # У бота эта кнопка для босса и так не показывается (docs/notes.md,
         # п.57), сервер отклонил на всякий случай.
@@ -633,7 +633,7 @@ async def use_potion(callback: CallbackQuery, api: ApiClient) -> None:
         if error.status_code == 409:
             await _show_current_battle_state(callback, api, session_id)
             return
-        message = i18n.t(USE_POTION_ERROR_KEYS.get(error.detail, "combat.ui.error.potion_generic"))
+        message = i18n.t(USE_POTION_ERROR_KEYS.get(error.code, "combat.ui.error.potion_generic"))
         await callback.answer(message, show_alert=True)
         return
     _set_locale_from_response(response)
