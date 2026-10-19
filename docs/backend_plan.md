@@ -7,7 +7,7 @@
 ## 1. Стек
 
 - **Backend:** Python + FastAPI — автоматическая валидация запросов (Pydantic), автогенерация OpenAPI/Swagger-документации, асинхронность из коробки.
-- **БД:** SQLAlchemy как ORM. Начинали с SQLite (ноль конфигурации); с 2026-09-22 (docs/notes.md, п.62) — PostgreSQL через `DATABASE_URL` в `.env` (см. `.env.example`), как и предполагалось изначально — только строка подключения в `db/session.py`, весь ORM-код не менялся. Без `DATABASE_URL` в `.env` приложение по-прежнему падает обратно на локальный SQLite-файл (`rpg.db`) — удобно для быстрого старта без поднятого Postgres.
+- **БД:** SQLAlchemy как ORM. Начинали с SQLite (ноль конфигурации); с 2026-09-22 (docs/notes.md, п.62) — PostgreSQL через `DATABASE_URL` в `.env` (см. `.env.example`), как и предполагалось изначально — только строка подключения в `db/session.py`, весь ORM-код не менялся. `DATABASE_URL` обязателен (docs/hardening_plan.md, этап 2) — без него приложение падает понятной ошибкой при старте, не тихо подставляет локальный SQLite-файл: раньше это могло молча развести разработку и сервер на разных базах. SQLite остаётся только в тестах (`tests/api/conftest.py`, по умолчанию, без `POSTGRES_TEST_URL`) — быстрый прогон без Docker.
 - **Бот:** aiogram (Python) — общий язык с бэкендом, можно переиспользовать Pydantic-модели между ботом и API при необходимости.
 - **HTTP-клиент бота → API:** httpx (асинхронный).
 - **Развёртывание:** Docker Compose (docs/notes.md, п.63) — три сервиса (`db`/`api`/`bot`) из одного `Dockerfile` (multi-stage — компилирует зависимости в builder-стадии, финальный образ без build-инструментов), `alembic upgrade head` выполняется при каждом старте `api`-контейнера. Альтернатива для разработки — обычные процессы на хосте (см. `docs/README.md` §2), оба пути рабочие одновременно.
@@ -40,7 +40,12 @@ project/
 │   │   ├── character.py     # создание/просмотр персонажа, прокачка
 │   │   ├── encounter.py     # поиск противника + инициатива/обстоятельство (/start);
 │   │   │                    # + целенаправленная встреча с боссом (/search_boss, docs/notes.md п.36)
-│   │   └── combat.py        # confirm/turn/flee_decision/use_potion/get — цикл ходов боя
+│   │   └── combat.py        # confirm/turn/flee_decision/use_potion/get — тонкая оркестрация
+│   │                        # (статус, вызов api/services/combat.py, сохранение, JSON)
+│   ├── services/
+│   │   └── combat.py        # сам цикл хода (docs/hardening_plan.md, этап 4, п.3) — двойной удар,
+│   │                        # удары, побег, завершение боя; композиция core/combat_mechanics.py
+│   │                        # с состоянием CombatSession, которое core/ намеренно не знает (§6)
 │   ├── schemas/              # Pydantic-модели запросов/ответов (character.py, combat.py)
 │   ├── rendering.py           # структурированные факты боя → готовый текст для клиента
 │   ├── dependencies.py       # сессия БД, авторизация бота, получение текущего персонажа
@@ -279,27 +284,41 @@ DELETE /combat/{id}                  — docs/notes.md п.51: отменить �
 конца боя" требует состояния сессии (`current_turn`, флаги права на побег),
 которое `core/` намеренно не знает — доменные формулы (`resolve_strike`,
 `is_double_strike_triggered` и т.д. из `core/combat_mechanics.py`) вызываются
-по отдельности прямо в роутере, а не через одну "мега-функцию хода". Реальная
-реализация — `api/routers/combat.py` (`_resolve_attacker_turn`), сокращённо:
+по отдельности, а не через одну "мега-функцию хода". С этапа 4, п.3
+(docs/hardening_plan.md) эта композиция вынесена из самого роутера в
+`api/services/combat.py` (`resolve_attacker_turn`) — роутер (`api/routers/
+combat.py::take_turn`) только проверяет статус и зовёт её, сокращённо:
 
 ```python
+# api/routers/combat.py
 @router.post("/combat/{combat_session_id}/turn")
-def take_turn(combat_session_id: int, character=Depends(get_current_character), db=Depends(get_db)):
+def take_turn(
+    combat_session_id: int,
+    character=Depends(get_localized_character),
+    db=Depends(get_db),
+    rng: random.Random = Depends(get_rng),
+):
     session = _load_owned_session(db, combat_session_id, character)
-    # ... проверки статуса, ворота побега (§6 combat_mechanics.md) ...
+    # ... проверки статуса, ворота побега (§6 combat_mechanics.md, combat_service.check_flee_gate) ...
+    turn_text = combat_service.resolve_attacker_turn(session, character, db, rng)
+    return _turn_response(session, character, turn_text)
 
+# api/services/combat.py
+def resolve_attacker_turn(session, character, db, rng, power_attack=False):
     attacker_role = session.current_turn
-    ds_faces = cm.calculate_double_strike_success_faces(attacker_luck, DOUBLE_STRIKE_K)
-    triggered = cm.is_double_strike_triggered(random.randint(1, 10), ds_faces)
+    ds_faces = cm.calculate_double_strike_success_faces(attacker_luck)
+    triggered = cm.is_double_strike_triggered(rng.randint(1, 10), ds_faces)
 
     for _ in range(2 if triggered else 1):
         strike = cm.resolve_strike(attacker_strength, defender_agility, ...)
         # применить урон к session.enemy_hp_current / session.character_hp_snapshot
-        # если защищающийся пал — session.status = "finished", начислить награду
+        # если защищающийся пал — finish_battle(...): status="finished", начислить награду
 
     db.commit()
-    return CombatTurnResponse(...)
+    return "\n\n".join(texts)
 ```
+
+Случайность — зависимость FastAPI (`api.dependencies.get_rng`, docs/hardening_plan.md, этап 4, п.4), не прямой `random.randint`: тесты задают детерминированные броски через dependency override, не через подмену модуля `random`.
 
 Правило то же, что и в черновике: обработчик = прочитать состояние → вызвать функции `core/` → сохранить → вернуть JSON. Никакой логики броска/урона/условий внутри роутера — только их композиция.
 
