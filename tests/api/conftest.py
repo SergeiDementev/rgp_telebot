@@ -11,6 +11,8 @@
 пересоздание схемы: дешевле, а схема уже доказанно построена миграциями."""
 
 import os
+import random
+from collections.abc import Sequence
 
 import pytest
 from sqlalchemy import create_engine
@@ -54,5 +56,37 @@ def override_get_db(db_session_factory):
             yield db
         finally:
             db.close()
+
+    return _override
+
+
+class ScriptedRandom(random.Random):
+    """Детерминированная случайность для тестов (docs/hardening_plan.md,
+    этап 4, п.4) — отдаёт заданную последовательность бросков через
+    dependency override api.dependencies.get_rng, не monkeypatch модуля
+    random. Если бросков не хватило — понятный AssertionError с тем, что
+    именно звалось, не StopIteration без контекста."""
+
+    def __init__(self, rolls: Sequence[int]):
+        super().__init__()
+        self._rolls = iter(rolls)
+
+    def randint(self, a: int, b: int) -> int:
+        try:
+            return next(self._rolls)
+        except StopIteration:
+            raise AssertionError(f"ScriptedRandom: не хватило заданных бросков (randint({a}, {b}))") from None
+
+
+def override_rng(rolls: Sequence[int]):
+    """Один ScriptedRandom на всю последовательность, не новый на каждое
+    разрешение зависимости — тесты часто растягивают один список бросков на
+    несколько HTTP-запросов подряд (search -> start -> confirm -> turn), и
+    каждый запрос резолвит Depends(get_rng) заново; без общего инстанса
+    каждый запрос начинал бы читать список с начала."""
+    rng = ScriptedRandom(rolls)
+
+    def _override() -> random.Random:
+        return rng
 
     return _override

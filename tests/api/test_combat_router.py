@@ -5,12 +5,12 @@ from datetime import UTC, datetime
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.dependencies import get_db, require_api_key
+from api.dependencies import get_db, get_rng, require_api_key
 from api.errors import register_error_handlers
 from api.routers.combat import router as combat_router
 from api.routers.encounter import router as encounter_router
 from db.models import Character, CombatSession
-from tests.api.conftest import override_get_db
+from tests.api.conftest import override_get_db, override_rng
 
 HEADERS = {"X-Telegram-User-Id": "1"}
 OTHER_HEADERS = {"X-Telegram-User-Id": "2"}
@@ -52,45 +52,41 @@ def _insert_character(db_session_factory, telegram_user_id=1, **overrides) -> in
     return character_id
 
 
-def _patch_rolls(monkeypatch, rolls):
-    """Общий поток random.randint для encounter.py и combat.py (два разных
-    модульных импорта random, но одна и та же последовательность бросков)."""
-    it = iter(rolls)
-
-    def _next(a, b):
-        return next(it)
-
-    monkeypatch.setattr("api.routers.encounter.random.randint", _next)
-    monkeypatch.setattr("api.routers.combat.random.randint", _next)
+def _patch_rolls(client, rolls):
+    """Общая последовательность бросков для encounter.py и combat.py — один
+    override зависимости get_rng (docs/hardening_plan.md, этап 4, п.4), а не
+    monkeypatch модуля random: оба роутера зовут один и тот же Depends(get_rng)
+    на уровне приложения."""
+    client.app.dependency_overrides[get_rng] = override_rng(rolls)
 
 
-def _start_session_against_mouse(client, monkeypatch, extra_rolls, headers=HEADERS):
+def _start_session_against_mouse(client, extra_rolls, headers=HEADERS):
     """search (мышь) -> start (игрок первый, обстоятельства нет) -> confirm(fight),
     затем extra_rolls доступны для последующих вызовов (turn/flee_decision)."""
-    _patch_rolls(monkeypatch, [3, 7, 4, 5, *extra_rolls])  # 3->мышь, 7>4->игрок первый, 5->none
+    _patch_rolls(client, [3, 7, 4, 5, *extra_rolls])  # 3->мышь, 7>4->игрок первый, 5->none
     session_id = client.post("/encounter/search", headers=headers).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=headers)
     client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=headers)
     return session_id
 
 
-def _start_session_against_boss(client, monkeypatch, extra_rolls, headers=HEADERS):
+def _start_session_against_boss(client, extra_rolls, headers=HEADERS):
     """search_boss (без броска, docs/notes.md п.36) -> start (игрок первый,
     без обстоятельства вообще — has_circumstance=false, docs/notes.md п.56,
     ни один бросок на это не тратится) -> confirm(fight), затем extra_rolls
     для /turn."""
-    _patch_rolls(monkeypatch, [7, 4, *extra_rolls])  # 7>4 -> игрок первый
+    _patch_rolls(client, [7, 4, *extra_rolls])  # 7>4 -> игрок первый
     session_id = client.post("/encounter/search_boss", headers=headers).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=headers)
     client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=headers)
     return session_id
 
 
-def test_confirm_fight_transitions_to_active(db_session_factory, monkeypatch):
+def test_confirm_fight_transitions_to_active(db_session_factory):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
 
@@ -100,13 +96,13 @@ def test_confirm_fight_transitions_to_active(db_session_factory, monkeypatch):
     assert response.json()["text"].startswith("❤️ Ты: 50/50   👹 Мышь: 20/20")
 
 
-def test_confirm_fight_shows_fight_confirmed_message(db_session_factory, monkeypatch):
+def test_confirm_fight_shows_fight_confirmed_message(db_session_factory):
     # docs/notes.md, блок 6 — раньше сырой литерал в самом роутере, в обход
     # api/rendering.py/core.i18n целиком.
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
 
@@ -114,11 +110,11 @@ def test_confirm_fight_shows_fight_confirmed_message(db_session_factory, monkeyp
     assert response.json()["text"] == "❤️ Ты: 50/50   👹 Мышь: 20/20\n\n⚔️ Ты вступаешь в бой!"
 
 
-def test_confirm_fight_shows_fight_confirmed_message_in_english(db_session_factory, monkeypatch):
+def test_confirm_fight_shows_fight_confirmed_message_in_english(db_session_factory):
     _insert_character(db_session_factory, language="en")
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
 
@@ -126,7 +122,7 @@ def test_confirm_fight_shows_fight_confirmed_message_in_english(db_session_facto
     assert response.json()["text"].endswith("⚔️ You engage in combat!")
 
 
-def test_confirm_fight_response_includes_character_language(db_session_factory, monkeypatch):
+def test_confirm_fight_response_includes_character_language(db_session_factory):
     # docs/notes.md — бот использует это поле, чтобы выставить локаль перед
     # построением клавиатуры в хендлерах, которые сами персонажа не
     # запрашивают (confirm_fight и т.п.) — без него клавиатура
@@ -136,7 +132,7 @@ def test_confirm_fight_response_includes_character_language(db_session_factory, 
     _insert_character(db_session_factory, language="en")
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
 
@@ -145,12 +141,12 @@ def test_confirm_fight_response_includes_character_language(db_session_factory, 
     assert response.json()["language"] == "en"
 
 
-def test_confirm_flee_ends_battle_with_no_reward(db_session_factory, monkeypatch):
+def test_confirm_flee_ends_battle_with_no_reward(db_session_factory):
     _insert_character(db_session_factory, strength=10)
     client = make_client(db_session_factory)
 
     # мышь, игрок первый, без обстоятельства, затем безответный удар мыши: промах (roll=1)
-    _patch_rolls(monkeypatch, [3, 7, 4, 5, 1])
+    _patch_rolls(client, [3, 7, 4, 5, 1])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
 
@@ -166,11 +162,11 @@ def test_confirm_flee_ends_battle_with_no_reward(db_session_factory, monkeypatch
     db.close()
 
 
-def test_turn_rejects_when_not_active(db_session_factory, monkeypatch):
+def test_turn_rejects_when_not_active(db_session_factory):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
     # confirm ещё не вызван -> статус "awaiting_confirmation", не "active"
@@ -179,14 +175,13 @@ def test_turn_rejects_when_not_active(db_session_factory, monkeypatch):
     assert response.status_code == 409
 
 
-def test_turn_victory_awards_reward_and_updates_character(db_session_factory, monkeypatch):
+def test_turn_victory_awards_reward_and_updates_character(db_session_factory):
     # Сильный игрок против мыши — гарантированная победа одним ударом.
     _insert_character(db_session_factory, strength=100, agility=10, luck=2)
     client = make_client(db_session_factory)
 
     session_id = _start_session_against_mouse(
         client,
-        monkeypatch,
         extra_rolls=[10, 10, 10, 100],  # double-strike check (не сработал), атака 100%, уворот мимо, лут="nothing"
     )
 
@@ -203,7 +198,7 @@ def test_turn_victory_awards_reward_and_updates_character(db_session_factory, mo
     db.close()
 
 
-def test_turn_victory_can_drop_loot_into_character_inventory(db_session_factory, monkeypatch):
+def test_turn_victory_can_drop_loot_into_character_inventory(db_session_factory):
     # Регрессия (docs/notes.md, п.30/31): лут раньше не спавнился вообще —
     # "Меню игрока"/sell_loot были собраны, но ничего в бою не начисляло
     # предмет персонажу. Отдельный бросок ПОСЛЕ исхода боя, как и в
@@ -213,7 +208,6 @@ def test_turn_victory_can_drop_loot_into_character_inventory(db_session_factory,
 
     session_id = _start_session_against_mouse(
         client,
-        monkeypatch,
         extra_rolls=[10, 10, 10, 1],  # double-strike(нет), атака 100%, уворот мимо, лут roll=1 -> mouse_pelt
     )
 
@@ -228,13 +222,12 @@ def test_turn_victory_can_drop_loot_into_character_inventory(db_session_factory,
     db.close()
 
 
-def test_turn_victory_with_no_loot_omits_loot_line(db_session_factory, monkeypatch):
+def test_turn_victory_with_no_loot_omits_loot_line(db_session_factory):
     _insert_character(db_session_factory, strength=100, agility=10, luck=2)
     client = make_client(db_session_factory)
 
     session_id = _start_session_against_mouse(
         client,
-        monkeypatch,
         extra_rolls=[10, 10, 10, 100],  # лут roll=100 -> "nothing"
     )
 
@@ -250,7 +243,7 @@ def test_turn_victory_with_no_loot_omits_loot_line(db_session_factory, monkeypat
     db.close()
 
 
-def test_turn_power_attack_applies_multiplier_and_wider_miss(db_session_factory, monkeypatch):
+def test_turn_power_attack_applies_multiplier_and_wider_miss(db_session_factory):
     # docs/combat_mechanics.md §3a — POST /combat/{id}/turn с power_attack=true:
     # промах до грани 4, урон ×1.5 на попадании. strength=30, roll=7 -> 70%
     # силы -> round(30*0.7*1.5) = 32 (не round(30*0.7)=21, как у обычной атаки).
@@ -260,7 +253,7 @@ def test_turn_power_attack_applies_multiplier_and_wider_miss(db_session_factory,
     # 7 -> encounter=волк (mouse faces 1-6, wolf faces 7-9 на 1 уровне),
     # 7>4 -> игрок первый, 5 -> обстоятельства нет, затем ход: 5 -> двойного
     # удара нет, 7 -> атака 70%, 5 -> уворот волка (agility=6) не сработал.
-    _patch_rolls(monkeypatch, [7, 7, 4, 5, 5, 7, 5])
+    _patch_rolls(client, [7, 7, 4, 5, 5, 7, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
     client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
@@ -273,14 +266,14 @@ def test_turn_power_attack_applies_multiplier_and_wider_miss(db_session_factory,
     assert "💥 Ты наносишь 32 урона." in body["text"]
 
 
-def test_turn_without_power_attack_defaults_to_normal_attack(db_session_factory, monkeypatch):
+def test_turn_without_power_attack_defaults_to_normal_attack(db_session_factory):
     # Тот же бросок/статы, что и в power-attack тесте выше, но без флага
     # (и без тела запроса вообще — старое поведение) — обычная атака,
     # без множителя: round(30*0.7) = 21, не 32.
     _insert_character(db_session_factory, strength=30, agility=5, luck=2)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [7, 7, 4, 5, 5, 7, 5])
+    _patch_rolls(client, [7, 7, 4, 5, 5, 7, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
     client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
@@ -291,14 +284,14 @@ def test_turn_without_power_attack_defaults_to_normal_attack(db_session_factory,
     assert "💥 Ты наносишь 21 урона." in body["text"]
 
 
-def test_use_potion_heals_ends_turn_and_passes_to_enemy(db_session_factory, monkeypatch):
+def test_use_potion_heals_ends_turn_and_passes_to_enemy(db_session_factory):
     # docs/notes.md, п.33 — зелье явное действие игрока кнопкой, не
     # автоматика (отменяет п.32): заменяет атаку в этот ход, сразу передаёт
     # ход противнику. Большое зелье лечит на 50% от hp_max (50) -> +25.
     _insert_character(db_session_factory, strength=10, agility=5, luck=2, hp_current=10.0, potions_large=1)
     client = make_client(db_session_factory)
 
-    session_id = _start_session_against_mouse(client, monkeypatch, extra_rolls=[])
+    session_id = _start_session_against_mouse(client, extra_rolls=[])
 
     response = client.post(f"/combat/{session_id}/use_potion", json={"size": "large"}, headers=HEADERS)
     body = response.json()
@@ -315,7 +308,7 @@ def test_use_potion_heals_ends_turn_and_passes_to_enemy(db_session_factory, monk
     db.close()
 
 
-def test_use_potion_small_heal_keeps_hp_integer_on_non_divisible_hp_max(db_session_factory, monkeypatch):
+def test_use_potion_small_heal_keeps_hp_integer_on_non_divisible_hp_max(db_session_factory):
     # Регрессия (docs/notes.md) — vitality=5 -> hp_max=70, малое зелье
     # (25%) даёт дробные 17.5 без округления в core.economy.calculate_
     # heal_amount; дробный остаток застревал в character_hp_snapshot
@@ -325,7 +318,7 @@ def test_use_potion_small_heal_keeps_hp_integer_on_non_divisible_hp_max(db_sessi
     _insert_character(db_session_factory, strength=10, agility=5, luck=2, vitality=5, hp_current=10.0, potions_small=1)
     client = make_client(db_session_factory)
 
-    session_id = _start_session_against_mouse(client, monkeypatch, extra_rolls=[])
+    session_id = _start_session_against_mouse(client, extra_rolls=[])
 
     response = client.post(f"/combat/{session_id}/use_potion", json={"size": "small"}, headers=HEADERS)
     assert response.status_code == 200
@@ -337,7 +330,7 @@ def test_use_potion_small_heal_keeps_hp_integer_on_non_divisible_hp_max(db_sessi
     db.close()
 
 
-def test_use_potion_rejects_when_already_used_this_battle(db_session_factory, monkeypatch):
+def test_use_potion_rejects_when_already_used_this_battle(db_session_factory):
     # Лимит общий на оба размера — используем size="small" сразу выставленным
     # флагом (не через реальный вызов: тот передаёт ход противнику, и второй
     # вызов на этом же ходу закономерно упёрся бы в "не твой ход" раньше,
@@ -345,7 +338,7 @@ def test_use_potion_rejects_when_already_used_this_battle(db_session_factory, mo
     _insert_character(db_session_factory, strength=10, agility=5, luck=2, hp_current=10.0, potions_small=2)
     client = make_client(db_session_factory)
 
-    session_id = _start_session_against_mouse(client, monkeypatch, extra_rolls=[])
+    session_id = _start_session_against_mouse(client, extra_rolls=[])
     db = db_session_factory()
     session = db.get(CombatSession, session_id)
     session.player_potion_used_this_battle = True
@@ -362,14 +355,14 @@ def test_use_potion_rejects_when_already_used_this_battle(db_session_factory, mo
     db.close()
 
 
-def test_use_potion_against_boss_has_no_per_battle_limit(db_session_factory, monkeypatch):
+def test_use_potion_against_boss_has_no_per_battle_limit(db_session_factory):
     # docs/notes.md, п.39 — у финального босса нет ограничения "раз за бой"
     # на зелья (unlimited_potions в content/enemies.json), в отличие от
     # обычных противников (п.33). Инвентарь всё равно тратится по-настоящему.
     _insert_character(db_session_factory, level=9, strength=10, agility=5, luck=2, hp_current=10.0, potions_small=2)
     client = make_client(db_session_factory)
 
-    session_id = _start_session_against_boss(client, monkeypatch, extra_rolls=[])
+    session_id = _start_session_against_boss(client, extra_rolls=[])
 
     first = client.post(f"/combat/{session_id}/use_potion", json={"size": "small"}, headers=HEADERS)
     body = first.json()
@@ -378,7 +371,7 @@ def test_use_potion_against_boss_has_no_per_battle_limit(db_session_factory, mon
     assert body["current_turn"] == "enemy"
 
     # Ход босса — промах, чтобы ход снова вернулся игроку.
-    _patch_rolls(monkeypatch, [10, 1, 1])  # double-strike нет, атака=1 -> промах, уворот неважен
+    _patch_rolls(client, [10, 1, 1])  # double-strike нет, атака=1 -> промах, уворот неважен
     resolved = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
     assert resolved.json()["current_turn"] == "player"
 
@@ -393,23 +386,23 @@ def test_use_potion_against_boss_has_no_per_battle_limit(db_session_factory, mon
     db.close()
 
 
-def test_use_potion_rejects_when_not_owned(db_session_factory, monkeypatch):
+def test_use_potion_rejects_when_not_owned(db_session_factory):
     _insert_character(db_session_factory, strength=10, agility=5, luck=2, hp_current=10.0)
     client = make_client(db_session_factory)
 
-    session_id = _start_session_against_mouse(client, monkeypatch, extra_rolls=[])
+    session_id = _start_session_against_mouse(client, extra_rolls=[])
 
     response = client.post(f"/combat/{session_id}/use_potion", json={"size": "small"}, headers=HEADERS)
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "combat.potion_not_owned"
 
 
-def test_use_potion_rejects_on_enemy_turn(db_session_factory, monkeypatch):
+def test_use_potion_rejects_on_enemy_turn(db_session_factory):
     _insert_character(db_session_factory, strength=10, agility=5, luck=2, hp_current=10.0, potions_small=1)
     client = make_client(db_session_factory)
 
     # 3->мышь, 4<7->противник первый (обратный порядок роллов инициативы)
-    _patch_rolls(monkeypatch, [3, 4, 7, 5])
+    _patch_rolls(client, [3, 4, 7, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
     client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
@@ -424,11 +417,11 @@ def test_use_potion_rejects_on_enemy_turn(db_session_factory, monkeypatch):
     db.close()
 
 
-def test_use_potion_rejects_when_session_not_active(db_session_factory, monkeypatch):
+def test_use_potion_rejects_when_session_not_active(db_session_factory):
     _insert_character(db_session_factory, potions_small=1)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
     # confirm ещё не вызван -> статус "awaiting_confirmation", не "active"
@@ -439,16 +432,16 @@ def test_use_potion_rejects_when_session_not_active(db_session_factory, monkeypa
     assert response.json()["error"]["details"] == {"status": "awaiting_confirmation"}
 
 
-def test_use_potion_rejects_unknown_size(db_session_factory, monkeypatch):
+def test_use_potion_rejects_unknown_size(db_session_factory):
     _insert_character(db_session_factory, potions_small=1)
     client = make_client(db_session_factory)
 
-    session_id = _start_session_against_mouse(client, monkeypatch, extra_rolls=[])
+    session_id = _start_session_against_mouse(client, extra_rolls=[])
     response = client.post(f"/combat/{session_id}/use_potion", json={"size": "medium"}, headers=HEADERS)
     assert response.status_code == 422
 
 
-def test_turn_double_strike_renders_two_compact_strikes(db_session_factory, monkeypatch):
+def test_turn_double_strike_renders_two_compact_strikes(db_session_factory):
     # Очень высокая Удача -> двойной удар почти гарантирован; низкая Сила,
     # чтобы мышь (HP=20) пережила первый удар и получила второй.
     _insert_character(db_session_factory, strength=5, agility=10, luck=1000)
@@ -456,7 +449,6 @@ def test_turn_double_strike_renders_two_compact_strikes(db_session_factory, monk
 
     session_id = _start_session_against_mouse(
         client,
-        monkeypatch,
         extra_rolls=[1, 3, 10, 5, 10],  # double-strike(1,triggered) удар1(3,10) удар2(5,10)
     )
 
@@ -467,7 +459,7 @@ def test_turn_double_strike_renders_two_compact_strikes(db_session_factory, monk
     assert "Удар 2" in body["text"]
 
 
-def test_turn_defeat_by_enemy(db_session_factory, monkeypatch):
+def test_turn_defeat_by_enemy(db_session_factory):
     # Слабый игрок, сильный (для этого теста) урон мыши невозможен по статам
     # мыши — вместо этого проверяем поражение через прямое исполнение хода
     # противника: игрок промахивается (double-strike нет, атака=1 промах),
@@ -478,7 +470,6 @@ def test_turn_defeat_by_enemy(db_session_factory, monkeypatch):
 
     session_id = _start_session_against_mouse(
         client,
-        monkeypatch,
         extra_rolls=[10, 1, 1],  # double-strike нет, атака=1 -> промах
     )
 
@@ -490,17 +481,17 @@ def test_turn_defeat_by_enemy(db_session_factory, monkeypatch):
     assert body["text"].startswith("❤️ Ты:")  # HP-шапка на каждой фазе, не только в итоге
 
 
-def test_flee_gate_pauses_for_player_and_flee_decision_continue_resumes_turn(db_session_factory, monkeypatch):
+def test_flee_gate_pauses_for_player_and_flee_decision_continue_resumes_turn(db_session_factory):
     # HP игрока ниже порога 25% от 50 max -> flee-gate применим.
     _insert_character(db_session_factory, strength=100, agility=10, luck=1000, hp_current=10.0)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])  # мышь, игрок первый, без обстоятельства
+    _patch_rolls(client, [3, 7, 4, 5])  # мышь, игрок первый, без обстоятельства
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
     client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
 
-    _patch_rolls(monkeypatch, [1])  # luck_roll=1 -> побег почти наверняка предложен (luck=1000)
+    _patch_rolls(client, [1])  # luck_roll=1 -> побег почти наверняка предложен (luck=1000)
     response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
     body = response.json()
     assert body["status"] == "awaiting_flee_decision"
@@ -508,24 +499,24 @@ def test_flee_gate_pauses_for_player_and_flee_decision_continue_resumes_turn(db_
     assert body["text"].startswith("❤️ Ты:")
 
     # "continue" -> право сгорает, ход доигрывается тут же (гарантированная победа)
-    _patch_rolls(monkeypatch, [10, 10, 10, 100])  # double-strike нет, атака=100%, уворот мимо, лут="nothing"
+    _patch_rolls(client, [10, 10, 10, 100])  # double-strike нет, атака=100%, уворот мимо, лут="nothing"
     response = client.post(f"/combat/{session_id}/flee_decision", json={"decision": "continue"}, headers=HEADERS)
     body = response.json()
     assert response.status_code == 200
     assert body["result"] == "victory"
 
 
-def test_flee_gate_burns_right_even_when_roll_fails(db_session_factory, monkeypatch):
+def test_flee_gate_burns_right_even_when_roll_fails(db_session_factory):
     # §6 (пересмотрено 2026-09-15, docs/notes.md п.9): одна попытка за бой на
     # сторону — провал броска тоже тратит право, не только отказ после успеха.
     _insert_character(db_session_factory, strength=10, agility=5, luck=2, hp_current=10.0)
     client = make_client(db_session_factory)
 
-    session_id = _start_session_against_mouse(client, monkeypatch, extra_rolls=[])
+    session_id = _start_session_against_mouse(client, extra_rolls=[])
 
     # Ход 1 (игрок): gate-роллы luck_roll=10 -> не сработало (success_faces=1
     # при luck=2), но право должно сгореть всё равно.
-    _patch_rolls(monkeypatch, [10, 10, 3, 10])  # gate=10, double-strike=10, атака=3(50%), уворот мимо
+    _patch_rolls(client, [10, 10, 3, 10])  # gate=10, double-strike=10, атака=3(50%), уворот мимо
     response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
     body = response.json()
     assert body["status"] == "active"
@@ -538,18 +529,18 @@ def test_flee_gate_burns_right_even_when_roll_fails(db_session_factory, monkeypa
     db.close()
 
     # Ход 2 (мышь) — просто продвигает очередь, промах.
-    _patch_rolls(monkeypatch, [10, 1, 5])
+    _patch_rolls(client, [10, 1, 5])
     client.post(f"/combat/{session_id}/turn", headers=HEADERS)
 
     # Ход 3 (игрок снова, HP всё ещё ниже порога): право уже использовано —
     # проверка на побег больше не должна всплывать.
-    _patch_rolls(monkeypatch, [10, 1, 5])
+    _patch_rolls(client, [10, 1, 5])
     response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
     body = response.json()
     assert "проверка удачи на побег" not in body["text"].lower()
 
 
-def test_turn_victory_against_boss_shows_congratulations_and_no_loot(db_session_factory, monkeypatch):
+def test_turn_victory_against_boss_shows_congratulations_and_no_loot(db_session_factory):
     # docs/notes.md, п.36/п.54 — победа над боссом рендерится отдельным
     # экраном поздравления (render_boss_victory), не обычным render_battle_
     # end: без строки HP/таймера регена, без лута (LOOT_TABLE["boss"] =
@@ -560,7 +551,6 @@ def test_turn_victory_against_boss_shows_congratulations_and_no_loot(db_session_
 
     session_id = _start_session_against_boss(
         client,
-        monkeypatch,
         extra_rolls=[10, 10, 10, 100],  # double-strike нет, атака=100%, уворот мимо, лут roll (неважно какой)
     )
 
@@ -583,7 +573,7 @@ def test_turn_victory_against_boss_shows_congratulations_and_no_loot(db_session_
     db.close()
 
 
-def test_boss_enemy_side_never_triggers_flee_gate(db_session_factory, monkeypatch):
+def test_boss_enemy_side_never_triggers_flee_gate(db_session_factory):
     # can_flee=false в content/enemies.json (docs/notes.md, п.36) — сторона
     # enemy у босса никогда не проверяет побег, даже при HP далеко ниже
     # порога 25%. Сессия собрана напрямую в БД — довести HP именно
@@ -608,7 +598,7 @@ def test_boss_enemy_side_never_triggers_flee_gate(db_session_factory, monkeypatc
     session_id = session.id
     db.close()
 
-    _patch_rolls(monkeypatch, [10, 1, 1])  # double-strike нет, атака=1 -> промах (исход не важен)
+    _patch_rolls(client, [10, 1, 1])  # double-strike нет, атака=1 -> промах (исход не важен)
     response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
     body = response.json()
     assert response.status_code == 200
@@ -621,7 +611,7 @@ def test_boss_enemy_side_never_triggers_flee_gate(db_session_factory, monkeypatc
     db.close()
 
 
-def test_boss_player_side_never_triggers_flee_gate(db_session_factory, monkeypatch):
+def test_boss_player_side_never_triggers_flee_gate(db_session_factory):
     # docs/notes.md, п.57 — player_can_flee=false в content/enemies.json:
     # игрок тоже никогда не получает предложение сбежать от босса, даже при
     # HP далеко ниже порога 25%.
@@ -644,7 +634,7 @@ def test_boss_player_side_never_triggers_flee_gate(db_session_factory, monkeypat
     session_id = session.id
     db.close()
 
-    _patch_rolls(monkeypatch, [10, 1, 1])  # double-strike нет, атака=1 -> промах (исход не важен)
+    _patch_rolls(client, [10, 1, 1])  # double-strike нет, атака=1 -> промах (исход не важен)
     response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
     body = response.json()
     assert response.status_code == 200
@@ -657,14 +647,14 @@ def test_boss_player_side_never_triggers_flee_gate(db_session_factory, monkeypat
     db.close()
 
 
-def test_confirm_flee_against_boss_returns_400(db_session_factory, monkeypatch):
+def test_confirm_flee_against_boss_returns_400(db_session_factory):
     # docs/notes.md, п.57 — из боя с боссом нельзя отступить вообще, даже
     # сразу после инициативы (кнопки у бота для него и так нет — это
     # серверная защита от гонки/устаревшей клавиатуры).
     _insert_character(db_session_factory, level=9)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [7, 4])  # только инициатива — обстоятельства у босса нет (п.56)
+    _patch_rolls(client, [7, 4])  # только инициатива — обстоятельства у босса нет (п.56)
     session_id = client.post("/encounter/search_boss", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
 
@@ -678,42 +668,42 @@ def test_confirm_flee_against_boss_returns_400(db_session_factory, monkeypatch):
     db.close()
 
 
-def test_flee_gate_flee_decision_ends_battle(db_session_factory, monkeypatch):
+def test_flee_gate_flee_decision_ends_battle(db_session_factory):
     _insert_character(db_session_factory, strength=10, agility=10, luck=1000, hp_current=10.0)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
     client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
 
-    _patch_rolls(monkeypatch, [1])
+    _patch_rolls(client, [1])
     client.post(f"/combat/{session_id}/turn", headers=HEADERS)
 
-    _patch_rolls(monkeypatch, [1])  # промах мыши при попытке побега
+    _patch_rolls(client, [1])  # промах мыши при попытке побега
     response = client.post(f"/combat/{session_id}/flee_decision", json={"decision": "flee"}, headers=HEADERS)
     body = response.json()
     assert body["result"] == "player_fled"
     assert body["status"] == "finished"
 
 
-def test_ownership_checks_forbid_other_character(db_session_factory, monkeypatch):
+def test_ownership_checks_forbid_other_character(db_session_factory):
     _insert_character(db_session_factory, telegram_user_id=1)
     _insert_character(db_session_factory, telegram_user_id=2)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
 
     response = client.get(f"/combat/{session_id}", headers=OTHER_HEADERS)
     assert response.status_code == 403
 
 
-def test_get_combat_session_returns_state(db_session_factory, monkeypatch):
+def test_get_combat_session_returns_state(db_session_factory):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
 
     response = client.get(f"/combat/{session_id}", headers=HEADERS)
@@ -724,14 +714,14 @@ def test_get_combat_session_returns_state(db_session_factory, monkeypatch):
     assert body["enemy_hp_max"] == 20
 
 
-def test_resume_combat_session_awaiting_initiative_reconstructs_encounter_text(db_session_factory, monkeypatch):
+def test_resume_combat_session_awaiting_initiative_reconstructs_encounter_text(db_session_factory):
     # docs/notes.md, п.48 — восстановление потерянной клавиатуры боя
     # (например, после удаления чата в Telegram): CombatSession в БД
     # остаётся активной, /resume реконструирует тот же экран без нового броска.
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
 
     response = client.get(f"/combat/{session_id}/resume", headers=HEADERS)
@@ -756,13 +746,11 @@ def test_resume_combat_session_awaiting_initiative_boss_uses_boss_text(db_sessio
     assert "Лесного Короля" in body["text"] or "Лесной Король" in body["text"]
 
 
-def test_resume_combat_session_awaiting_confirmation_reconstructs_initiative_and_circumstance(
-    db_session_factory, monkeypatch
-):
+def test_resume_combat_session_awaiting_confirmation_reconstructs_initiative_and_circumstance(db_session_factory):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])  # мышь, игрок первый (7>4), обстоятельства нет
+    _patch_rolls(client, [3, 7, 4, 5])  # мышь, игрок первый (7>4), обстоятельства нет
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
 
@@ -774,13 +762,13 @@ def test_resume_combat_session_awaiting_confirmation_reconstructs_initiative_and
     assert "Обстоятельство" in body["text"]
 
 
-def test_resume_combat_session_awaiting_confirmation_boss_has_no_circumstance(db_session_factory, monkeypatch):
+def test_resume_combat_session_awaiting_confirmation_boss_has_no_circumstance(db_session_factory):
     # docs/notes.md, п.56 — у босса нет записи "circumstance" в turn_log
     # вообще (has_circumstance=false), реконструкция не должна на неё падать.
     _insert_character(db_session_factory, level=9)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [7, 4])  # только инициатива, игрок первый
+    _patch_rolls(client, [7, 4])  # только инициатива, игрок первый
     session_id = client.post("/encounter/search_boss", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
 
@@ -792,10 +780,10 @@ def test_resume_combat_session_awaiting_confirmation_boss_has_no_circumstance(db
     assert "Обстоятельство" not in body["text"]
 
 
-def test_resume_combat_session_active_shows_hp_status(db_session_factory, monkeypatch):
+def test_resume_combat_session_active_shows_hp_status(db_session_factory):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
-    session_id = _start_session_against_mouse(client, monkeypatch, extra_rolls=[])
+    session_id = _start_session_against_mouse(client, extra_rolls=[])
 
     response = client.get(f"/combat/{session_id}/resume", headers=HEADERS)
     body = response.json()
@@ -804,16 +792,16 @@ def test_resume_combat_session_active_shows_hp_status(db_session_factory, monkey
     assert body["text"].startswith("❤️ Ты:")
 
 
-def test_resume_combat_session_awaiting_flee_decision_reconstructs_flee_check(db_session_factory, monkeypatch):
+def test_resume_combat_session_awaiting_flee_decision_reconstructs_flee_check(db_session_factory):
     _insert_character(db_session_factory, strength=100, agility=10, luck=1000, hp_current=10.0)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
     client.post(f"/combat/{session_id}/start", headers=HEADERS)
     client.post(f"/combat/{session_id}/confirm", json={"decision": "fight"}, headers=HEADERS)
 
-    _patch_rolls(monkeypatch, [1])  # luck_roll=1 -> побег почти наверняка предложен (luck=1000)
+    _patch_rolls(client, [1])  # luck_roll=1 -> побег почти наверняка предложен (luck=1000)
     turn_response = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
     assert turn_response.json()["status"] == "awaiting_flee_decision"
 
@@ -825,12 +813,11 @@ def test_resume_combat_session_awaiting_flee_decision_reconstructs_flee_check(db
     assert body["text"].startswith("❤️ Ты:")
 
 
-def test_resume_combat_session_finished_returns_409(db_session_factory, monkeypatch):
+def test_resume_combat_session_finished_returns_409(db_session_factory):
     _insert_character(db_session_factory, strength=100, agility=10, luck=2)
     client = make_client(db_session_factory)
     session_id = _start_session_against_mouse(
         client,
-        monkeypatch,
         extra_rolls=[10, 10, 10, 100],
     )
     finished = client.post(f"/combat/{session_id}/turn", headers=HEADERS)
@@ -849,12 +836,12 @@ def test_resume_combat_session_not_found_returns_404(db_session_factory):
     assert response.json()["error"]["code"] == "combat.not_found"
 
 
-def test_resume_combat_session_forbids_other_character(db_session_factory, monkeypatch):
+def test_resume_combat_session_forbids_other_character(db_session_factory):
     _insert_character(db_session_factory, telegram_user_id=1)
     _insert_character(db_session_factory, telegram_user_id=2)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
 
     response = client.get(f"/combat/{session_id}/resume", headers=OTHER_HEADERS)
@@ -862,11 +849,11 @@ def test_resume_combat_session_forbids_other_character(db_session_factory, monke
     assert response.json()["error"]["code"] == "combat.not_your_session"
 
 
-def test_resume_combat_session_does_not_mutate_state(db_session_factory, monkeypatch):
+def test_resume_combat_session_does_not_mutate_state(db_session_factory):
     # Только чтение — повторные вызовы не должны менять сессию.
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
-    session_id = _start_session_against_mouse(client, monkeypatch, extra_rolls=[])
+    session_id = _start_session_against_mouse(client, extra_rolls=[])
 
     first = client.get(f"/combat/{session_id}/resume", headers=HEADERS)
     second = client.get(f"/combat/{session_id}/resume", headers=HEADERS)
@@ -878,14 +865,14 @@ def test_resume_combat_session_does_not_mutate_state(db_session_factory, monkeyp
     db.close()
 
 
-def test_cancel_combat_session_awaiting_initiative_deletes_it(db_session_factory, monkeypatch):
+def test_cancel_combat_session_awaiting_initiative_deletes_it(db_session_factory):
     # docs/notes.md, п.51 — "⬅️ Назад" на экране входа в бой, до инициативы:
     # ничего ещё не произошло, поэтому сессия удаляется физически, не
     # архивируется как исход боя.
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
 
     response = client.delete(f"/combat/{session_id}", headers=HEADERS)
@@ -901,10 +888,10 @@ def test_cancel_combat_session_awaiting_initiative_deletes_it(db_session_factory
     assert second.status_code == 200
 
 
-def test_cancel_combat_session_rejects_after_initiative(db_session_factory, monkeypatch):
+def test_cancel_combat_session_rejects_after_initiative(db_session_factory):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
-    session_id = _start_session_against_mouse(client, monkeypatch, extra_rolls=[])
+    session_id = _start_session_against_mouse(client, extra_rolls=[])
 
     response = client.delete(f"/combat/{session_id}", headers=HEADERS)
     assert response.status_code == 409
@@ -921,12 +908,12 @@ def test_cancel_combat_session_not_found_returns_404(db_session_factory):
     assert response.status_code == 404
 
 
-def test_cancel_combat_session_forbids_other_character(db_session_factory, monkeypatch):
+def test_cancel_combat_session_forbids_other_character(db_session_factory):
     _insert_character(db_session_factory, telegram_user_id=1)
     _insert_character(db_session_factory, telegram_user_id=2)
     client = make_client(db_session_factory)
 
-    _patch_rolls(monkeypatch, [3, 7, 4, 5])
+    _patch_rolls(client, [3, 7, 4, 5])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
 
     response = client.delete(f"/combat/{session_id}", headers=OTHER_HEADERS)

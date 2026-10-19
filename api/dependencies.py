@@ -1,5 +1,7 @@
 """Сквозные FastAPI-зависимости: сессия БД, авторизация бота, текущий персонаж."""
 
+import random
+
 from fastapi import Depends, Header, status
 from sqlalchemy.orm import Session
 
@@ -14,6 +16,14 @@ def require_api_key(x_internal_api_key: str = Header(...)) -> None:
     """§9 backend_plan.md: статический ключ, известный только боту."""
     if x_internal_api_key != settings.internal_api_key:
         raise GameError(status.HTTP_401_UNAUTHORIZED, "auth.invalid_api_key")
+
+
+def get_rng() -> random.Random:
+    """Случайность как зависимость (docs/hardening_plan.md, этап 4, п.4), не
+    прямой вызов random.randint в роутерах — тесты задают детерминированную
+    последовательность через dependency override (tests/api/conftest.py::
+    ScriptedRandom), не через monkeypatch модуля random."""
+    return random.Random()
 
 
 def get_current_character(
