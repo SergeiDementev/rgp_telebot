@@ -11,6 +11,7 @@ from api.errors import register_error_handlers
 from api.routers.character import router as character_router
 from api.routers.combat import router as combat_router
 from api.routers.encounter import router as encounter_router
+from api.routers.errors import router as errors_router
 
 # Схему БД создаёт и обновляет только `alembic upgrade head` (migrations/) —
 # приложение само её больше не трогает при старте.
@@ -20,6 +21,7 @@ app = FastAPI(title="RPG Telegram Bot API", version="0.1.0")
 app.include_router(character_router)
 app.include_router(encounter_router)
 app.include_router(combat_router)
+app.include_router(errors_router)
 register_error_handlers(app)
 
 

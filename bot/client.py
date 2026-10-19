@@ -182,3 +182,18 @@ class ApiClient:
         """docs/notes.md, п.51 — "⬅️ Назад" на экране входа в бой, до
         инициативы: отменяет встречу целиком, ничего в бою ещё не произошло."""
         await self._request("DELETE", f"/combat/{combat_session_id}", telegram_user_id=telegram_user_id)
+
+    # --- журнал ошибок (docs/hardening_plan.md, этап 6, п.2) ---
+
+    async def report_error(
+        self, error_type: str, message: str, context: dict[str, Any] | None = None, traceback: str | None = None
+    ) -> None:
+        """Репортит необработанное исключение бота в тот же журнал, что и
+        ошибки API (db.models.ErrorLog) — вызывающий код (bot/main.py)
+        сам решает, что делать, если и этот вызов упадёт (например, сама
+        API недоступна), эта функция не скрывает такую ошибку сама."""
+        await self._request(
+            "POST",
+            "/errors",
+            json={"error_type": error_type, "message": message, "context": context or {}, "traceback": traceback},
+        )
