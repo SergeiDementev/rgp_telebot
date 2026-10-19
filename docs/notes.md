@@ -1543,3 +1543,14 @@
 **Важно для сервера** — перед применением на реальной БД стоит убедиться, что в ней нет старых данных, нарушающих новые ограничения (например, отрицательного `gold` или двух активных персонажей у одного `telegram_user_id` из-за гипотетического прошлого бага) — `alembic upgrade head` в этом случае откажется накатываться с понятной ошибкой целостности, а не тихо что-то испортит; это и есть желаемое поведение, но исправлять данные тогда нужно будет руками до повторной попытки.
 
 **Проверка:** `ruff check .` / `ruff format --check .` / `mypy core api db` / `python -m pytest -q` — все зелёные.
+
+## 105. План укрепления, этап 4, п.5: константы формул боя — в одном месте — ✅ сделано, ветка `stage4-formula-constants` (2026-10-19)
+
+**Цель:** `DODGE_K`/`DOUBLE_STRIKE_K`/`FLEE_MAX_FACES`/`FLEE_K` раньше были продублированы буквально — независимо захардкожены и в `api/routers/combat.py`, и в `scripts/simulate_combat.py` (сам файл `combat.py` это прямо признавал в докстринге: "если бы их менял, синхронизировать пришлось бы оба места вручную").
+
+- **`core/combat_mechanics.py`** — новые `DODGE_K_DEFAULT`/`DOUBLE_STRIKE_K_DEFAULT`/`FLEE_MAX_FACES_DEFAULT`/`FLEE_K_DEFAULT`, тот же стиль, что уже есть для `FLEE_THRESHOLD_PERCENT_DEFAULT`/`CIRCUMSTANCE_MODIFIER_PERCENT_DEFAULT`. Параметры `k`/`max_faces`/`dodge_k` в `calculate_dodge_success_faces`/`calculate_double_strike_success_faces`/`calculate_flee_opportunity_success_faces`/`resolve_strike` получили дефолты — раньше были обязательными позиционными.
+- **`api/routers/combat.py`** — локальные константы убраны, 3 места вызова теперь просто не передают аргумент (тот же приём, что уже был для порога побега/модификатора обстоятельства).
+- **`scripts/simulate_combat.py`** — те же 4 имени остаются (чтобы не трогать `scripts/simulate_boss.py`/`scripts/simulate_combat_economy.py`, которые ссылаются на них через `sc.DODGE_K` и т.п.), но теперь это алиасы `cm.*_DEFAULT`, а не отдельные хардкоды — единственный источник значений, не два.
+- Попутно — маленькая правка комментария в `bot/handlers/character.py`, который ссылался на этот дубль как на пример (пример исчез).
+
+**Проверка:** `ruff check .` / `ruff format --check .` / `mypy core api db` / `python -m pytest -q` — все зелёные, 673/673 (без изменения числа тестов — поведение не менялось, только источник чисел). `scripts/simulate_boss.py`/`scripts/simulate_combat_economy.py` — импортируются и дают те же значения констант, что раньше.

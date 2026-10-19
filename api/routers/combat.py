@@ -7,13 +7,6 @@
 хода за раз". Кнопки "Атаковать"/"Защищаться" в gameplay_loop_mvp.md §9 —
 косметика на стороне бота: обе дёргают один и тот же /turn, подпись бот
 выбирает сам по `current_turn` из предыдущего ответа.
-
-Константы формул (MAX_FACES/K) продублированы здесь из
-scripts/simulate_combat.py — тот же набор черновых значений, ещё не
-откалиброван (в отличие от ENEMY_PRESETS/STAT_POINTS_PER_LEVEL/порога
-уровней, которые уже прошли этап 2). Если бы их менял, синхронизировать бы
-пришлось оба места вручную — при переносе в реальный плейтест стоит
-вынести в общее место.
 """
 
 import random
@@ -40,11 +33,6 @@ from core import progression as pr
 from db.models import Character, CombatSession
 
 router = APIRouter(tags=["combat"], dependencies=[Depends(require_api_key)])
-
-DODGE_K = 15
-DOUBLE_STRIKE_K = 15
-FLEE_MAX_FACES = 4
-FLEE_K = 15
 
 
 def _now() -> datetime:
@@ -236,7 +224,7 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
         session.enemy_flee_right_used = True
 
     luck_roll = random.randint(1, 10)
-    faces = cm.calculate_flee_opportunity_success_faces(luck, FLEE_MAX_FACES, FLEE_K)
+    faces = cm.calculate_flee_opportunity_success_faces(luck)
     triggered = cm.is_flee_opportunity_triggered(luck_roll, faces)
     check_text = rendering.render_flee_opportunity_check(
         session.enemy_type, attacker_role, current_hp, max_hp, luck_roll, triggered
@@ -387,7 +375,7 @@ def _resolve_attacker_turn(
     texts: list[str] = []
     log_entries: list[dict[str, Any]] = []
 
-    ds_faces = cm.calculate_double_strike_success_faces(attacker_luck, DOUBLE_STRIKE_K)
+    ds_faces = cm.calculate_double_strike_success_faces(attacker_luck)
     luck_roll = random.randint(1, 10)
     triggered = cm.is_double_strike_triggered(luck_roll, ds_faces)
     texts.append(rendering.render_double_strike_check(session.enemy_type, attacker_role, luck_roll, triggered))
@@ -405,7 +393,6 @@ def _resolve_attacker_turn(
             defender_agility=defender_agility,
             attack_roll=attack_roll,
             dodge_roll=dodge_roll,
-            dodge_k=DODGE_K,
             power_attack=power_attack,
         )
 

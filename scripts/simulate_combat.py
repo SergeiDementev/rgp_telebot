@@ -49,10 +49,13 @@ ENEMY_PRESETS = {
 
 # Черновые константы формул (§4-6, §8) — тоже предмет калибровки. Единые для
 # обеих сторон: разница только в том, чей стат подставляется в формулу.
-DODGE_K = 15
-DOUBLE_STRIKE_K = 15
-FLEE_MAX_FACES = 4
-FLEE_K = 15
+# Источник — core/combat_mechanics.py (docs/hardening_plan.md, этап 4, п.5),
+# не собственные значения: раньше были продублированы буквально и с
+# api/routers/combat.py.
+DODGE_K = cm.DODGE_K_DEFAULT
+DOUBLE_STRIKE_K = cm.DOUBLE_STRIKE_K_DEFAULT
+FLEE_MAX_FACES = cm.FLEE_MAX_FACES_DEFAULT
+FLEE_K = cm.FLEE_K_DEFAULT
 FLEE_THRESHOLD_PERCENT = cm.FLEE_THRESHOLD_PERCENT_DEFAULT
 CIRCUMSTANCE_MODIFIER_PERCENT = cm.CIRCUMSTANCE_MODIFIER_PERCENT_DEFAULT
 

@@ -47,9 +47,7 @@ router = Router()
 # импортирует core/ ради игровых вычислений (тонкий клиент, см. docs/
 # README.md; core.i18n — исключение, см. докстринг модуля), но подписи
 # кнопок покупки должны показывать цену/кап без лишнего запроса к API. При
-# изменении цен/капов в core/economy.py синхронизировать вручную — тот же
-# паттерн, что уже есть для DODGE_K и т.п. между scripts/simulate_combat.py
-# и api/routers/combat.py.
+# изменении цен/капов в core/economy.py синхронизировать вручную.
 SMALL_POTION_PRICE = 8
 LARGE_POTION_PRICE = 50
 SMALL_POTION_CAP = 5
