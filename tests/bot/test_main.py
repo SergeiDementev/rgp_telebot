@@ -10,10 +10,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aiogram.exceptions import TelegramRetryAfter
+from aiogram.types import ErrorEvent, Update
 
 import bot.main as bot_main
 from bot.handlers import fallback
-from bot.main import _clear_bot_commands, build_dispatcher
+from bot.main import _clear_bot_commands, _report_unhandled_error, build_dispatcher
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -30,6 +31,9 @@ async def test_build_dispatcher_registers_all_handler_routers():
     # последней, иначе она перехватила бы сообщения раньше конкретных
     # команд.
     assert dp.sub_routers[-1] is fallback.router
+    # docs/hardening_plan.md, этап 6, п.2 — журнал ошибок зарегистрирован
+    # на уровне диспетчера, покрывает все хендлеры разом.
+    assert any(handler.callback is _report_unhandled_error for handler in dp.error.handlers)
 
 
 def test_bot_fails_fast_without_required_env_vars(tmp_path):
@@ -135,3 +139,38 @@ async def test_clear_bot_commands_deletes_ru_en_and_default():
     assert bot.delete_my_commands.await_count == 3
     language_codes = {c.kwargs.get("language_code") for c in bot.delete_my_commands.call_args_list}
     assert language_codes == {"ru", "en", None}
+
+
+@pytest.mark.asyncio
+async def test_report_unhandled_error_sends_type_message_and_update_id(caplog):
+    # docs/hardening_plan.md, этап 6, п.2 — журнал ошибок бота и API в одном
+    # месте (db.models.ErrorLog через api/routers/errors.py).
+    event = ErrorEvent(update=Update(update_id=42), exception=ValueError("boom"))
+    api = MagicMock()
+    api.report_error = AsyncMock()
+
+    with caplog.at_level(logging.ERROR, logger="bot.unhandled_error"):
+        await _report_unhandled_error(event, api)
+
+    api.report_error.assert_awaited_once()
+    call = api.report_error.await_args
+    assert call.kwargs["error_type"] == "ValueError"
+    assert call.kwargs["message"] == "boom"
+    assert call.kwargs["context"] == {"update_id": 42}
+    assert "ValueError" in call.kwargs["traceback"]
+    assert any("Unhandled error in handler" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_report_unhandled_error_does_not_raise_when_api_unreachable(caplog):
+    # Отправка в API — best-effort: если сама API недоступна (та же причина,
+    # по которой хендлер мог упасть), это не должно создать вторую,
+    # необработанную ошибку поверх первой.
+    event = ErrorEvent(update=Update(update_id=1), exception=ValueError("boom"))
+    api = MagicMock()
+    api.report_error = AsyncMock(side_effect=ConnectionError("api unreachable"))
+
+    with caplog.at_level(logging.WARNING, logger="bot.unhandled_error"):
+        await _report_unhandled_error(event, api)  # не должно бросить исключение
+
+    assert any("Failed to report error to API" in r.message for r in caplog.records)

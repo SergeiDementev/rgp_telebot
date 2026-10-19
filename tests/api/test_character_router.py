@@ -35,7 +35,7 @@ def _set_character_economy(
 def make_client(db_session_factory, *, bypass_api_key: bool = True) -> TestClient:
     app = FastAPI()
     app.include_router(character_router)
-    register_error_handlers(app)
+    register_error_handlers(app, session_factory=db_session_factory)
     app.dependency_overrides[get_db] = override_get_db(db_session_factory)
     if bypass_api_key:
         app.dependency_overrides[require_api_key] = lambda: None

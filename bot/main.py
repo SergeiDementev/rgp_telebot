@@ -7,6 +7,7 @@
 
 import asyncio
 import logging
+import traceback as tb_module
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramRetryAfter
+from aiogram.types import ErrorEvent
 
 from bot.client import ApiClient
 from bot.handlers import character, combat, fallback, start
@@ -29,6 +31,7 @@ LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 LOG_PATH = LOG_DIR / "bot.log"
 
 _retry_after_logger = logging.getLogger("bot.flood_control")
+_error_logger = logging.getLogger("bot.unhandled_error")
 
 
 async def _log_retry_after(make_request, bot: Bot, method):
@@ -44,6 +47,32 @@ async def _log_retry_after(make_request, bot: Bot, method):
             "Telegram flood control: method=%s retry_after=%s", method.__api_method__, error.retry_after
         )
         raise
+
+
+async def _report_unhandled_error(event: ErrorEvent, api: ApiClient) -> None:
+    """Ловит необработанное исключение из любого message/callback-хендлера
+    (docs/hardening_plan.md, этап 6, п.2) — регистрируется на уровне
+    Dispatcher (dp.error), не отдельного роутера, покрывает все хендлеры
+    разом. aiogram сам прерывает обработку именно этого апдейта, но не
+    валит весь процесс — поведение не меняется, добавляется только логирование.
+
+    Отправка в API — best-effort: если сама API недоступна (та же причина,
+    по которой хендлер мог упасть), эта попытка не должна создать вторую,
+    более шумную ошибку поверх первой — только WARNING в тот же файловый
+    лог, без повторного падения."""
+    _error_logger.error("Unhandled error in handler: %s", event.exception, exc_info=event.exception)
+    try:
+        formatted_traceback = "".join(
+            tb_module.format_exception(type(event.exception), event.exception, event.exception.__traceback__)
+        )
+        await api.report_error(
+            error_type=type(event.exception).__name__,
+            message=str(event.exception),
+            context={"update_id": event.update.update_id},
+            traceback=formatted_traceback,
+        )
+    except Exception:
+        _error_logger.warning("Failed to report error to API", exc_info=True)
 
 
 def _add_file_logging() -> None:
@@ -79,6 +108,10 @@ async def _clear_bot_commands(bot: Bot) -> None:
 
 def build_dispatcher() -> Dispatcher:
     dp = Dispatcher()
+    # Журнал ошибок (docs/hardening_plan.md, этап 6, п.2) — на уровне
+    # диспетчера, тем же принципом, что и middleware ниже: ловит
+    # необработанное исключение из любого хендлера разом.
+    dp.error.register(_report_unhandled_error)
     # Ставится на уровне диспетчера, не отдельного роутера (docs/notes.md,
     # блок 4) — покрывает все хендлеры разом, включая /start и /reset, где
     # персонаж ещё не известен вовсе. bot/utils.py::

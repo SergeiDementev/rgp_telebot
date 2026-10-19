@@ -307,3 +307,38 @@ async def test_error_response_without_json_body_falls_back_to_text():
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.code == "internal server error"
+
+
+async def test_report_error_posts_type_message_context_and_traceback():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["json"] = json.loads(request.content)
+        return httpx.Response(204)
+
+    client = make_client(handler)
+
+    await client.report_error(
+        error_type="ValueError", message="boom", context={"update_id": 1}, traceback="Traceback..."
+    )
+
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/errors"
+    assert captured["json"] == {
+        "error_type": "ValueError",
+        "message": "boom",
+        "context": {"update_id": 1},
+        "traceback": "Traceback...",
+    }
+
+
+async def test_report_error_defaults_context_to_empty_dict():
+    handler, captured = _echo_handler(204)
+    client = make_client(handler)
+
+    await client.report_error(error_type="ValueError", message="boom")
+
+    assert captured["json"]["context"] == {}
+    assert captured["json"]["traceback"] is None

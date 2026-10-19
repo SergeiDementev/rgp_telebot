@@ -19,7 +19,7 @@ HEADERS = {"X-Telegram-User-Id": "1"}
 def make_client(db_session_factory) -> TestClient:
     app = FastAPI()
     app.include_router(encounter_router)
-    register_error_handlers(app)
+    register_error_handlers(app, session_factory=db_session_factory)
     app.dependency_overrides[get_db] = override_get_db(db_session_factory)
     app.dependency_overrides[require_api_key] = lambda: None
     return TestClient(app)

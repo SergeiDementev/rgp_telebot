@@ -23,6 +23,11 @@ ErrorCode = Literal[
     "combat.already_finished",
     "encounter.active_session_exists",
     "encounter.level_too_low",
+    # Необработанное исключение (docs/hardening_plan.md, этап 6, п.2) — не
+    # GameError, перехвачено catch-all обработчиком в api/errors.py и
+    # залогировано в error_log; этот код — единственный способ отличить
+    # "мы предвидели этот отказ" от "в коде баг", не разбирая message.
+    "internal.unexpected_error",
 ]
 
 
@@ -33,3 +38,14 @@ class ErrorDetail(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorDetail
+
+
+class ErrorReportRequest(BaseModel):
+    """Бот репортит сюда свои необработанные исключения (docs/hardening_plan.md,
+    этап 6, п.2) — `source` не поле запроса: эндпоинт всегда пишет "bot",
+    сервер не доверяет клиенту указывать, откуда пришла ошибка."""
+
+    error_type: str
+    message: str
+    context: dict[str, Any] = Field(default_factory=dict)
+    traceback: str | None = None

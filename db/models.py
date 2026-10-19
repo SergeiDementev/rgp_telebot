@@ -165,3 +165,22 @@ class StatAllocationLog(Base):
     stat: Mapped[str]
     level_at_time: Mapped[int]
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+
+class ErrorLog(Base):
+    """Журнал ошибок API и бота в одном месте (docs/hardening_plan.md, этап
+    6, п.2) — независимая находка, не пересекается с CombatSession.turn_log
+    (тот про игровые события, этот про необработанные исключения). Без FK
+    на Character — ошибка может случиться и без известного персонажа
+    (например, 401 до того, как кто-либо распознан); контекст свободной
+    формы (JSON), не жёсткая схема на каждый возможный случай."""
+
+    __tablename__ = "error_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str]  # "api" | "bot"
+    error_type: Mapped[str]
+    message: Mapped[str]
+    context: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    traceback: Mapped[str | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)

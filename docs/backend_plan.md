@@ -40,8 +40,10 @@ project/
 │   │   ├── character.py     # создание/просмотр персонажа, прокачка
 │   │   ├── encounter.py     # поиск противника + инициатива/обстоятельство (/start);
 │   │   │                    # + целенаправленная встреча с боссом (/search_boss, docs/notes.md п.36)
-│   │   └── combat.py        # confirm/turn/flee_decision/use_potion/get — тонкая оркестрация
-│   │                        # (статус, вызов api/services/combat.py, сохранение, JSON)
+│   │   ├── combat.py        # confirm/turn/flee_decision/use_potion/get — тонкая оркестрация
+│   │   │                    # (статус, вызов api/services/combat.py, сохранение, JSON)
+│   │   └── errors.py        # POST /errors (docs/hardening_plan.md, этап 6, п.2) — бот репортит
+│   │                        # сюда свои необработанные исключения, пишутся в db.models.ErrorLog
 │   ├── services/
 │   │   └── combat.py        # сам цикл хода (docs/hardening_plan.md, этап 4, п.3) — двойной удар,
 │   │                        # удары, побег, завершение боя; композиция core/combat_mechanics.py
@@ -49,10 +51,13 @@ project/
 │   ├── schemas/              # Pydantic-модели запросов/ответов (character.py, combat.py)
 │   ├── rendering.py           # структурированные факты боя → готовый текст для клиента
 │   ├── dependencies.py       # сессия БД, авторизация бота, получение текущего персонажа
+│   ├── errors.py             # GameError + catch-all обработчик необработанных исключений —
+│   │                        # оба пишут в db.models.ErrorLog (этап 6, п.2), не только форма ответа
 │   └── enemy_content.py      # загрузка content/enemies.json
 │
 ├── db/                       # готово
-│   ├── models.py             # SQLAlchemy-модели: Character, CombatSession, StatAllocationLog
+│   ├── models.py             # SQLAlchemy-модели: Character, CombatSession, StatAllocationLog,
+│   │                          # ErrorLog (журнал ошибок API и бота, docs/hardening_plan.md, этап 6)
 │   └── session.py            # подключение, фабрика сессий
 │
 ├── alembic.ini, migrations/  # alembic-миграции (заведены 2026-09-16) — схему БД
