@@ -30,6 +30,14 @@ DODGE_MIN_FACES_DEFAULT = 1
 FLEE_MIN_FACES_DEFAULT = 1
 FLEE_THRESHOLD_PERCENT_DEFAULT = 25
 CIRCUMSTANCE_MODIFIER_PERCENT_DEFAULT = 20
+# docs/hardening_plan.md, этап 4, п.5 — раньше эти четыре были продублированы
+# буквально (api/routers/combat.py и scripts/simulate_combat.py независимо
+# хардкодили одни и те же числа), синхронизировать при калибровке пришлось
+# бы вручную в обоих местах.
+DODGE_K_DEFAULT = 15
+DOUBLE_STRIKE_K_DEFAULT = 15
+FLEE_MAX_FACES_DEFAULT = 4
+FLEE_K_DEFAULT = 15
 
 
 def resolve_attack_percent(attack_roll: int, *, power: bool = False) -> int | None:
@@ -72,7 +80,7 @@ def calculate_saturating_success_faces(stat: float, max_faces: int, k: float, mi
 
 
 def calculate_dodge_success_faces(
-    agility: float, k: float, dice_sides: int = DICE_SIDES, min_faces: int = DODGE_MIN_FACES_DEFAULT
+    agility: float, k: float = DODGE_K_DEFAULT, dice_sides: int = DICE_SIDES, min_faces: int = DODGE_MIN_FACES_DEFAULT
 ) -> int:
     """§4: количество граней d10, дающих полный уворот. Асимптотическая
     кривая без жёсткого потолка (2026-09-22, docs/notes.md, п.60) — тот же
@@ -89,7 +97,9 @@ def is_dodge_successful(dodge_roll: int, success_faces: int) -> bool:
     return dodge_roll <= success_faces
 
 
-def calculate_double_strike_success_faces(luck: float, k: float, dice_sides: int = DICE_SIDES) -> int:
+def calculate_double_strike_success_faces(
+    luck: float, k: float = DOUBLE_STRIKE_K_DEFAULT, dice_sides: int = DICE_SIDES
+) -> int:
     """§5: floor(dice_sides × Удача / (Удача + K)), асимптота к dice_sides."""
     if luck + k <= 0:
         return 0
@@ -111,7 +121,10 @@ def is_hp_at_or_below_flee_threshold(
 
 
 def calculate_flee_opportunity_success_faces(
-    luck: float, max_faces: int, k: float, min_faces: int = FLEE_MIN_FACES_DEFAULT
+    luck: float,
+    max_faces: int = FLEE_MAX_FACES_DEFAULT,
+    k: float = FLEE_K_DEFAULT,
+    min_faces: int = FLEE_MIN_FACES_DEFAULT,
 ) -> int:
     """§6: та же кривая насыщения, что и уворот, но с собственными MIN/MAX/K."""
     return calculate_saturating_success_faces(luck, max_faces, k, min_faces)
@@ -191,7 +204,7 @@ def resolve_strike(
     defender_agility: float,
     attack_roll: int,
     dodge_roll: int,
-    dodge_k: float,
+    dodge_k: float = DODGE_K_DEFAULT,
     dodge_min_faces: int = DODGE_MIN_FACES_DEFAULT,
     power_attack: bool = False,
 ) -> StrikeResult:
