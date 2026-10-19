@@ -303,6 +303,7 @@ def take_turn(
     turn_text = combat_service.resolve_attacker_turn(session, character, db, rng)
     return _turn_response(session, character, turn_text)
 
+
 # api/services/combat.py
 def resolve_attacker_turn(session, character, db, rng, power_attack=False):
     attacker_role = session.current_turn
