@@ -1,16 +1,17 @@
 """Тесты роутеров /encounter/search и /combat/{id}/start."""
 
+import random
 from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.dependencies import get_db, require_api_key
+from api.dependencies import get_db, get_rng, require_api_key
 from api.errors import register_error_handlers
 from api.routers.encounter import router as encounter_router
 from core import progression as pr
 from db.models import Character, CombatSession
-from tests.api.conftest import override_get_db
+from tests.api.conftest import override_get_db, override_rng
 
 HEADERS = {"X-Telegram-User-Id": "1"}
 
@@ -107,16 +108,16 @@ def test_search_encounter_rejects_second_active_session(db_session_factory):
     assert second.json()["error"]["code"] == "encounter.active_session_exists"
 
 
-def test_search_encounter_specific_roll(db_session_factory, monkeypatch):
+def test_search_encounter_specific_roll(db_session_factory):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)  # 6-8 -> волк
+    client.app.dependency_overrides[get_rng] = override_rng([8])  # 6-8 -> волк
     response = client.post("/encounter/search", headers=HEADERS)
     assert response.json()["enemy_type"] == "wolf"
 
 
-def test_search_encounter_shifts_odds_by_character_level(db_session_factory, monkeypatch):
+def test_search_encounter_shifts_odds_by_character_level(db_session_factory):
     # §6 gameplay_loop_mvp.md, пересмотрено 2026-09-16: на 1 уровне грань 8 —
     # ещё волк (мышь 1-5, волк 6-8, кабан 9-10), а на позднем уровне та же
     # грань 8 уже кабан (мышь 1-2, волк 3-5, кабан 6-10) — пропорции сместились.
@@ -124,7 +125,7 @@ def test_search_encounter_shifts_odds_by_character_level(db_session_factory, mon
     _insert_character(db_session_factory, telegram_user_id=2, level=9)
     client = make_client(db_session_factory)
 
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)
+    client.app.dependency_overrides[get_rng] = override_rng([8, 8])
 
     low_level_response = client.post("/encounter/search", headers={"X-Telegram-User-Id": "1"})
     high_level_response = client.post("/encounter/search", headers={"X-Telegram-User-Id": "2"})
@@ -133,15 +134,14 @@ def test_search_encounter_shifts_odds_by_character_level(db_session_factory, mon
     assert high_level_response.json()["enemy_type"] == "boar"
 
 
-def test_start_combat_transitions_to_awaiting_confirmation(db_session_factory, monkeypatch):
+def test_start_combat_transitions_to_awaiting_confirmation(db_session_factory):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)
+    client.app.dependency_overrides[get_rng] = override_rng([8])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
 
-    rolls = iter([7, 4, 5])
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: next(rolls))
+    client.app.dependency_overrides[get_rng] = override_rng([7, 4, 5])
     response = client.post(f"/combat/{session_id}/start", headers=HEADERS)
     assert response.status_code == 200
     body = response.json()
@@ -151,29 +151,28 @@ def test_start_combat_transitions_to_awaiting_confirmation(db_session_factory, m
     assert body["text"]
 
 
-def test_start_combat_includes_character_language(db_session_factory, monkeypatch):
+def test_start_combat_includes_character_language(db_session_factory):
     _insert_character(db_session_factory, language="en")
     client = make_client(db_session_factory)
 
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)
+    client.app.dependency_overrides[get_rng] = override_rng([8])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
 
-    rolls = iter([7, 4, 5])
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: next(rolls))
+    client.app.dependency_overrides[get_rng] = override_rng([7, 4, 5])
     response = client.post(f"/combat/{session_id}/start", headers=HEADERS)
 
     assert response.json()["language"] == "en"
 
 
-def test_start_combat_player_wins_initiative_and_rolls_buff(db_session_factory, monkeypatch):
+def test_start_combat_player_wins_initiative_and_rolls_buff(db_session_factory):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)
+    client.app.dependency_overrides[get_rng] = override_rng([8])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
 
-    rolls = iter([7, 4, 9])  # player_roll=7 > enemy_roll=4 -> player first; circumstance=9 -> buff
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: next(rolls))
+    # player_roll=7 > enemy_roll=4 -> player first; circumstance=9 -> buff
+    client.app.dependency_overrides[get_rng] = override_rng([7, 4, 9])
 
     response = client.post(f"/combat/{session_id}/start", headers=HEADERS)
     body = response.json()
@@ -182,16 +181,15 @@ def test_start_combat_player_wins_initiative_and_rolls_buff(db_session_factory, 
     assert body["enemy_strength_modifier"] == 1.0
 
 
-def test_start_combat_rerolls_initiative_tie(db_session_factory, monkeypatch):
+def test_start_combat_rerolls_initiative_tie(db_session_factory):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)
+    client.app.dependency_overrides[get_rng] = override_rng([8])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
 
     # 5,5 -> ничья, перебрасываем; 7,4 -> игрок первый; 5 -> обстоятельства нет
-    rolls = iter([5, 5, 7, 4, 5])
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: next(rolls))
+    client.app.dependency_overrides[get_rng] = override_rng([5, 5, 7, 4, 5])
 
     response = client.post(f"/combat/{session_id}/start", headers=HEADERS)
     body = response.json()
@@ -200,7 +198,7 @@ def test_start_combat_rerolls_initiative_tie(db_session_factory, monkeypatch):
     assert body["enemy_strength_modifier"] == 1.0
 
 
-def test_start_combat_against_boss_skips_circumstance(db_session_factory, monkeypatch):
+def test_start_combat_against_boss_skips_circumstance(db_session_factory):
     # docs/notes.md, п.56 — финальный босс без обстоятельства вообще
     # (has_circumstance=false в content/enemies.json): ни строки в тексте,
     # ни лишнего броска, оба модификатора Силы остаются 1.0.
@@ -209,8 +207,8 @@ def test_start_combat_against_boss_skips_circumstance(db_session_factory, monkey
 
     session_id = client.post("/encounter/search_boss", headers=HEADERS).json()["combat_session_id"]
 
-    rolls = iter([7, 4])  # только инициатива — если бы кинули обстоятельство, next(rolls) упал бы на StopIteration
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: next(rolls))
+    # только инициатива — если бы кинули обстоятельство, ScriptedRandom упал бы AssertionError
+    client.app.dependency_overrides[get_rng] = override_rng([7, 4])
 
     response = client.post(f"/combat/{session_id}/start", headers=HEADERS)
     body = response.json()
@@ -234,27 +232,26 @@ def test_start_combat_not_found(db_session_factory):
     assert response.status_code == 404
 
 
-def test_start_combat_wrong_owner_returns_403(db_session_factory, monkeypatch):
+def test_start_combat_wrong_owner_returns_403(db_session_factory):
     _insert_character(db_session_factory, telegram_user_id=1)
     _insert_character(db_session_factory, telegram_user_id=2)
     client = make_client(db_session_factory)
 
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)
+    client.app.dependency_overrides[get_rng] = override_rng([8])
     session_id = client.post("/encounter/search", headers={"X-Telegram-User-Id": "1"}).json()["combat_session_id"]
 
     response = client.post(f"/combat/{session_id}/start", headers={"X-Telegram-User-Id": "2"})
     assert response.status_code == 403
 
 
-def test_start_combat_twice_returns_409(db_session_factory, monkeypatch):
+def test_start_combat_twice_returns_409(db_session_factory):
     _insert_character(db_session_factory)
     client = make_client(db_session_factory)
 
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: 8)
+    client.app.dependency_overrides[get_rng] = override_rng([8])
     session_id = client.post("/encounter/search", headers=HEADERS).json()["combat_session_id"]
 
-    rolls = iter([7, 4, 5])
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: next(rolls))
+    client.app.dependency_overrides[get_rng] = override_rng([7, 4, 5])
     first = client.post(f"/combat/{session_id}/start", headers=HEADERS)
     assert first.status_code == 200
     second = client.post(f"/combat/{session_id}/start", headers=HEADERS)
@@ -296,13 +293,12 @@ def test_start_combat_against_boss_below_required_level_returns_403(db_session_f
     db.close()
 
 
-def test_start_combat_against_boss_at_required_level_succeeds(db_session_factory, monkeypatch):
+def test_start_combat_against_boss_at_required_level_succeeds(db_session_factory):
     _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT)
     client = make_client(db_session_factory)
 
     session_id = client.post("/encounter/search_boss", headers=HEADERS).json()["combat_session_id"]
-    rolls = iter([7, 4])
-    monkeypatch.setattr("api.routers.encounter.random.randint", lambda a, b: next(rolls))
+    client.app.dependency_overrides[get_rng] = override_rng([7, 4])
     response = client.post(f"/combat/{session_id}/start", headers=HEADERS)
     assert response.status_code == 200
     assert response.json()["status"] == "awaiting_confirmation"
@@ -318,14 +314,15 @@ def test_search_boss_encounter_rejects_second_active_session(db_session_factory)
     assert second.status_code == 409
 
 
-def test_search_boss_encounter_does_not_roll_dice(db_session_factory, monkeypatch):
+def test_search_boss_encounter_does_not_roll_dice(db_session_factory):
     # Целенаправленная встреча, не случайный ростер (§6) — никакого броска.
-    def _fail_randint(*_args, **_kwargs):
-        raise AssertionError("search_boss_encounter must not roll dice")
+    class _FailingRandom(random.Random):
+        def randint(self, a: int, b: int) -> int:
+            raise AssertionError("search_boss_encounter must not roll dice")
 
     _insert_character(db_session_factory, level=pr.BOSS_LEVEL_REQUIREMENT)
     client = make_client(db_session_factory)
-    monkeypatch.setattr("api.routers.encounter.random.randint", _fail_randint)
+    client.app.dependency_overrides[get_rng] = _FailingRandom
 
     response = client.post("/encounter/search_boss", headers=HEADERS)
     assert response.status_code == 200

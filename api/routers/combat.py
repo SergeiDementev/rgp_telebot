@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from api import enemy_content, rendering
-from api.dependencies import get_db, get_localized_character, require_api_key
+from api.dependencies import get_db, get_localized_character, get_rng, require_api_key
 from api.errors import GameError
 from api.schemas.combat import (
     CombatSessionOut,
@@ -48,7 +48,7 @@ def _load_owned_session(db: Session, combat_session_id: int, character: Characte
     return session
 
 
-def _finish_battle(session: CombatSession, character: Character, result: str, db: Session) -> str:
+def _finish_battle(session: CombatSession, character: Character, result: str, db: Session, rng: random.Random) -> str:
     """§10 combat_mechanics.md: применить исход — награда, уровни, синхронизация HP.
 
     Лут (docs/notes.md, п.30) — независимый бросок ПОСЛЕ исхода, только при
@@ -80,7 +80,7 @@ def _finish_battle(session: CombatSession, character: Character, result: str, db
 
     loot_dropped = None
     if result == "victory":
-        loot_name, _loot_price = ec.resolve_loot_drop(session.enemy_type, random.randint(1, 100))
+        loot_name, _loot_price = ec.resolve_loot_drop(session.enemy_type, rng.randint(1, 100))
         if loot_name != "nothing":
             loot_dropped = loot_name
             character.loot = {**character.loot, loot_name: character.loot.get(loot_name, 0) + 1}
@@ -103,6 +103,7 @@ def _resolve_flee_attempt(
     session: CombatSession,
     character: Character,
     db: Session,
+    rng: random.Random,
     *,
     fleeing_role: str,
     pursuer_strength: float,
@@ -118,7 +119,7 @@ def _resolve_flee_attempt(
     `fleeing_role` — "player" | "enemy": чья сторона убегает, определяет и
     какое HP-поле сессии обновлять, и как назвать исход боя. `flee.missed`
     здесь не читается — ни один из трёх старых сайтов его не использовал."""
-    attack_roll = random.randint(1, 10)
+    attack_roll = rng.randint(1, 10)
     flee = cm.resolve_flee_attempt(pursuer_strength, attack_roll, fleeing_current_hp)
 
     if fleeing_role == "player":
@@ -140,7 +141,7 @@ def _resolve_flee_attempt(
             "defeated": flee.fleeing_defeated,
         }
     ]
-    finish_text = _finish_battle(session, character, result, db)
+    finish_text = _finish_battle(session, character, result, db, rng)
     db.commit()
     db.refresh(session)
     return f"{flee_text}\n\n{finish_text}"
@@ -179,7 +180,7 @@ def _use_potion(session: CombatSession, character: Character, size: str, db: Ses
     return rendering.render_potion_used(size, heal)
 
 
-def _check_flee_gate(session: CombatSession, character: Character, db: Session) -> dict | None:
+def _check_flee_gate(session: CombatSession, character: Character, db: Session, rng: random.Random) -> dict | None:
     """§6 combat_mechanics.md: проверка в начале хода атакующей стороны.
 
     Одна попытка за бой на сторону (docs/notes.md, п.9) — право сгорает
@@ -223,7 +224,7 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
     else:
         session.enemy_flee_right_used = True
 
-    luck_roll = random.randint(1, 10)
+    luck_roll = rng.randint(1, 10)
     faces = cm.calculate_flee_opportunity_success_faces(luck)
     triggered = cm.is_flee_opportunity_triggered(luck_roll, faces)
     check_text = rendering.render_flee_opportunity_check(
@@ -251,6 +252,7 @@ def _check_flee_gate(session: CombatSession, character: Character, db: Session) 
         session,
         character,
         db,
+        rng,
         fleeing_role="enemy",
         pursuer_strength=pursuer_strength,
         fleeing_current_hp=current_hp,
@@ -347,7 +349,7 @@ def _turn_response(session: CombatSession, character: Character, text: str) -> C
 
 
 def _resolve_attacker_turn(
-    session: CombatSession, character: Character, db: Session, power_attack: bool = False
+    session: CombatSession, character: Character, db: Session, rng: random.Random, power_attack: bool = False
 ) -> str:
     """§5+§9 шаги 5-6: проверка двойного удара + 1-2 удара для session.current_turn.
 
@@ -376,7 +378,7 @@ def _resolve_attacker_turn(
     log_entries: list[dict[str, Any]] = []
 
     ds_faces = cm.calculate_double_strike_success_faces(attacker_luck)
-    luck_roll = random.randint(1, 10)
+    luck_roll = rng.randint(1, 10)
     triggered = cm.is_double_strike_triggered(luck_roll, ds_faces)
     texts.append(rendering.render_double_strike_check(session.enemy_type, attacker_role, luck_roll, triggered))
     log_entries.append(
@@ -386,8 +388,8 @@ def _resolve_attacker_turn(
     battle_ended = False
     result = None
     for strike_number in range(1, (2 if triggered else 1) + 1):
-        attack_roll = random.randint(1, 10)
-        dodge_roll = random.randint(1, 10)
+        attack_roll = rng.randint(1, 10)
+        dodge_roll = rng.randint(1, 10)
         strike = cm.resolve_strike(
             attacker_strength=attacker_strength,
             defender_agility=defender_agility,
@@ -456,7 +458,7 @@ def _resolve_attacker_turn(
         # (строки выше) — mypy не связывает две разные переменные, но
         # инвариант реальный: result не None именно тогда, когда battle_ended.
         assert result is not None
-        texts.append(_finish_battle(session, character, result, db))
+        texts.append(_finish_battle(session, character, result, db, rng))
     else:
         session.current_turn = defender_role
 
@@ -471,6 +473,7 @@ def confirm_combat(
     payload: ConfirmRequest,
     character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
+    rng: random.Random = Depends(get_rng),
 ) -> CombatTurnResponse:
     session = _load_owned_session(db, combat_session_id, character)
     if session.status != "awaiting_confirmation":
@@ -498,6 +501,7 @@ def confirm_combat(
         session,
         character,
         db,
+        rng,
         fleeing_role="player",
         pursuer_strength=pursuer_strength,
         fleeing_current_hp=session.character_hp_snapshot,
@@ -511,6 +515,7 @@ def take_turn(
     payload: TurnRequest = TurnRequest(),
     character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
+    rng: random.Random = Depends(get_rng),
 ) -> CombatTurnResponse:
     """payload.power_attack (docs/combat_mechanics.md §3a) — по умолчанию
     False, тело запроса необязательно (бот отправляет его всегда, но
@@ -519,11 +524,11 @@ def take_turn(
     if session.status != "active":
         raise GameError(status.HTTP_409_CONFLICT, "combat.unexpected_status", {"status": session.status})
 
-    gate = _check_flee_gate(session, character, db)
+    gate = _check_flee_gate(session, character, db, rng)
     if gate is not None and not gate["proceed"]:
         return _turn_response(session, character, gate["text"])
 
-    turn_text = _resolve_attacker_turn(session, character, db, power_attack=payload.power_attack)
+    turn_text = _resolve_attacker_turn(session, character, db, rng, power_attack=payload.power_attack)
     if gate is not None:
         turn_text = f"{gate['text']}\n\n{turn_text}"
 
@@ -540,6 +545,7 @@ def flee_decision(
     payload: FleeDecisionRequest,
     character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
+    rng: random.Random = Depends(get_rng),
 ) -> CombatTurnResponse:
     session = _load_owned_session(db, combat_session_id, character)
     if session.status != "awaiting_flee_decision":
@@ -554,6 +560,7 @@ def flee_decision(
             session,
             character,
             db,
+            rng,
             fleeing_role="player",
             pursuer_strength=pursuer_strength,
             fleeing_current_hp=session.character_hp_snapshot,
@@ -570,7 +577,7 @@ def flee_decision(
     session.status = "active"
     db.commit()
 
-    turn_text = _resolve_attacker_turn(session, character, db)
+    turn_text = _resolve_attacker_turn(session, character, db, rng)
     if session.status != "finished":
         enemy_stats = enemy_content.get_enemy_stats(session.enemy_type)
         turn_text = f"{_hp_status_text(session, character, enemy_stats)}\n\n{turn_text}"

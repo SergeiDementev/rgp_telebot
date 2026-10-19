@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from api import enemy_content, rendering
-from api.dependencies import get_db, get_localized_character, require_api_key
+from api.dependencies import get_db, get_localized_character, get_rng, require_api_key
 from api.errors import GameError
 from api.schemas.combat import CombatStartResponse, EncounterSearchResponse
 from core import combat_mechanics as cm
@@ -27,12 +27,12 @@ def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def _roll_enemy_encounter(level: int) -> tuple:
+def _roll_enemy_encounter(level: int, rng: random.Random) -> tuple:
     """§6 gameplay_loop_mvp.md: d10, грани по pr.calculate_encounter_faces(level)
     — на 1 уровне 50/30/20 (мышь/волк/кабан), к позднему уровню зеркально
     20/30/50 (пересмотрено 2026-09-16, было фиксировано на всех уровнях)."""
     mouse_faces, wolf_faces, _boar_faces = pr.calculate_encounter_faces(level)
-    roll = random.randint(1, 10)
+    roll = rng.randint(1, 10)
     if roll <= mouse_faces:
         return roll, "mouse"
     if roll <= mouse_faces + wolf_faces:
@@ -97,9 +97,10 @@ def _start_encounter_session(
 def search_encounter(
     character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
+    rng: random.Random = Depends(get_rng),
 ) -> EncounterSearchResponse:
     _require_no_active_session(character, db)
-    roll, enemy_type = _roll_enemy_encounter(character.level)
+    roll, enemy_type = _roll_enemy_encounter(character.level, rng)
     return _start_encounter_session(
         character,
         db,
@@ -134,6 +135,7 @@ def start_combat(
     combat_session_id: int,
     character: Character = Depends(get_localized_character),
     db: Session = Depends(get_db),
+    rng: random.Random = Depends(get_rng),
 ) -> CombatStartResponse:
     session = db.get(CombatSession, combat_session_id)
     if session is None:
@@ -151,8 +153,8 @@ def start_combat(
         raise GameError(status.HTTP_403_FORBIDDEN, "encounter.level_too_low")
 
     while True:
-        player_roll = random.randint(1, 10)
-        enemy_roll = random.randint(1, 10)
+        player_roll = rng.randint(1, 10)
+        enemy_roll = rng.randint(1, 10)
         initiative = cm.resolve_initiative(player_roll, enemy_roll)
         if initiative is not None:
             break
@@ -171,7 +173,7 @@ def start_combat(
     circumstance_outcome = None
     roller_role = None
     if has_circumstance:
-        circumstance_roll = random.randint(1, 10)
+        circumstance_roll = rng.randint(1, 10)
         circumstance_outcome = cm.resolve_circumstance_outcome(circumstance_roll)
         roller_role = first_role  # §8: кидает победитель инициативы
 
